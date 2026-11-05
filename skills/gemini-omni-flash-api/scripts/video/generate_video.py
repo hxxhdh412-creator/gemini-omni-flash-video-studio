@@ -210,13 +210,11 @@ def resolve_or_upload_asset(asset_path, mime_type, strip_audio=False):
         try:
             if strip_audio:
                 print(f"Detected local asset path '{asset_path}'. Stripping audio before upload...")
-                
-                # Check if ffmpeg is available
-                try:
-                    subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-                except (subprocess.SubprocessError, FileNotFoundError):
+                from inspect_video import get_ffmpeg_exe
+                ffmpeg_exe = get_ffmpeg_exe()
+                if not ffmpeg_exe:
                     raise RuntimeError(
-                        "Error: ffmpeg is not installed or not found in system PATH. "
+                        "Error: ffmpeg is not installed in system PATH and imageio_ffmpeg is not available. "
                         "ffmpeg is required to strip audio from local videos when --strip-audio is specified."
                     )
 
@@ -226,7 +224,7 @@ def resolve_or_upload_asset(asset_path, mime_type, strip_audio=False):
                 temp_stripped_path = os.path.join("media", f"temp_stripped_{name}_{uuid.uuid4().hex}{ext}")
 
                 # Fast stream-copy audio stripping
-                cmd = ["ffmpeg", "-y", "-i", asset_path, "-c:v", "copy", "-an", temp_stripped_path]
+                cmd = [ffmpeg_exe, "-y", "-i", asset_path, "-c:v", "copy", "-an", temp_stripped_path]
                 proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 if proc.returncode != 0:
                     err_msg = sanitize_error(proc.stderr.strip()) if proc.stderr else "Unknown ffmpeg error"
@@ -412,24 +410,26 @@ def generate_video(
     prompt_text = prompt
 
     if "[# Sources" not in prompt and "[# References" not in prompt:
-        if extend_video:
+        if extend_video or video_path:
             sources_part = "[# Sources <VIDEO_0>@Video1]"
             ref_parts = []
             img_start_num = (2 if last_frame and last_frame != first_frame else 1) if first_frame else 0
             for idx, _ in enumerate(ref_images):
                 ref_parts.append(f"<IMAGE_REF_{idx}>@Image{img_start_num + idx + 1}")
             vid_start_num = 1
-            if video_path:
+            if extend_video and video_path:
                 if isinstance(video_path, list):
                     vid_start_num += len(video_path)
                 else:
                     vid_start_num += 1
+            elif video_path and isinstance(video_path, list) and len(video_path) > 1:
+                vid_start_num += len(video_path) - 1
             for idx, _ in enumerate(ref_videos):
                 ref_parts.append(f"<VIDEO_REF_{idx}>@Video{vid_start_num + idx + 1}")
             
             if ref_parts:
                 prompt_text = f"{sources_part} [# References {' '.join(ref_parts)}] {prompt_text}"
-            else:
+            elif extend_video:
                 prompt_text = f"{sources_part} {prompt_text}"
         elif first_frame and last_frame:
             if "<FIRST_FRAME>" not in prompt and "<LAST_FRAME>" not in prompt:
@@ -505,7 +505,7 @@ def generate_video(
         print(f"Interaction ID: {interaction_id}")
     
     output_video = interaction.output_video
-    if not output_video or not output_video.uri:
+    if not output_video or (not getattr(output_video, "uri", None) and not getattr(output_video, "data", None)):
         err_msg = f"No video content found in response for '{prompt}'."
         if video_path or extend_video or ref_videos:
             err_msg += (
@@ -514,9 +514,29 @@ def generate_video(
             )
         raise RuntimeError(err_msg)
 
+    if getattr(output_video, "data", None) and not getattr(output_video, "uri", None):
+        import base64
+        parent_dir = os.path.dirname(output_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+        raw_data = output_video.data
+        video_bytes = base64.b64decode(raw_data) if isinstance(raw_data, str) else raw_data
+        with open(output_path, "wb") as f:
+            f.write(video_bytes)
+        print(f"Video successfully decoded from inline data and saved to: {output_path}")
+        return
+
     video_uri = output_video.uri
     print(f"Generated video URI for '{prompt}': {strip_query_params(video_uri)}")
     
+    # Ensure generated video file is ACTIVE before downloading
+    file_id_match = re.search(r"files/([a-zA-Z0-9_\-]+)", str(video_uri))
+    if file_id_match:
+        try:
+            wait_for_active(f"files/{file_id_match.group(1)}")
+        except Exception:
+            pass
+
     # Download the final video using the official google-genai SDK
     download_video_file(output_video or video_uri, output_path, client=client)
 
