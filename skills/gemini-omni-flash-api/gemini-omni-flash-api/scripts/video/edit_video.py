@@ -25,10 +25,13 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
 import uuid
+
+_VIDS_RPC_LOCK = threading.Lock()
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
@@ -575,10 +578,17 @@ def run_vids_rpc_edit_or_generate(
 
     req_id = f"goog_{uuid.uuid4().int % 2000000000}"
     clean_prompt = prompt_text.strip()
-    if image_nodes:
-        # Strip SDK-only [<IMAGE_REF_0>] tags when using native StructuredImage nodes so literal '0' never appears on screens
+    if prior_nodes or image_nodes:
+        # Strip SDK-only [# Sources / References] & <VIDEO_REF_N> / <IMAGE_REF_N> tags in Vids RPC (374)
+        # so StructuredContentNode chaining never triggers HTTP 500 or prints literal '0' on screens
         clean_prompt = re.sub(r"\[#\s*(?:Sources|References)[^\]]*\]\s*", "", clean_prompt)
+        clean_prompt = re.sub(
+            r"STRICT MULTIMODAL (?:OBJECT & CHARACTER|SUBJECT & SCENE) BINDING[^:]*:\s*",
+            "",
+            clean_prompt,
+        )
         clean_prompt = re.sub(r"<IMAGE_REF_\d+>", "the reference image", clean_prompt)
+        clean_prompt = re.sub(r"<VIDEO_REF_\d+>", "the reference scene", clean_prompt)
     formatted_prompt = clean_prompt.strip() + "\n\n"
     children = list(prior_nodes) + list(image_nodes) + [[None, None, formatted_prompt]]
 
@@ -692,20 +702,21 @@ def run_vids_rpc_edit_or_generate(
     log(
         f"[Vids RPC] Calling Gemini Omni 1.1 Flash (prior_video_nodes={len(prior_nodes)}, duration={duration_sec or 10}s)..."
     )
-    t0 = time.time()
-    req = urllib.request.Request(
-        session["api_url"],
-        data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
-        headers=headers,
-        method="POST",
-    )
+    with _VIDS_RPC_LOCK:
+        t0 = time.time()
+        req = urllib.request.Request(
+            session["api_url"],
+            data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
 
-    with urllib.request.urlopen(req, timeout=240) as resp:
-        raw_bytes = resp.read()
-        if resp.headers.get("Content-Encoding") == "gzip":
-            raw_bytes = gzip.decompress(raw_bytes)
-        text = raw_bytes.decode("utf-8", errors="replace")
-        log(f"[Vids RPC] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(text):,} chars)")
+        with urllib.request.urlopen(req, timeout=240) as resp:
+            raw_bytes = resp.read()
+            if resp.headers.get("Content-Encoding") == "gzip":
+                raw_bytes = gzip.decompress(raw_bytes)
+            text = raw_bytes.decode("utf-8", errors="replace")
+            log(f"[Vids RPC] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(text):,} chars)")
 
     if not save_response_json:
         base_out, _ = os.path.splitext(output_path)

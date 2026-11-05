@@ -1,0 +1,8 @@
+{
+  "api_url": "https://appsgenaiserver-pa.clients6.google.com/v1/genai/generate?key=AIzaSyA-njTXslyyMKk1VOogRfVP59F6fNGeNW8",
+  "origin": "https://docs.google.com",
+  "doc_id": "<YOUR_GOOGLE_VIDS_DOC_ID>",
+  "authuser": "0",
+  "server_token": "CAMSGRUS9NL9N67auQayvgSuUb6_BqcGh_otHQc=",
+  "cookie": "SID=<YOUR_SID>; HSID=<YOUR_HSID>; SSID=<YOUR_SSID>; APISID=<YOUR_APISID>; SAPISID=<YOUR_SAPISID>; __Secure-1PSID=<YOUR_1PSID>; __Secure-1PSIDTS=<YOUR_1PSIDTS>"
+}

@@ -31,9 +31,8 @@ This skill uses the Gemini Omni 1.1 Flash model (`gemini-omni-1.1-flash`) to per
 
 ## Reference Documentation
 
-* **[Complete Omni 1.1 Flash Video Editing & Unlimited Vids RPC Guide](references/omni_1_1_complete_guide.md)**: Full local documentation covering official SDK stateful editing, local video editing with reference media, extensions up to 40s, first/last frame interpolation, golden prompting rules, and the Unlimited Google Vids RPC backend (`DoWorkspaceOperation` / `374`).
-* **Interactions API**: All operations and state management for the Gemini Omni 1.1 Flash model (`gemini-omni-1.1-flash`) are handled via the [Interactions API](https://ai.google.dev/gemini-api/docs/interactions-overview).
-* **Files API**: Input media files (such as reference images and videos) must be uploaded via the [Files API](https://ai.google.dev/gemini-api/docs/files) first before being referenced in generations. The uploaded file URI and MIME type are then included in the `interactions.create` input parts array.
+* **Interactions API**: All operations and state management for the Gemini Omni 1.1 Flash model (`gemini-omni-1.1-flash`) are handled via the [Interactions API](https://aistudio.google.com/docs/interactions-overview).
+* **Files API**: Input media files (such as reference images and videos) must be uploaded via the [Files API](https://aistudio.google.com/docs/files) first before being referenced in generations. The uploaded file URI and MIME type are then included in the `interactions.create` input parts array.
 * **[Gemini API Skill Reference](https://github.com/google-gemini/gemini-skills/blob/main/skills/gemini-api-dev/SKILL.md)**: Platform-wide guidelines, current model specifications, and SDK usage rules for the Gemini API.
 
 ## Dependencies and Prerequisites
@@ -43,14 +42,15 @@ This skill uses the Gemini Omni 1.1 Flash model (`gemini-omni-1.1-flash`) to per
   pip install -U google-genai
   ```
 * **Python Runtime**: Requires **Python >= 3.10** (for compatibility with modern `google-genai` SDK types and methods).
-* **ffmpeg & ffprobe (or `imageio_ffmpeg`)**: `prep_video.py`, `inspect_video.py`, `edit_video.py`, and `generate_video.py` automatically detect `ffmpeg`/`ffprobe` in `PATH` and fall back seamlessly to `imageio_ffmpeg.get_ffmpeg_exe()` on Windows.
-* **Dual-Backend Execution (`GEMINI_API_KEY` or `vids_session.json`)**:
-  - **Official SDK**: Set `export GEMINI_API_KEY="your-api-key"` (Paid Tier required for `gemini-omni-1.1-flash`).
-  - **Unlimited Google Vids RPC (`scripts/video/vids_session.json`)**: Automatically used by `edit_video.py --backend auto` (or `--backend vids`) when `GEMINI_API_KEY` is on Free Tier or when chaining/editing `StructuredContentNode` JSON files (`--prior-node-json`).
+* **ffmpeg & ffprobe**: `prep_video.py`, `inspect_video.py`, and `generate_video.py` (when stripping audio via `--strip-audio`) require `ffmpeg` and `ffprobe` binaries installed and available in your system `PATH`.
+* **API Key**: Set the `GEMINI_API_KEY` environment variable:
+  ```bash
+  export GEMINI_API_KEY="your-api-key"
+  ```
 
 ## Available scripts
 
-Use the following Python scripts to upload media with the Files API, prepare input videos with ffmpeg, and generate or edit video outputs using the Interactions API or Unlimited Google Vids RPC.
+Use the following Python scripts to upload media with the Files API, prepare input videos with ffmpeg, and generate video outputs using the Interactions API.
 
 1. **[upload_file.py](scripts/upload_file.py)**: Uploads local media (images and videos) to the Files API and polls until `ACTIVE`. If uploading a video larger than 25MB, it prints an informative warning/tip highlighting that Gemini Omni Flash is optimized for editing 10s videos at 720p/24fps, and recommends pre-processing with `prep_video.py` first to speed up the upload.
 
@@ -269,51 +269,6 @@ Use the following Python scripts to upload media with the Files API, prepare inp
      ```bash
      ./scripts/video/prep_video.py path/to/source.mp4 --strip-audio --output media/video_with_no_audio.mp4
      ```
-
-5. **[edit_video.py](scripts/video/edit_video.py)**: Dedicated Gemini Omni 1.1 Flash Video Editor, Extender & Multi-Scene Product/Subject Chainer supporting both the **Official SDK** (`--backend sdk`) and **Unlimited Google Vids RPC** (`--backend vids` / `--backend auto`). Automatically formats `[# Sources ...]` and `[# References <VIDEO_REF_0>@Video1 ...]` role tags, encodes local images (`--image`) directly into **Native Image Ingredients (`StructuredContentNode[11]` = `StructuredImage`)** in Google Vids RPC (`374`), enforces the **5-Point Product Blueprint Lock** (`--product-lock`) and **Subject Lock** (`--subject-lock`), sanitizes visual prompts via `sanitize_visual_prompt_for_omni` (stripping raw `#RRGGBB` hex codes and enforcing Pure Graphical UI on screens when no physical product text lock is set), runs **Dual-Frame (`2.5s` & `7.5s`) Gemini Vision Consistency & Screen-Cleanliness Audits + Auto-Repair** (`--verify-anchor`), auto-refreshes live cookies from Chrome CDP (`port 9222`), and masters 720p Vids RPC outputs to 1080p Full HD (`--upscale-1080p`).
-
-   * **Edit a local video (e.g., object removal, outfit change, lighting change)**:
-
-     ```bash
-     python scripts/video/edit_video.py "Make the cell phone invisible" --video input.mp4 --output media/no_phone.mp4
-     ```
-
-   * **Edit a local video using a reference image (`<IMAGE_REF_0>`) for product/outfit swap**:
-
-     ```bash
-     python scripts/video/edit_video.py "Replace the bottle on the table with the crystal perfume bottle in <IMAGE_REF_0>" --video input.mp4 --image aura_dor.png --output media/product_swap.mp4
-     ```
-
-   * **Multi-Scene Product & Subject Chaining with 5-Point Product Blueprint Lock & Vision QA (`--product-lock`, `--verify-anchor`)**:
-
-     ```bash
-     python scripts/video/edit_video.py "Macro product shot on black marble with golden sandalwood smoke swirling around the bottle" \
-       --mode chain --backend vids \
-       --prior-node-json scene1_node.json --prior-node-json scene2_node.json \
-       --product-lock "Angular matte-black octagonal shampoo bottle, flat matte-black flip cap, VERTICAL silver-chrome uppercase text 'X-MEN' reading bottom-to-top along the LEFT side of the front face, crimson-red shield crest with gold lion on the RIGHT side beside 'X-MEN', white text 'SHAMPOO' at bottom-right" \
-       --verify-anchor scene1_preview.png \
-       --output media/scene3_synced_1080p.mp4
-     ```
-
-   * **Refresh or Switch Unlimited Google Vids Session (`vids.new` Auto-CDP Port 9222 or Browser cURL)**:
-
-     ```bash
-     python scripts/video/edit_video.py --refresh-from-cdp
-     python scripts/video/edit_video.py --switch-account
-     python scripts/video/edit_video.py --update-session-from-curl path/to/vids_curl.txt
-     ```
-
-6. **[produce_commercial.py](scripts/video/produce_commercial.py)**: International-standard end-to-end commercial production orchestrator (10s / 30s / 60s+) combining **Gemini Omni 1.1 Flash** (`vids.new` RPC / SDK), **Google Lyria RealTime AI Music** (`models/lyria-realtime-exp`, 48kHz Stereo WAV), **Gemini 3.8 Flash TTS** (`gemini-3.8-flash-tts` / `gemini-3.8-flash-lite-tts` with HyperFrames `voice-clean` DSP), **Per-Scene Audio Micro-Declick (`0.35s` fade-in/out) + Spectral Voiceover Carve + Sidechain Auto-Ducking**, and **1080p Full HD Lanczos + CAS Visual Mastering** with `sanitize_ass_text` guardrail, animated Vector Progress Timeline HUD (`ProgTrack`/`ProgFill`), and KPI Callout Badges (`KpiPill`).
-
-   ```bash
-   python scripts/video/produce_commercial.py \
-     --prompt "Continuous cinematic tracking shot of a sleek futuristic hypercar..." \
-     --vo-text "Giữa màn đêm rực sáng bên Cầu Rồng Đà Nẵng," \
-     --vo-text "đánh thức bản lĩnh dẫn đầu trong từng chuyển động." \
-     --bgm-prompt "Cinematic futuristic synthwave electronic commercial music" \
-     --bpm 118 --scale MINOR \
-     --output media/danang_master_1080p.mp4
-   ```
 
 ## Audio handling in video editing
 
