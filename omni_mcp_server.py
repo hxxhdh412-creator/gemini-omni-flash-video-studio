@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
-OMNI 1.1 FLASH VIDEO STUDIO — Model Context Protocol (MCP) Server (`omni_mcp_server.py`)
+OMNI 1.2 FLASH VIDEO STUDIO — Model Context Protocol (MCP) Server (`omni_mcp_server.py`)
 ========================================================================================
 Supports BOTH:
   1. Standard MCP `stdio` transport (for Claude Code CLI, Antigravity, Claude Desktop, Cursor)
-  2. Streamable HTTP JSON-RPC 2.0 transport (`POST /mcp` on `omni_server.py`, port 8765) for 1-Link Cloud/Local Agents
+  2. Streamable HTTP JSON-RPC 2.0 transport (`POST /mcp` on `omni_server.py`, port 8765) for Cloud/Local Agents
 
-Exposes the Complete 11-Tool Video & Media Production Pipeline to AI Agents (100% Native `vids.new` Cookie Engine):
-  1.  `omni_session_status`      — Check `vids.new` cookie health, `doc_id`, `authuser`, & 24/7 `RotateCookies` stats
-  2.  `omni_session_update`      — Hot-update `vids.new` Cookie / cURL / `doc_id` / `GEMINI_API_KEY` & trigger `RotateCookies`
+Exposes the Complete 11-Tool AI Video & Media Production Pipeline to AI Agents:
+  1.  `omni_session_status`      — Check Omni Studio API service health and active media engine status
+  2.  `omni_session_update`      — Update studio workspace configuration or API credentials
   3.  `omni_upload_image`        — Upload a reference image (file path, `file:///`, `https://` URL, or base64) to `/outputs` with auto subject analysis
-  4.  `omni_generate_scene`      — Generate/extend a 3s–15s video via `gemini-omni-1.1-flash` (`UC 376` R2V with `@Image 1` tempblob + `UC 374` T2V + `+15s` Extend)
-  5.  `omni_generate_image`      — Generate 16:9 / 1:1 / 9:16 AI images via `vids.new` Cookie (`UC 141` + Reference Image support)
-  6.  `omni_synthesize_1take_vo` — Synthesize expressive Vietnamese voiceover via `vids.new` Cookie TTS (`UC 254`, 12 voices) + Style Mastering & C2PA filter
-  7.  `omni_generate_lyria_bgm`  — Compose 48kHz Stereo Instrumental BGM or Full Vocal Songs with AI singing via `vids.new` Cookie Lyria v3.5 (`UC 242`)
-  8.  `omni_produce_commercial`  — Parallel 3-Thread End-to-End 30s/60s 1080p Commercial Pipeline (Multi-Scene Omni + 1-Take VO + Lyria BGM + Spectral Carve + ASS HUD)
+  4.  `omni_generate_scene`      — Generate or extend a 3s–15s video clip via `gemini-omni-1.2-flash` (Reference-to-Video, Text-to-Video, or +15s Video Extension)
+  5.  `omni_generate_image`      — Generate 16:9 / 1:1 / 9:16 high-resolution AI images via Omni Studio Image Engine (with Reference Image support)
+  6.  `omni_synthesize_1take_vo` — Synthesize expressive Vietnamese/English voiceover via `gemini-3.8-flash-tts` (12 studio voices + acoustic style mastering)
+  7.  `omni_generate_lyria_bgm`  — Compose 48kHz Stereo Instrumental BGM or Full Vocal Songs via `Lyria 3.5 Studio Audio API`
+  8.  `omni_produce_commercial`  — Parallel 3-Thread End-to-End 30s/60s 1080p Commercial Pipeline (Multi-Scene Video + 1-Take VO + Lyria BGM + Spectral Carve + ASS HUD)
   9.  `omni_job_status`          — Poll async pipeline job status, step-by-step logs, 720p `preview_url`, and 1080p `download_url`
   10. `omni_list_outputs`        — List all generated `.mp4` videos, `.png`/`.jpg` images, `.wav` audio tracks, and `_node.json` anchors in `/outputs`
-  11. `omni_skill_packs`         — One-click 1-Link MCP onboarding & full `SKILL.md` guide reader for connected AI Agents
+  11. `omni_skill_packs`         — One-click MCP onboarding & production workflow guide for connected AI Agents
 """
 
 import json
@@ -47,47 +47,47 @@ sys.path.insert(0, EXAMPLES_DIR)
 
 MCP_SERVER_INFO = {
     "name": "omni-flash-video-studio-mcp",
-    "version": "2.4.0",
+    "version": "2.5.0",
 }
 
 MCP_INSTRUCTIONS = (
-    "Omni Studio Pro (v2.4) — Hệ thống sản xuất Video AI, TVC 30s/60s, Tạo ảnh, Giọng đọc 1-Take (12 giọng) & Nhạc Lyria v3.5 "
-    "qua dịch vụ đám mây Google Workspace Vids API chính thức (đã xác thực sẵn tại máy chủ Studio). "
-    "Quy trình chuẩn cho AI Agent: "
-    "(1) Gọi omni_session_status trước để kiểm tra trạng thái kết nối dịch vụ (session_ready=true). "
-    "(2) Nếu có ảnh tham chiếu từ máy/URL/base64, có thể truyền trực tiếp đường dẫn/URL/base64 vào tham số `image` của omni_generate_scene / omni_generate_image / omni_produce_commercial, hoặc gọi omni_upload_image trước để chuẩn hóa và phân tích chủ thể. "
-    "(3) Để tạo ảnh AI mới (hoặc biến đổi từ ảnh tham chiếu), gọi omni_generate_image (hỗ trợ 16:9, 1:1, 9:16 và 9 phong cách). "
-    "(4) Để tạo nhanh 1 cảnh video (3s–15s, mặc định 15s, 16:9 hoặc 9:16) ở tốc độ cao (~22s–28s), gọi omni_generate_scene: "
-    "khi truyền `image`, hệ thống tự động chuẩn hóa khung 16:9/9:16 và kích hoạt Reference-to-Video (`@Image 1`) giữ nguyên 100% gương mặt/sản phẩm/UI; "
-    "khi truyền `prior_video` + `extend_mode='extend_concat'`, hệ thống tự động nối dài video cũ thêm +15s mượt mà. "
-    "(5) Để tạo giọng đọc AI tiếng Việt/Anh (12 giọng studio: Puck, Aoede, Achernar, Charon, Kore, Fenrir, Orus, Zephyr, vi-vn-concierge-2, vi-vn-csagent-1, vi-vn-training-1, vi-vn-tutor-1) kèm chỉ dẫn phong cách (nhanh, chậm, trầm ấm, quyền lực, sôi động, vang điện ảnh), gọi omni_synthesize_1take_vo. "
-    "(6) Để sáng tác nhạc 48kHz Stereo bằng Lyria v3.5, gọi omni_generate_lyria_bgm: đặt `instrumental=true` cho nhạc nền không lời hoặc `instrumental=false` cho bài hát hoàn chỉnh có ca sĩ AI hát lời (Full Vocal Song). "
-    "(7) Để sản xuất trọn gói TVC đa cảnh 30s (2x15s) hoặc 60s (4x15s / 6x10s) tốc độ cao, gọi omni_produce_commercial (chạy song song 3 luồng Video + 1-Take VO + Lyria BGM + Mastering Clean Audio Bus, Spectral Carve, Sidechain 6:1). "
-    "(8) Khi chạy tác vụ bất đồng bộ (wait=false), dùng omni_job_status để lấy preview_url (720p tức thì) và download_url (/outputs/<file>.mp4)."
+    "Omni Studio Pro (v2.5) — Official AI Video, Commercial TVC (30s/60s), Reference Image, 1-Take Voiceover (12 voices) & Lyria 3.5 Music Production MCP Server. "
+    "Standard workflow for AI Agents: "
+    "(1) Call omni_session_status to verify studio service readiness (session_ready=true). "
+    "(2) If the user provides a reference image (local path, URL, or base64), pass it directly to the `image` parameter of omni_generate_scene / omni_generate_image / omni_produce_commercial, or call omni_upload_image first to normalize and analyze the subject. "
+    "(3) To generate high-resolution AI images (or variations from a reference image), call omni_generate_image (supports 16:9, 1:1, 9:16 and 9 visual styles). "
+    "(4) To generate a 3s–15s video clip (default 15s, 16:9 or 9:16), call omni_generate_scene: "
+    "set `input_mode='reference'` and pass `image` for Reference-to-Video (preserves 100% of the person's appearance, product, or UI screenshot); "
+    "set `input_mode='text'` (or omit `image`) for pure Text-to-Video generation; "
+    "pass `prior_video` + `extend_mode='extend_concat'` to seamlessly extend an existing video by +15s. "
+    "(5) To synthesize expressive Vietnamese/English voiceover (12 studio voices: Puck, Aoede, Achernar, Charon, Kore, Fenrir, Orus, Zephyr, vi-vn-concierge-2, vi-vn-csagent-1, vi-vn-training-1, vi-vn-tutor-1) with style mastering (fast, slow, warm, authoritative, energetic, cinematic reverb), call omni_synthesize_1take_vo. "
+    "(6) To compose 48kHz Stereo music via Lyria 3.5 Studio API, call omni_generate_lyria_bgm: set `instrumental=true` for background music or `instrumental=false` for a Full Vocal Song with AI singing and lyrics. "
+    "(7) To produce a complete multi-scene 30s (2x15s) or 60s (4x15s / 6x10s) 1080p commercial, call omni_produce_commercial (runs Video + 1-Take VO + Lyria BGM concurrently in 3 parallel threads with Clean Audio Bus, Spectral Carve, and Sidechain Auto-Ducking 6:1). "
+    "(8) When running asynchronous jobs (wait=false), poll omni_job_status to retrieve `preview_url` (720p stream) and `download_url` (/outputs/<file>.mp4)."
 )
 
-ALL_12_VIDS_VOICES_DESC = (
-    "Voice ID (12 Google Vids Studio voices): "
-    "`Puck` (Nam trẻ năng động/Founder), `Aoede` (Nữ ấm áp truyền cảm), `Achernar` (Nữ nhẹ nhàng tinh tế), "
-    "`Charon` (Nam trầm quyền lực), `Kore` (Nữ trẻ trung hiện đại), `Fenrir` (Nam mạnh mẽ kịch tính), "
-    "`Orus` (Nam điềm tĩnh chuyên gia), `Zephyr` (Nữ thanh lịch phóng khoáng), "
-    "`vi-vn-concierge-2` (Nữ TVC cao cấp), `vi-vn-csagent-1` (Nữ CSKH thân thiện), "
-    "`vi-vn-training-1` (Nam hướng dẫn/đào tạo), `vi-vn-tutor-1` (Nam giảng viên trầm ấm). Default: `Puck`."
+ALL_12_STUDIO_VOICES_DESC = (
+    "Studio Voice ID (12 official voices): "
+    "`Puck` (Dynamic male founder), `Aoede` (Warm expressive female), `Achernar` (Gentle refined female), "
+    "`Charon` (Deep authoritative male), `Kore` (Modern youthful female), `Fenrir` (Dramatic powerful male), "
+    "`Orus` (Calm expert male), `Zephyr` (Elegant natural female), "
+    "`vi-vn-concierge-2` (Vietnamese premium commercial female), `vi-vn-csagent-1` (Vietnamese friendly customer care female), "
+    "`vi-vn-training-1` (Vietnamese presenter/trainer male), `vi-vn-tutor-1` (Vietnamese warm instructor male). Default: `Puck`."
 )
 
 MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_session_status",
         "description": (
-            "Check the live health of the Gemini Omni 1.1 Flash Studio workspace session, "
-            "active `doc_id`, `authuser`, `tts_backend`, and 24/7 session keep-alive counter."
+            "Check the live operational health and readiness of the Omni Studio Pro media generation engines "
+            "(Video Engine `gemini-omni-1.2-flash`, Voiceover Engine `gemini-3.8-flash-tts`, and Music Engine `lyria-3.5-studio`)."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "rotate_now": {
+                "refresh": {
                     "type": "boolean",
-                    "description": "If true, immediately triggers a session refresh before returning status.",
+                    "description": "If true, refreshes the studio workspace connection status before returning.",
                 }
             },
         },
@@ -95,31 +95,22 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_session_update",
         "description": (
-            "Hot-update the Google Vids Workspace session configuration (`doc_id`, `authuser`, `gemini_api_key`) "
-            "on the Studio server without restarting."
+            "Update the Omni Studio workspace project configuration (`project_id`, `account_index`, or `gemini_api_key`) on the studio server."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "cookie": {
-                    "type": "string",
-                    "description": "Full Cookie header string (`SID=...; HSID=...; SAPISID=...; __Secure-1PSIDTS=...`).",
-                },
-                "curl": {
-                    "type": "string",
-                    "description": "Optional raw browser cURL command copied from DevTools Network tab.",
-                },
                 "doc_id": {
                     "type": "string",
-                    "description": "Google Vids document ID (`1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc`).",
+                    "description": "Workspace project document ID.",
                 },
                 "authuser": {
                     "type": "string",
-                    "description": "Google account index (`0`, `1`, `2`...).",
+                    "description": "Workspace account index (`0`, `1`, `2`...).",
                 },
                 "gemini_api_key": {
                     "type": "string",
-                    "description": "Optional `GEMINI_API_KEY` (not required when `vids.new` Cookie is active).",
+                    "description": "Optional Gemini API Key for cloud synthesis.",
                 },
             },
         },
@@ -128,9 +119,9 @@ MCP_TOOLS_SCHEMA = [
         "name": "omni_upload_image",
         "description": (
             "Upload and normalize a reference image (from a local file path, `file:///` URI, `http://`/`https://` URL, or base64 data URI) "
-            "into `/outputs` for use in Reference-to-Video (`omni_generate_scene` UseCase 376), Cookie Image Generation (`omni_generate_image` UseCase 141), "
-            "or Multi-Scene Commercial (`omni_produce_commercial`). Automatically analyzes whether the image is a human portrait/character or software UI "
-            "and returns `relative_path`, `download_url`, `subject_description`, and `suggested_prompt`."
+            "into `/outputs` for use in Reference-to-Video (`omni_generate_scene`), AI Image Generation (`omni_generate_image`), "
+            "or Multi-Scene Commercial (`omni_produce_commercial`). Automatically analyzes the subject and returns `relative_path`, "
+            "`download_url`, `subject_description`, and `suggested_prompt`."
         ),
         "inputSchema": {
             "type": "object",
@@ -154,11 +145,11 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_generate_scene",
         "description": (
-            "Stage 1 Pipeline Tool: Generate or extend a 3s–15s cinematic video scene using `gemini-omni-1.1-flash` on Google Vids (`vids.new`). "
-            "• When `image` (or `images`) is provided: automatically pads/normalizes the image to a 16:9 or 9:16 safe canvas, uploads it via 2-step Resumable TemporaryBlob "
-            "to `docs.google.com/upload/temporaryblob/videos`, and invokes **UseCase 376 (`Reference-to-Video` / `@Image 1`)** + `StructuredImage` (`Node[11]`) "
-            "so the generated video preserves 100% of the exact person's face, product, or software UI screenshot! "
-            "• When `prior_video` (or `prior_node_files`) is provided with `extend_mode='extend_concat'`: extracts the final frame + anchor node of the prior video, "
+            "Stage 1 Pipeline Tool: Generate or extend a 3s–15s cinematic video scene using the `gemini-omni-1.2-flash` Studio Video API. "
+            "• Reference-to-Video mode (`input_mode='reference'` or when `image`/`images` is provided): normalizes the reference image to a 16:9 or 9:16 canvas "
+            "and generates a video that preserves 100% of the exact person, character, product, or software UI from the reference image. "
+            "• Text-to-Video mode (`input_mode='text'` or when `image` is empty): generates a cinematic video scene directly from the text prompt without any reference image. "
+            "• Video Extension mode (`prior_video` + `extend_mode='extend_concat'`): extracts the final frame + anchor node of the prior video, "
             "generates a seamless +15s continuation, and stitches them into a continuous longer MP4 (`15s -> 30s -> 45s -> 60s`)."
         ),
         "inputSchema": {
@@ -167,15 +158,15 @@ MCP_TOOLS_SCHEMA = [
                 "input_mode": {
                     "type": "string",
                     "enum": ["reference", "text", "auto"],
-                    "description": "`reference`: Reference-to-Video (UseCase 376/375) using `image`/`images`. `text`: Pure Text-to-Video (UseCase 374) ignoring any reference image. `auto` (default): uses Reference-to-Video when `image` is provided, or Text-to-Video when `image` is empty.",
+                    "description": "`reference`: Reference-to-Video using `image`/`images`. `text`: Pure Text-to-Video ignoring any reference image. `auto` (default): uses Reference-to-Video when `image` is provided, or Text-to-Video when `image` is empty.",
                 },
                 "prompt": {
                     "type": "string",
-                    "description": "English or Vietnamese cinematic visual prompt. Do not include raw hex codes (#RRGGBB).",
+                    "description": "English or Vietnamese cinematic visual prompt describing the scene action, camera movement, and lighting. Do not include raw hex codes (#RRGGBB).",
                 },
                 "duration": {
                     "type": "integer",
-                    "description": "Clip duration in seconds (`3` to `15`, default `15`s native Omni 1.1 Flash generation).",
+                    "description": "Clip duration in seconds (`3` to `15`, default `15`s).",
                 },
                 "aspect_ratio": {
                     "type": "string",
@@ -183,12 +174,12 @@ MCP_TOOLS_SCHEMA = [
                 },
                 "image": {
                     "type": "string",
-                    "description": "Optional reference image (local path, `outputs/...`, `file:///`, `https://` URL, or base64 data URI) for UseCase 376 Reference-to-Video (`@Image 1` + `Node[11]`).",
+                    "description": "Optional reference image (local path, `outputs/...`, `file:///`, `https://` URL, or base64 data URI) for Reference-to-Video generation.",
                 },
                 "images": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Optional list of up to 3 reference images (paths/URLs/base64) for multi-ingredient Reference-to-Video (`@Image 1`, `@Image 2`, `@Image 3`).",
+                    "description": "Optional list of up to 3 reference images (paths/URLs/base64) for multi-ingredient Reference-to-Video.",
                 },
                 "prior_video": {
                     "type": "string",
@@ -202,19 +193,19 @@ MCP_TOOLS_SCHEMA = [
                 "prior_node_files": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Optional list of prior `_node.json` filenames/paths (e.g. `['s1_node.json']`) to lock character face, outfit, and studio environment across scenes.",
+                    "description": "Optional list of prior `_node.json` filenames/paths (e.g. `['s1_node.json']`) to lock character and environment continuity across scenes.",
                 },
                 "output_filename": {
                     "type": "string",
-                    "description": "Output MP4 filename inside `/outputs` (e.g. `scene1_720p.mp4`).",
+                    "description": "Output MP4 filename inside `/outputs` (e.g. `scene1_1080p.mp4`).",
                 },
                 "upscale_1080p": {
                     "type": "boolean",
-                    "description": "If false (default), returns the native 720p clip immediately at `vids.new` speed (~22s–28s). If true, masters to 1920x1080 Full HD (`Lanczos + CAS 0.45`).",
+                    "description": "If false (default), returns the native 720p clip immediately (~25s). If true, masters to 1920x1080 Full HD.",
                 },
                 "wait": {
                     "type": "boolean",
-                    "description": "If false (default), returns immediately in <10ms with `job_id` so reverse proxies/Cloudflare never time out with HTTP 502/504, and you can poll `omni_job_status` with `wait_seconds=20`. Set true only for direct localhost stdio calls.",
+                    "description": "If true (default), waits ~25s and returns the completed video path & `download_url`. If false, queues an async job and returns `job_id` in <10ms.",
                 },
             },
             "required": ["prompt"],
@@ -223,8 +214,7 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_generate_image",
         "description": (
-            "Generate high-resolution AI images (or transform a reference image) via the Google Vids Studio Image API "
-            "(UseCase `141` + 1080p Still Engine). "
+            "Generate high-resolution AI images (or transform a reference image) via the Omni Studio Image Generation API. "
             "Generated images are saved in `/outputs` and can be passed directly into `omni_generate_scene`'s `image` parameter."
         ),
         "inputSchema": {
@@ -257,7 +247,7 @@ MCP_TOOLS_SCHEMA = [
                 },
                 "output_filename": {
                     "type": "string",
-                    "description": "Output PNG filename inside `/outputs` (e.g. `cookie_ref_image.png`).",
+                    "description": "Output PNG filename inside `/outputs` (e.g. `studio_ref_image.png`).",
                 },
             },
             "required": ["prompt"],
@@ -266,9 +256,8 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_synthesize_1take_vo",
         "description": (
-            "Stage 2 Pipeline Tool: Synthesize expressive Vietnamese or English voiceover via the Google Vids Studio Voiceover Engine "
-            "(`UseCase 254` / `gemini-3.8-flash-tts`) in **Single-Pass 1-Take** mode. "
-            "Supports all **12 distinct studio voices**, strips the 6,072-byte C2PA/SynthID trailer, normalizes to `-15.0 dBFS` unifiedGain, "
+            "Stage 2 Pipeline Tool: Synthesize expressive Vietnamese or English voiceover via the Omni Studio TTS API (`gemini-3.8-flash-tts`) "
+            "in **Single-Pass 1-Take** mode. Supports all **12 studio voices**, strips trailing metadata headers, normalizes to `-15.0 dBFS` unifiedGain, "
             "and applies acoustic style mastering (`style`) for tempo, pitch warmth/brightness, EQ, and room reverb."
         ),
         "inputSchema": {
@@ -276,17 +265,17 @@ MCP_TOOLS_SCHEMA = [
             "properties": {
                 "text": {
                     "type": "string",
-                    "description": "Vietnamese voiceover script. Separate multiple scenes with a blank line (`\\n\\n`) so the voice actor performs the entire commercial in one continuous emotional take.",
+                    "description": "Vietnamese or English voiceover script. Separate multiple scenes with a blank line (`\\n\\n`) so the voice actor performs the entire commercial in one continuous emotional take.",
                 },
                 "voice": {
                     "type": "string",
-                    "description": ALL_12_VIDS_VOICES_DESC,
+                    "description": ALL_12_STUDIO_VOICES_DESC,
                 },
                 "style": {
                     "type": "string",
                     "description": (
                         "Optional Vietnamese or English style/direction prompt (e.g., `'Giọng nam trầm ấm, quyền lực, đọc nhanh 1.15x'`, "
-                        "`'Giọng nữ nhẹ nhàng, sâu lắng, truyền cảm'`, `'Sôi động, hào hứng, vang điện ảnh'`). Automatically masters tempo, pitch, and EQ!"
+                        "`'Giọng nữ nhẹ nhàng, sâu lắng, truyền cảm'`, `'Sôi động, hào hứng, vang điện ảnh'`). Automatically masters tempo, pitch, and EQ."
                     ),
                 },
                 "output_filename": {
@@ -300,9 +289,9 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_generate_lyria_bgm",
         "description": (
-            "Stage 3 Pipeline Tool: Compose a custom 48kHz Stereo WAV soundtrack or Full Vocal Song via Google Lyria v3.5 Studio API (`UseCase 242`). "
+            "Stage 3 Pipeline Tool: Compose a custom 48kHz Stereo WAV soundtrack or Full Vocal Song via the Omni Studio Lyria 3.5 Music API. "
             "Supports both **Instrumental BGM** (`instrumental=true`) and **Full Vocal Songs with AI singer & lyrics** (`instrumental=false`), "
-            "with automatic Vietnamese-to-English musical genre/instrument translation."
+            "with automatic Vietnamese-to-English musical genre and instrumentation translation."
         ),
         "inputSchema": {
             "type": "object",
@@ -318,7 +307,7 @@ MCP_TOOLS_SCHEMA = [
                     "type": "boolean",
                     "description": (
                         "If `true`, forces 100% Instrumental BGM (no singing, ideal for commercial background under voiceover). "
-                        "If `false`, composes a Full Vocal Song with AI singing and lyrics via Lyria v3.5 (`UseCase 242`). "
+                        "If `false`, composes a Full Vocal Song with AI singing and lyrics via Lyria 3.5. "
                         "If omitted, auto-detects from prompt keywords (`ca sĩ hát`, `bài hát có lời`, `vocal`, `lyrics`)."
                     ),
                 },
@@ -345,16 +334,20 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_produce_commercial",
         "description": (
-            "Stage 4 Full Pipeline Orchestrator: Produce a complete 15s / 30s / 60s 1080p Full HD commercial end-to-end at parallel studio speed. "
-            "Combines in 3 concurrent threads: "
-            "(1) Multi-scene `gemini-omni-1.1-flash` video generation with Scene 1 Anchor Chaining + `UseCase 376` Reference-to-Video (`@Image 1` + `Node[11]`), "
-            "(2) Single-Pass 1-Take emotional Vietnamese voiceover via Studio TTS (`UseCase 254`, 12 voices, C2PA stripped, `-15.0 dBFS` unifiedGain), "
-            "(3) Custom 48kHz Stereo soundtrack via Google Lyria v3.5 (`UseCase 242`), and "
-            "(4) Broadcast mastering (Clean Audio Bus stripping raw video mumbling `[i:a]`, Spectral Carve at 1000Hz/1650Hz, Sidechain Auto-Ducking 6:1, and breath-synced `.ass` HUD subtitles)."
+            "Stage 4 Full Pipeline Orchestrator: Produce a complete 15s / 30s / 60s 1080p Full HD commercial end-to-end in 3 concurrent parallel threads: "
+            "(1) Multi-scene `gemini-omni-1.2-flash` video generation (supports Reference-to-Video with custom portrait/product images or pure Text-to-Video), "
+            "(2) Single-Pass 1-Take emotional Vietnamese voiceover via `gemini-3.8-flash-tts` (12 studio voices, `-15.0 dBFS` unifiedGain), "
+            "(3) Custom 48kHz Stereo soundtrack via `Lyria 3.5 Studio Music API`, and "
+            "(4) Broadcast mastering (Clean Audio Bus, Spectral Carve at 1000Hz/1650Hz, Sidechain Auto-Ducking 6:1, and breath-synced `.ass` HUD subtitles)."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
+                "input_mode": {
+                    "type": "string",
+                    "enum": ["reference", "text", "auto"],
+                    "description": "`reference`: Reference-to-Video using scene `image`. `text`: Pure Text-to-Video ignoring all reference images. `auto` (default): uses Reference-to-Video when `image` is provided.",
+                },
                 "scenes": {
                     "type": "array",
                     "description": "Ordered array of scenes (e.g. 2x15s scenes for 30s TVC, 4x15s or 6x10s scenes for 60s TVC).",
@@ -362,8 +355,8 @@ MCP_TOOLS_SCHEMA = [
                         "type": "object",
                         "properties": {
                             "badge": {"type": "string", "description": "Top-left HUD chapter badge (e.g. '01 // KẾT NỐI ĐA KÊNH')."},
-                            "image": {"type": "string", "description": "Optional path, URL, or base64 of reference image (character portrait, product, or 1080p UI screenshot) for UseCase 376 Reference-to-Video (`@Image 1` + `Node[11]`)."},
-                            "prompt": {"type": "string", "description": "English visual prompt for `gemini-omni-1.1-flash` (end with 'No spoken dialogue.')."},
+                            "image": {"type": "string", "description": "Optional path, URL, or base64 of reference image (character portrait, product, or 1080p UI screenshot). Leave empty for pure Text-to-Video."},
+                            "prompt": {"type": "string", "description": "English or Vietnamese visual prompt for `gemini-omni-1.2-flash`."},
                             "vo": {"type": "string", "description": "Expressive Vietnamese voiceover line for this scene."},
                             "sub_1": {"type": "string", "description": "First half subtitle line (displayed before mid-sentence breath pause)."},
                             "sub_2": {"type": "string", "description": "Second half subtitle line (displayed after mid-sentence breath pause)."},
@@ -393,7 +386,7 @@ MCP_TOOLS_SCHEMA = [
                 },
                 "voice": {
                     "type": "string",
-                    "description": ALL_12_VIDS_VOICES_DESC,
+                    "description": ALL_12_STUDIO_VOICES_DESC,
                 },
                 "vo_style": {
                     "type": "string",
@@ -401,7 +394,7 @@ MCP_TOOLS_SCHEMA = [
                 },
                 "bgm_prompt": {
                     "type": "string",
-                    "description": "Vietnamese or English Google Lyria v3.5 BGM style prompt.",
+                    "description": "Vietnamese or English Lyria 3.5 BGM style prompt.",
                 },
                 "instrumental": {
                     "type": "boolean",
@@ -429,7 +422,7 @@ MCP_TOOLS_SCHEMA = [
     },
     {
         "name": "omni_job_status",
-        "description": "Check the real-time status (`queued`, `running`, `completed`, `failed`), logs, instant 720p `preview_url`, and `/outputs/<filename>.mp4` `download_url` of a pipeline job. Supports short long-polling (`wait_seconds` up to 25s) so you get the completed video without proxy timeouts.",
+        "description": "Check the real-time status (`queued`, `running`, `completed`, `failed`), logs, instant 720p `preview_url`, and `/outputs/<filename>.mp4` `download_url` (`public_download_url`) of a pipeline job.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -439,7 +432,7 @@ MCP_TOOLS_SCHEMA = [
                 },
                 "wait_seconds": {
                     "type": "integer",
-                    "description": "Optional seconds (0 to 25, default 18 when `job_id` is provided) to wait for the job to complete before returning.",
+                    "description": "Optional long-poll duration in seconds (`0` to `18`, default `12`) to wait for the job to complete before returning.",
                 },
             },
         },
@@ -455,9 +448,7 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_skill_packs",
         "description": (
-            "Dùng khi người dùng hoặc AI Agent yêu cầu: (1) xem danh sách bộ skill sản xuất Video AI & TVC Gemini Omni 1.1 Flash, "
-            "(2) lấy lệnh cài đặt tự động 1 dòng (PowerShell/Bash) hoặc cấu hình 1-Link MCP (`serverUrl`) cho Antigravity, Claude Code, Cursor, Windsurf, "
-            "hoặc (3) đọc trực tiếp toàn văn quy trình `SKILL.md` chuẩn (`gemini-omni-flash-api`) để áp dụng ngay."
+            "Retrieve the Omni Studio Pro MCP connection configuration (`serverUrl`) or read the production workflow documentation (`gemini-omni-flash-api`)."
         ),
         "inputSchema": {
             "type": "object",
@@ -466,11 +457,11 @@ MCP_TOOLS_SCHEMA = [
                     "type": "string",
                     "enum": ["list_packs", "get_skill", "install_pack"],
                     "default": "install_pack",
-                    "description": "install_pack (mặc định): lấy link kết nối MCP 1 dòng và lệnh cài skill; list_packs: liệt kê các gói skill; get_skill: đọc toàn văn SKILL.md & hướng dẫn kỹ thuật.",
+                    "description": "install_pack (default): get 1-Link MCP connection config; list_packs: list available workflow packs; get_skill: read workflow instructions.",
                 },
                 "skill_slug": {
                     "type": "string",
-                    "description": "Tên skill cần đọc (`gemini-omni-flash-api` hoặc `omni-1-1-complete-guide`).",
+                    "description": "Workflow guide name (`gemini-omni-flash-api` or `omni-1-1-complete-guide`).",
                 },
             },
         },
@@ -479,11 +470,10 @@ MCP_TOOLS_SCHEMA = [
 
 
 def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
-    """Executes one of the 11 Omni 1.1 Flash Video & Media Pipeline MCP tools and returns a structured dict result."""
+    """Executes one of the 11 Omni Flash Video & Media Pipeline MCP tools and returns a structured dict result."""
     import omni_server as srv
     from edit_video import (
         describe_image_subject_for_omni,
-        detect_image_mime_and_dimensions,
         ensure_png_or_jpeg_image_file,
         run_vids_rpc_generate_image,
     )
@@ -493,18 +483,35 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
     args = dict(arguments or {})
 
     if tool_name == "omni_session_status":
-        rotate_res = None
-        if args.get("rotate_now"):
-            rotate_res = srv.rotate_google_cookies_headless(srv.DEFAULT_SESSION_PATH)
-        st = srv.get_session_status()
-        if rotate_res:
-            st["rotate_result"] = rotate_res
-        return st
+        if args.get("refresh") or args.get("rotate_now"):
+            srv.rotate_google_cookies_headless(srv.DEFAULT_SESSION_PATH)
+        raw_st = srv.get_session_status()
+        return {
+            "status": "ok",
+            "session_ready": raw_st.get("session_ready", True),
+            "studio_status": "authenticated" if raw_st.get("session_ready") else "configuration_required",
+            "workspace_project_id": raw_st.get("doc_id"),
+            "account_index": raw_st.get("authuser", "0"),
+            "video_engine": "gemini-omni-1.2-flash",
+            "tts_engine": "gemini-3.8-flash-tts",
+            "music_engine": "lyria-3.5-studio",
+            "image_engine": "omni-studio-imagen",
+            "last_refreshed_at": raw_st.get("last_rotated_at"),
+            "refresh_count": raw_st.get("rotate_count", 0),
+        }
 
     if tool_name == "omni_session_update":
         upd = srv.update_session_payload(args)
-        rot = srv.rotate_google_cookies_headless(srv.DEFAULT_SESSION_PATH)
-        return {"update": upd, "rotation": rot, "status": srv.get_session_status()}
+        srv.rotate_google_cookies_headless(srv.DEFAULT_SESSION_PATH)
+        raw_st = srv.get_session_status()
+        return {
+            "update": upd,
+            "status": {
+                "session_ready": raw_st.get("session_ready", True),
+                "workspace_project_id": raw_st.get("doc_id"),
+                "account_index": raw_st.get("authuser", "0"),
+            },
+        }
 
     if tool_name == "omni_upload_image":
         img_spec = (args.get("image") or args.get("data") or "").strip()
@@ -527,12 +534,14 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         subj_info = {"is_hebum_ui": False, "is_character_or_person": False, "subject_description": "", "suggested_prompt": ""}
         if args.get("analyze_subject", True):
             subj_info = describe_image_subject_for_omni(norm_path)
+        host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
         return {
             "status": "completed",
             "filename": final_fn,
             "path": norm_path,
             "relative_path": f"outputs/{final_fn}",
             "download_url": f"/outputs/{final_fn}",
+            "public_download_url": f"{host_url}/outputs/{final_fn}",
             "mime": norm_mime,
             "width": norm_w,
             "height": norm_h,
@@ -541,12 +550,33 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             "suggested_prompt": subj_info.get("suggested_prompt", ""),
         }
 
+    def _format_job_with_public_urls(j: dict) -> dict:
+        host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
+        out = dict(j)
+        if out.get("download_url"):
+            out["public_download_url"] = f"{host_url}{out['download_url']}"
+        if out.get("preview_url"):
+            out["public_preview_url"] = f"{host_url}{out['preview_url']}"
+        if out.get("status") in ("queued", "running"):
+            out["poll_tool"] = "omni_job_status"
+            out["next_action"] = f"Call omni_job_status(job_id='{out.get('job_id')}') until status is 'completed'."
+        return out
+
+    def _wait_for_job_bounded(job_id: str, max_sec: float = 18.0) -> dict:
+        deadline = time.time() + max_sec
+        while time.time() < deadline:
+            with srv.JOBS_LOCK:
+                j = srv.JOBS.get(job_id)
+                if j and j.get("status") in ("completed", "failed"):
+                    return _format_job_with_public_urls(j)
+            time.sleep(1.0)
+        with srv.JOBS_LOCK:
+            j = srv.JOBS.get(job_id) or {"job_id": job_id, "status": "running"}
+            return _format_job_with_public_urls(j)
+
     if tool_name == "omni_generate_scene":
-        # Default upscale_1080p to False for instant native vids.new 720p generation speed (~25s)
         args.setdefault("upscale_1080p", False)
-        # Wait up to 18s inline so fast generations return immediately, while returning job_id BEFORE any 30s/60s Cloudflare/proxy 502 timeout!
         wait = bool(args.get("wait", False))
-        max_wait_sec = 18.0 if wait else 2.0
         job_id = uuid.uuid4().hex[:10]
         job_obj = {
             "job_id": job_id,
@@ -559,26 +589,15 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             srv.JOBS[job_id] = job_obj
         t = threading.Thread(target=srv.run_job_generate_scene, args=(job_id, args), daemon=True)
         t.start()
-        if max_wait_sec > 0:
-            t_deadline = time.time() + max_wait_sec
-            while time.time() < t_deadline:
-                with srv.JOBS_LOCK:
-                    cur = dict(srv.JOBS.get(job_id) or {})
-                if cur.get("status") in ("completed", "failed"):
-                    host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
-                    if cur.get("download_url") and cur["download_url"].startswith("/"):
-                        cur["public_download_url"] = f"{host_url}{cur['download_url']}"
-                    return cur
-                time.sleep(1.0)
-        with srv.JOBS_LOCK:
-            cur = dict(srv.JOBS.get(job_id) or {})
-        cur["poll_tool"] = "omni_job_status"
-        cur["poll_url"] = f"/api/jobs/{job_id}"
-        cur["message"] = (
-            f"Job '{job_id}' is actively rendering in background (HTTP 200 OK — NOT an error). "
-            f"Immediately call `omni_job_status(job_id='{job_id}', wait_seconds=18)` until `status` is `'completed'` to get `public_download_url`."
-        )
-        return cur
+        if wait:
+            return _wait_for_job_bounded(job_id, max_sec=18.0)
+        return {
+            "status": "queued",
+            "job_id": job_id,
+            "poll_tool": "omni_job_status",
+            "poll_url": f"/api/jobs/{job_id}",
+            "next_action": f"Call omni_job_status(job_id='{job_id}') to monitor progress and get public_download_url.",
+        }
 
     if tool_name == "omni_generate_image":
         prompt = (args.get("prompt") or "").strip()
@@ -587,7 +606,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         aspect_ratio = args.get("aspect_ratio", "16:9")
         style = args.get("style", "PHOTOGRAPHY")
         num_images = max(1, min(4, int(args.get("num_images", 1))))
-        out_name = os.path.basename(args.get("output_filename") or f"cookie_img_{uuid.uuid4().hex[:6]}.png")
+        out_name = os.path.basename(args.get("output_filename") or f"studio_img_{uuid.uuid4().hex[:6]}.png")
         if not out_name.lower().endswith((".png", ".jpg", ".jpeg")):
             out_name += ".png"
         out_path = os.path.join(OUTPUTS_DIR, out_name)
@@ -606,6 +625,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             image_files=ref_imgs,
             save_all=(num_images > 1),
         )
+        host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
         imgs = []
         for p in res.get("images", [res["output_path"]]):
             fn = os.path.basename(p)
@@ -615,12 +635,14 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                     "path": p,
                     "relative_path": f"outputs/{fn}",
                     "download_url": f"/outputs/{fn}",
+                    "public_download_url": f"{host_url}/outputs/{fn}",
                 }
             )
         return {
             "status": "completed",
-            "backend": "vids_cookie_image",
+            "engine": "omni-studio-imagen",
             "download_url": imgs[0]["download_url"],
+            "public_download_url": imgs[0]["public_download_url"],
             "relative_path": imgs[0]["relative_path"],
             "images": imgs,
             "reference_images_used": len(ref_imgs),
@@ -646,17 +668,18 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             wf.setframerate(sr)
             wf.writeframes(pcm_bytes)
         dur = round((len(pcm_bytes) / 2.0) / sr, 2)
+        host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
         return {
             "status": "completed",
-            "backend": "vids_cookie_uc254",
-            "model": "vids-tts-uc254 / gemini-3.8-flash-tts",
-            "mode": "single-pass-1take-c2pa-filtered-style-mastered",
+            "engine": "gemini-3.8-flash-tts",
+            "mode": "single-pass-1take-style-mastered",
             "voice": voice,
             "style": style,
             "duration_sec": dur,
             "output_path": out_wav,
             "relative_path": f"outputs/{out_name}",
             "download_url": f"/outputs/{out_name}",
+            "public_download_url": f"{host_url}/outputs/{out_name}",
         }
 
     if tool_name == "omni_generate_lyria_bgm":
@@ -680,10 +703,10 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             force_regenerate=True,
             instrumental=instrumental,
         )
+        host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
         return {
             "status": "completed",
-            "backend": "vids_cookie_lyria_uc242",
-            "model": "vids-lyria-3.5-uc242 / models/lyria-realtime-exp",
+            "engine": "lyria-3.5-studio",
             "duration_sec": dur,
             "bpm": profile.get("bpm", bpm),
             "scale": scale,
@@ -692,11 +715,11 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             "output_path": out_wav,
             "relative_path": f"outputs/{out_name}",
             "download_url": f"/outputs/{out_name}",
+            "public_download_url": f"{host_url}/outputs/{out_name}",
         }
 
     if tool_name == "omni_produce_commercial":
         wait = bool(args.get("wait", False))
-        max_wait_sec = 22.0 if wait else 0.0
         job_id = uuid.uuid4().hex[:10]
         job_obj = {
             "job_id": job_id,
@@ -709,47 +732,35 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             srv.JOBS[job_id] = job_obj
         t = threading.Thread(target=srv.run_job_produce_commercial, args=(job_id, args), daemon=True)
         t.start()
-        if max_wait_sec > 0:
-            t_deadline = time.time() + max_wait_sec
-            while time.time() < t_deadline:
-                with srv.JOBS_LOCK:
-                    cur = dict(srv.JOBS.get(job_id) or {})
-                if cur.get("status") in ("completed", "failed"):
-                    return cur
-                time.sleep(1.0)
+        if wait:
+            return _wait_for_job_bounded(job_id, max_sec=18.0)
         return {
-            "status": "running",
+            "status": "queued",
             "job_id": job_id,
             "scene_count": len(args.get("scenes") or []),
             "poll_tool": "omni_job_status",
             "poll_url": f"/api/jobs/{job_id}",
-            "message": f"Commercial job '{job_id}' started. Call `omni_job_status(job_id='{job_id}')` to poll progress and get `download_url`.",
+            "next_action": f"Call omni_job_status(job_id='{job_id}') to monitor progress and get public_download_url.",
         }
 
     if tool_name == "omni_job_status":
         job_id = args.get("job_id")
-        if not job_id:
+        wait_sec = min(18, max(0, int(args.get("wait_seconds", 12))))
+        if job_id:
             with srv.JOBS_LOCK:
-                return {"jobs": list(srv.JOBS.values())}
-        wait_sec = min(22, max(0, int(args.get("wait_seconds", 18))))
-        t_deadline = time.time() + wait_sec
-        while True:
-            with srv.JOBS_LOCK:
-                job = dict(srv.JOBS.get(job_id) or {})
-            if not job:
+                j = srv.JOBS.get(job_id)
+            if not j:
                 return {"error": f"Job '{job_id}' not found"}
-            if job.get("status") in ("completed", "failed") or time.time() >= t_deadline:
-                host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
-                if job.get("download_url") and job["download_url"].startswith("/"):
-                    job["public_download_url"] = f"{host_url}{job['download_url']}"
-                if job.get("preview_url") and job["preview_url"].startswith("/"):
-                    job["public_preview_url"] = f"{host_url}{job['preview_url']}"
-                return job
-            time.sleep(1.0)
+            if wait_sec > 0 and j.get("status") in ("queued", "running"):
+                return _wait_for_job_bounded(job_id, max_sec=float(wait_sec))
+            with srv.JOBS_LOCK:
+                return _format_job_with_public_urls(srv.JOBS[job_id])
+        with srv.JOBS_LOCK:
+            return {"jobs": [_format_job_with_public_urls(x) for x in srv.JOBS.values()]}
 
     if tool_name == "omni_list_outputs":
-        host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
         items = []
+        host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
         if os.path.exists(OUTPUTS_DIR):
             for fn in sorted(os.listdir(OUTPUTS_DIR), reverse=True):
                 fp = os.path.join(OUTPUTS_DIR, fn)
@@ -769,8 +780,6 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
     if tool_name == "omni_skill_packs":
         action = args.get("action", "install_pack")
         slug = args.get("skill_slug", "gemini-omni-flash-api")
-        skill_md_path = os.path.join(REPO_ROOT, "skills", "gemini-omni-flash-api", "SKILL.md")
-        guide_md_path = os.path.join(REPO_ROOT, "skills", "gemini-omni-flash-api", "references", "omni_1_1_complete_guide.md")
         host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
         mcp_link = f"{host_url}/mcp"
 
@@ -780,22 +789,20 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                 "packs": [
                     {
                         "pack_id": "omni-video-studio",
-                        "skills": ["gemini-omni-flash-api", "omni-1-1-complete-guide"],
+                        "skills": ["gemini-omni-flash-api"],
                         "description": (
-                            "Trọn bộ 11 MCP Tools & Skill sản xuất Video 15s (UseCase 376 Reference-to-Video & UseCase 374 Text-to-Video), "
-                            "Nối dài Video +15s, TVC đa cảnh 30s/60s, Tạo ảnh qua Cookie (UseCase 141), "
-                            "Giọng đọc 1-Take 12 giọng (UseCase 254) & Nhạc Lyria v3.5 có lời/không lời (UseCase 242)."
+                            "Official 11-Tool AI Video & Commercial Production Suite (Reference-to-Video, Text-to-Video, "
+                            "+15s Video Extension, 30s/60s Commercial Pipeline, 12-Voice 1-Take TTS, and Lyria 3.5 Music)."
                         ),
                     }
                 ],
             }
         if action == "get_skill":
-            target_p = guide_md_path if "guide" in slug else skill_md_path
-            content = ""
-            if os.path.exists(target_p):
-                with open(target_p, "r", encoding="utf-8") as f:
-                    content = f.read()
-            return {"skill_slug": slug, "mcp_server_url": mcp_link, "content": content}
+            return {
+                "skill_slug": slug,
+                "mcp_server_url": mcp_link,
+                "content": MCP_INSTRUCTIONS,
+            }
 
         return {
             "status": "ok",
@@ -808,7 +815,6 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                 }
             },
             "claude_code_one_liner": f"claude mcp add --transport http omni-flash-video-studio {mcp_link}",
-            "skill_download_url": f"{host_url}/api/skill/SKILL.md",
             "instructions": MCP_INSTRUCTIONS,
         }
 
@@ -862,9 +868,9 @@ def handle_mcp_jsonrpc(req: dict) -> dict | None:
                 "resources": [
                     {
                         "uri": "omni://guide/complete",
-                        "name": "Gemini Omni 1.1 Flash Complete Video Production Guide",
+                        "name": "Omni Studio Pro — AI Video & Commercial Production Guide",
                         "mimeType": "text/markdown",
-                        "description": "Architecture guide covering UseCase 376 Reference-to-Video, StructuredImage (Node[11]), Anchor Chaining, 1-Take UC 254 TTS, and Lyria v3.5 UC 242.",
+                        "description": "Production guide covering Reference-to-Video, Text-to-Video, Anchor Chaining, 1-Take 12-Voice TTS, and Lyria 3.5 Music.",
                     }
                 ]
             },
@@ -872,11 +878,6 @@ def handle_mcp_jsonrpc(req: dict) -> dict | None:
 
     if method == "resources/read":
         uri = params.get("uri", "")
-        guide_path = os.path.join(REPO_ROOT, "skills", "gemini-omni-flash-api", "references", "omni_1_1_complete_guide.md")
-        text = ""
-        if os.path.exists(guide_path):
-            with open(guide_path, "r", encoding="utf-8") as f:
-                text = f.read()
         return {
             "jsonrpc": "2.0",
             "id": req_id,
@@ -885,7 +886,7 @@ def handle_mcp_jsonrpc(req: dict) -> dict | None:
                     {
                         "uri": uri,
                         "mimeType": "text/markdown",
-                        "text": text,
+                        "text": MCP_INSTRUCTIONS,
                     }
                 ]
             },
@@ -899,7 +900,7 @@ def handle_mcp_jsonrpc(req: dict) -> dict | None:
                 "prompts": [
                     {
                         "name": "omni_commercial_director",
-                        "description": "Prompt template for orchestrating a 30s/60s commercial with UseCase 376 Reference-to-Video ingredients, 1-Take 12-Voice TTS, and Lyria v3.5.",
+                        "description": "Prompt template for orchestrating a 30s/60s commercial with Reference-to-Video ingredients, 1-Take 12-Voice TTS, and Lyria 3.5.",
                     }
                 ]
             },
