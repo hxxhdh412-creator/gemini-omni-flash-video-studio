@@ -3,9 +3,11 @@ services:
     build: .
     container_name: omni-video-studio
     ports:
-      - "8080:8080"
+      - "8765:8765"
+      - "8080:8765"
     environment:
-      - PORT=8080
+      - PORT=8765
+      - OMNI_PUBLIC_URL=${OMNI_PUBLIC_URL:-http://localhost:8765}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OMNI_COOKIE=${OMNI_COOKIE:-}
       - OMNI_DOC_ID=${OMNI_DOC_ID:-1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc}
