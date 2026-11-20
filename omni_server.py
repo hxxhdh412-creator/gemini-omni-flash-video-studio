@@ -419,6 +419,7 @@ def save_base64_image_if_needed(img_spec: str, job_dir: str, idx: int) -> str:
 def run_job_generate_scene(job_id: str, payload: dict):
     job_dir = os.path.join(JOBS_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
+    ffmpeg_exe = get_ffmpeg_exe()
     try:
         with JOBS_LOCK:
             JOBS[job_id]["status"] = "running"
@@ -428,23 +429,90 @@ def run_job_generate_scene(job_id: str, payload: dict):
         duration = max(3, min(15, int(payload.get("duration", 15))))
         aspect_ratio = str(payload.get("aspect_ratio") or "16:9").strip()
         upscale_1080p = bool(payload.get("upscale_1080p", True))
+        extend_mode = str(payload.get("extend_mode") or "none").strip()
         out_name = payload.get("output_filename") or f"omni_scene_{job_id}.mp4"
         out_path = os.path.join(OUTPUTS_DIR, os.path.basename(out_name))
         node_path = os.path.join(OUTPUTS_DIR, os.path.splitext(os.path.basename(out_name))[0] + "_node.json")
 
+        prior_nodes = []
+        prior_video_mp4 = None
+        raw_priors = list(payload.get("prior_node_files") or [])
+        if payload.get("prior_video"):
+            raw_priors.insert(0, payload["prior_video"])
+
+        for pn in raw_priors:
+            clean_pn = str(pn or "").strip().lstrip("/\\")
+            if clean_pn.startswith("outputs/") or clean_pn.startswith("outputs\\"):
+                clean_pn = clean_pn.split("/", 1)[-1].split("\\", 1)[-1]
+            cand = pn if os.path.exists(pn) else os.path.join(OUTPUTS_DIR, clean_pn)
+            if not os.path.exists(cand):
+                continue
+            if cand.lower().endswith(".mp4"):
+                if not prior_video_mp4:
+                    prior_video_mp4 = cand
+                stem = os.path.splitext(cand)[0]
+                if stem.endswith("_raw720p"):
+                    stem = stem[: -len("_raw720p")]
+                cand_node = stem + "_node.json"
+                if os.path.exists(cand_node) and cand_node not in prior_nodes:
+                    prior_nodes.append(cand_node)
+            elif cand.lower().endswith(".json"):
+                if cand not in prior_nodes:
+                    prior_nodes.append(cand)
+                stem = cand[: -len("_node.json")] if cand.lower().endswith("_node.json") else os.path.splitext(cand)[0]
+                for mp4_cand in (stem + ".mp4", stem + "_raw720p.mp4"):
+                    if os.path.exists(mp4_cand) and not prior_video_mp4:
+                        prior_video_mp4 = mp4_cand
+                        break
+
+        is_extending = bool(prior_nodes or prior_video_mp4) and extend_mode != "none"
+        if (prior_nodes or prior_video_mp4) and extend_mode == "none":
+            extend_mode = "extend_concat" if prior_video_mp4 else "chain_only"
+            is_extending = True
+
         image_files = []
-        if payload.get("image"):
-            image_files.append(save_base64_image_if_needed(payload["image"], job_dir, 1))
+        raw_img = str(payload.get("image") or "").strip()
+        # If extending a prior video and the user didn't explicitly upload a new custom image (or left default asset_01),
+        # extract the exact final frame from prior_video_mp4 to guarantee seamless visual continuation
+        use_last_frame_from_prior = False
+        if is_extending and prior_video_mp4 and (not raw_img or "asset_01_kenh_ket_noi_1080p.png" in raw_img):
+            use_last_frame_from_prior = True
+
+        if use_last_frame_from_prior and ffmpeg_exe:
+            last_frame_png = os.path.join(job_dir, "prior_last_frame.png")
+            try:
+                subprocess.run(
+                    [ffmpeg_exe, "-y", "-sseof", "-0.15", "-i", prior_video_mp4, "-frames:v", "1", last_frame_png],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=15,
+                )
+                if os.path.exists(last_frame_png) and os.path.getsize(last_frame_png) > 500:
+                    image_files.append(last_frame_png)
+                    with JOBS_LOCK:
+                        JOBS[job_id]["logs"].append(
+                            f"🔗 [Video Extend] Extracted final frame from {os.path.basename(prior_video_mp4)} for seamless continuation."
+                        )
+            except Exception:
+                pass
+
+        if not image_files and raw_img:
+            image_files.append(save_base64_image_if_needed(raw_img, job_dir, 1))
         for i, img in enumerate(payload.get("images") or []):
             image_files.append(save_base64_image_if_needed(img, job_dir, i + 1))
         image_files = [p for p in image_files if p]
 
-        prior_nodes = []
-        for pn in payload.get("prior_node_files") or []:
-            if os.path.exists(pn):
-                prior_nodes.append(pn)
-            elif os.path.exists(os.path.join(OUTPUTS_DIR, pn)):
-                prior_nodes.append(os.path.join(OUTPUTS_DIR, pn))
+        if is_extending:
+            with JOBS_LOCK:
+                JOBS[job_id]["logs"].append(
+                    f"➕ [Google Vids Extend Mode: {extend_mode}] Continuing from prior scene "
+                    f"({os.path.basename(prior_video_mp4 or (prior_nodes[0] if prior_nodes else ''))})..."
+                )
+            if "direct seamless continuation" not in prompt.lower() and "extend this video" not in prompt.lower():
+                prompt = (
+                    "Direct seamless continuation from the final frame of the previous scene, maintaining 100% identical "
+                    "character, facial features, outfit, environment, lighting, and camera continuity: " + prompt
+                )
 
         def _on_raw_ready(raw_p: str, node_p: str):
             raw_fn = os.path.basename(raw_p)
@@ -457,9 +525,17 @@ def run_job_generate_scene(job_id: str, payload: dict):
                     + (" (Mastering 1080p Full HD in background...)" if upscale_1080p else "")
                 )
 
+        # If stitching with prior_video_mp4 (extend_concat), generate segment into a temporary/segment path first
+        should_concat = extend_mode == "extend_concat" and prior_video_mp4 and os.path.exists(prior_video_mp4)
+        seg_out_path = (
+            os.path.join(OUTPUTS_DIR, f"{os.path.splitext(os.path.basename(out_name))[0]}_ext_seg.mp4")
+            if should_concat
+            else out_path
+        )
+
         res = run_vids_rpc_edit_or_generate(
             prompt_text=prompt,
-            output_path=out_path,
+            output_path=seg_out_path,
             prior_node_files=prior_nodes,
             image_files=image_files,
             duration_sec=duration,
@@ -468,7 +544,50 @@ def run_job_generate_scene(job_id: str, payload: dict):
             aspect_ratio=aspect_ratio,
             on_raw_ready=_on_raw_ready,
         )
-        final_file = os.path.basename(res["output_path"])
+
+        if should_concat and ffmpeg_exe:
+            with JOBS_LOCK:
+                JOBS[job_id]["logs"].append(
+                    f"🎬 [Video Extend] Stitching {os.path.basename(prior_video_mp4)} + new {duration}s segment -> {os.path.basename(out_path)}..."
+                )
+            target_res = "1080:1920" if aspect_ratio == "9:16" else "1920:1080"
+            vf_concat = (
+                f"[0:v]fps=24,scale={target_res}:flags=lanczos,setsar=1[v0];"
+                f"[1:v]fps=24,scale={target_res}:flags=lanczos,setsar=1[v1];"
+                "[v0][v1]concat=n=2:v=1:a=0[vout]"
+            )
+            # Check if both videos have audio streams; if not, stitch video cleanly
+            concat_cmd = [
+                ffmpeg_exe,
+                "-y",
+                "-i",
+                prior_video_mp4,
+                "-i",
+                res["output_path"],
+                "-filter_complex",
+                vf_concat,
+                "-map",
+                "[vout]",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "17",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                out_path,
+            ]
+            c_proc = subprocess.run(concat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if c_proc.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 1000:
+                final_file = os.path.basename(out_path)
+            else:
+                final_file = os.path.basename(res["output_path"])
+        else:
+            final_file = os.path.basename(res["output_path"])
+
         with JOBS_LOCK:
             JOBS[job_id]["status"] = "completed"
             JOBS[job_id]["output_file"] = final_file

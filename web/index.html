@@ -589,10 +589,23 @@
           </div>
           <label for="scOutName">Tên File Xuất Ra</label>
           <input id="scOutName" value="omni_scene_15s_1080p.mp4" />
-          <label>Nối với cảnh trước (tùy chọn)</label>
-          <input id="scPriorNode" placeholder="Ví dụ: omni_scene_s1_node.json (để trống nếu là Cảnh 1)" />
 
-          <button class="btn" onclick="submitQuickScene(this)">
+          <label for="scExtendMode">Cơ chế Mở rộng video (như Google Vids)</label>
+          <select id="scExtendMode" onchange="onExtendModeChanged(this.value)">
+            <option value="none" selected>Tạo cảnh mới độc lập</option>
+            <option value="extend_concat">➕ Mở rộng & Ghép nối liền mạch vào cuối video trước (Extend Video)</option>
+            <option value="chain_only">🔗 Giữ đồng nhất nhân vật & bối cảnh từ cảnh trước (Xuất clip riêng)</option>
+          </select>
+
+          <label for="scPriorSelect">Chọn video / cảnh trước để Mở rộng</label>
+          <div style="display:flex; gap:6px;">
+            <select id="scPriorSelect" style="flex:1;" onchange="onPriorVideoSelected(this.value)">
+              <option value="">-- Không nối (Tạo cảnh 1 mới) --</option>
+            </select>
+            <input id="scPriorNode" style="flex:1;" placeholder="Hoặc nhập tên file .mp4 / _node.json" />
+          </div>
+
+          <button class="btn" id="scSubmitBtn" onclick="submitQuickScene(this)">
             <svg class="sf-icon"><use href="#sf-play"/></svg> Tạo cảnh video
           </button>
         </div>
@@ -607,6 +620,14 @@
           </div>
           <div class="monitor-frame" id="scVideoStage">
             <div class="monitor-empty"><span class="preview-mark"><svg class="sf-icon" aria-hidden="true"><use href="#sf-film"/></svg></span><strong>Chưa có cảnh để xem</strong></div>
+          </div>
+          <div id="scExtendActionBar" style="display:none; margin:8px 0; gap:8px; justify-content:space-between; align-items:center;">
+            <button type="button" class="btn btn-xs" onclick="prepareExtendFromLatestQuickVideo()">
+              <svg class="sf-icon"><use href="#sf-plus"/></svg> Mở rộng tiếp video này (+15s như Google Vids)
+            </button>
+            <a id="scQuickDownloadLink" class="btn btn-ghost btn-xs" href="#" download>
+              <svg class="sf-icon"><use href="#sf-download"/></svg> Tải MP4
+            </a>
           </div>
           <pre class="apple-console" id="scConsole">Chưa có tiến trình nào.</pre>
         </div>
@@ -1517,13 +1538,80 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
       }
     }
 
+    let latestQuickSceneFile = '';
+
+    function onExtendModeChanged(mode) {
+      const btn = document.getElementById('scSubmitBtn');
+      if (!btn) return;
+      if (mode === 'extend_concat') {
+        btn.innerHTML = '<svg class="sf-icon"><use href="#sf-plus"/></svg> Mở rộng & Ghép nối video';
+      } else if (mode === 'chain_only') {
+        btn.innerHTML = '<svg class="sf-icon"><use href="#sf-play"/></svg> Tạo cảnh nối tiếp đồng nhất';
+      } else {
+        btn.innerHTML = '<svg class="sf-icon"><use href="#sf-play"/></svg> Tạo cảnh video';
+      }
+    }
+
+    function onPriorVideoSelected(val) {
+      const inp = document.getElementById('scPriorNode');
+      if (inp) inp.value = val || '';
+      const modeSel = document.getElementById('scExtendMode');
+      if (modeSel) {
+        if (val && modeSel.value === 'none') {
+          modeSel.value = 'extend_concat';
+        } else if (!val) {
+          modeSel.value = 'none';
+        }
+        onExtendModeChanged(modeSel.value);
+      }
+    }
+
+    function selectVideoToExtend(fileName) {
+      if (!fileName) return;
+      const inp = document.getElementById('scPriorNode');
+      const sel = document.getElementById('scPriorSelect');
+      const modeSel = document.getElementById('scExtendMode');
+      const outInp = document.getElementById('scOutName');
+      if (inp) inp.value = fileName;
+      if (sel) {
+        const exists = Array.from(sel.options).some(o => o.value === fileName);
+        if (!exists) sel.add(new Option('🎬 ' + fileName, fileName));
+        sel.value = fileName;
+      }
+      if (modeSel) {
+        modeSel.value = 'extend_concat';
+        onExtendModeChanged('extend_concat');
+      }
+      if (outInp) {
+        const stem = fileName.replace(/\.mp4$/i, '').replace(/_ext\d*$/i, '');
+        outInp.value = `${stem}_extended_${Date.now().toString().slice(-4)}.mp4`;
+      }
+      const promptEl = document.getElementById('scPrompt');
+      if (promptEl) {
+        promptEl.focus();
+        promptEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      const con = document.getElementById('scConsole');
+      if (con) {
+        con.textContent = `➕ Đã chọn mở rộng video "${fileName}".\nNhập diễn biến tiếp theo vào ô "Mô tả cảnh quay" rồi bấm "Mở rộng & Ghép nối video" để nối dài thêm 10s–15s từ khung hình cuối!`;
+      }
+    }
+
+    function prepareExtendFromLatestQuickVideo() {
+      if (latestQuickSceneFile) {
+        selectVideoToExtend(latestQuickSceneFile);
+      }
+    }
+
     async function submitQuickScene(button) {
       const priors = document.getElementById('scPriorNode').value.trim();
       const scAr = (document.getElementById('scAspectRatio') || {}).value || '16:9';
+      const extendMode = (document.getElementById('scExtendMode') || {}).value || (priors ? 'extend_concat' : 'none');
       const payload = {
         prompt: document.getElementById('scPrompt').value.trim(),
         duration: parseInt((document.getElementById('scDuration') || {}).value || '15', 10),
         aspect_ratio: scAr,
+        extend_mode: priors ? (extendMode === 'none' ? 'extend_concat' : extendMode) : 'none',
         image: document.getElementById('scImagePath').value.trim(),
         prior_node_files: priors ? [priors] : [],
         output_filename: document.getElementById('scOutName').value.trim(),
@@ -1542,8 +1630,13 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
         });
         const d = await r.json();
         if (!r.ok || !d.job_id) throw new Error(d.error || 'Không gửi được yêu cầu tạo cảnh.');
-        monitorJob(d.job_id, 'scConsole', 'scJobBadge', 'scVideoStage', null, null, () => {
+        monitorJob(d.job_id, 'scConsole', 'scJobBadge', 'scVideoStage', 'scExtendActionBar', 'scQuickDownloadLink', (jobData) => {
           button.disabled = false;
+          if (jobData && jobData.output_file) {
+            latestQuickSceneFile = jobData.output_file;
+            const bar = document.getElementById('scExtendActionBar');
+            if (bar) bar.style.display = 'flex';
+          }
           loadQuickVideos();
         });
       } catch (error) {
@@ -1589,10 +1682,12 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
           const stage = document.getElementById(stageId);
           stage.innerHTML = `<video src="${d.download_url}?t=${Date.now()}" controls autoplay></video>`;
           if (dlBarId && dlLinkId) {
-            document.getElementById(dlBarId).style.display = 'block';
-            document.getElementById(dlLinkId).href = d.download_url;
+            const barEl = document.getElementById(dlBarId);
+            if (barEl) barEl.style.display = dlBarId === 'scExtendActionBar' ? 'flex' : 'block';
+            const linkEl = document.getElementById(dlLinkId);
+            if (linkEl) linkEl.href = d.download_url;
           }
-          if (onFinished) onFinished();
+          if (onFinished) onFinished(d);
           refreshJobActivity();
         } else if (d.status === 'failed') {
           clearInterval(timer);
@@ -1812,7 +1907,19 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
         const response = await fetch('/api/outputs');
         if (!response.ok) throw new Error('Không tải được thư viện');
         const { files } = await response.json();
-        const videos = (files || []).filter(file => file.name.endsWith('.mp4')).slice(0, 6);
+        const allMp4s = (files || []).filter(file => file.name.endsWith('.mp4') && !file.name.endsWith('_raw720p.mp4') && !file.name.endsWith('_ext_seg.mp4'));
+        const priorSel = document.getElementById('scPriorSelect');
+        if (priorSel) {
+          const curVal = priorSel.value;
+          priorSel.replaceChildren(
+            new Option('-- Không nối (Tạo cảnh 1 mới) --', ''),
+            ...allMp4s.slice(0, 20).map(f => new Option(`🎬 ${f.name} (${f.size_mb} MB)`, f.name))
+          );
+          if (curVal && Array.from(priorSel.options).some(o => o.value === curVal)) {
+            priorSel.value = curVal;
+          }
+        }
+        const videos = allMp4s.slice(0, 6);
         list.innerHTML = videos.length ? videos.map(file => `
           <div class="quick-video">
             <svg class="sf-icon" aria-hidden="true"><use href="#sf-film"/></svg>
@@ -1820,6 +1927,7 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
               <span class="quick-video-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
               <span class="quick-video-size">MP4 · ${escapeHtml(file.size_mb)} MB</span>
             </div>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="event.stopPropagation(); selectVideoToExtend('${escapeHtml(file.name)}')" title="Mở rộng nối tiếp video này thêm 10s-15s">+ Mở rộng</button>
             <a href="/outputs/${escapeHtml(encodeURIComponent(file.name))}" data-video-name="${escapeHtml(file.name)}" aria-label="Xem video ${escapeHtml(file.name)}">Xem</a>
           </div>`).join('') : '<span class="quick-videos-message">Video đã tạo sẽ xuất hiện ở đây.</span>';
       } catch {
