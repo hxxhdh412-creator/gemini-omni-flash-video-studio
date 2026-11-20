@@ -1565,6 +1565,59 @@ def run_vids_rpc_tts_voiceover(
     return wav_bytes
 
 
+def _translate_vi_music_prompt_to_en(prompt_text: str) -> str:
+    """
+    If the user enters a Vietnamese music style description (e.g. 'nhạc piano nhẹ nhàng sâu lắng',
+    'nhạc sôi động EDM bùng nổ', 'guitar mộc acoustic ấm áp'), translates it to rich English musical
+    terminology so Google Vids Lyria v3.5 (UC 242) follows the exact style, instruments, and mood.
+    """
+    raw = (prompt_text or "").strip()
+    if not raw:
+        return "Cinematic modern corporate electronic commercial music"
+    has_non_ascii = any(ord(ch) > 127 for ch in raw)
+    lower = raw.lower()
+    has_vi_words = any(
+        w in lower
+        for w in (
+            "nhạc",
+            "nhẹ",
+            "sâu lắng",
+            "sôi động",
+            "bùng nổ",
+            "ấm áp",
+            "điện ảnh",
+            "công nghệ",
+            "buồn",
+            "vui",
+            "chậm",
+            "nhanh",
+            "mộc",
+            "thư giãn",
+            "hào hùng",
+            "trống",
+            "dương cầm",
+            "sáo",
+            "đàn",
+        )
+    )
+    if not has_non_ascii and not has_vi_words:
+        return raw
+
+    try:
+        q = urllib.parse.quote(raw)
+        t_url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=vi&tl=en&dt=t&q={q}"
+        req = urllib.request.Request(t_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=4) as r:
+            arr = json.loads(r.read().decode("utf-8", errors="replace"))
+        translated = "".join(seg[0] for seg in (arr[0] or []) if seg and seg[0]).strip()
+        if translated:
+            log(f"[Vids Lyria RPC] Translated Vietnamese music prompt '{raw}' -> '{translated}'")
+            return translated
+    except Exception:
+        pass
+    return raw
+
+
 def run_vids_rpc_lyria_music(
     bgm_prompt: str,
     output_wav: str = None,
@@ -1590,7 +1643,7 @@ def run_vids_rpc_lyria_music(
     req_id = f"goog_{uuid.uuid4().int % 2000000000}"
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
 
-    clean_prompt = (bgm_prompt or "Cinematic modern corporate electronic commercial music").strip()
+    clean_prompt = _translate_vi_music_prompt_to_en(bgm_prompt)
     if bpm and f"{bpm}" not in clean_prompt.lower():
         clean_prompt = f"{clean_prompt}, {bpm} BPM"
     if scale and str(scale).lower() not in clean_prompt.lower():
