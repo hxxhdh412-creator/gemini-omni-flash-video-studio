@@ -322,14 +322,17 @@ def build_1take_master(
     api_key: str,
     ffmpeg_exe: str,
     tag_label: str,
+    scene_duration: int = 10,
+    voice: str = "Puck",
 ):
     os.makedirs(work_dir, exist_ok=True)
     n_scenes = len(scenes)
-    total_dur = n_scenes * 10
+    sc_dur = float(scene_duration)
+    total_dur = int(n_scenes * sc_dur)
 
     # 1. Single-Pass 1-Take synthesis on flagship gemini-3.8-flash-tts
     full_1take_text = "\n\n".join(sc["vo"] for sc in scenes)
-    cache_1take_pcm = os.path.join(work_dir, f"vo_1take_38flash_{n_scenes}scenes.pcm")
+    cache_1take_pcm = os.path.join(work_dir, f"vo_1take_38flash_{n_scenes}scenes_{scene_duration}s_{voice}.pcm")
 
     if os.path.exists(cache_1take_pcm) and os.path.getsize(cache_1take_pcm) > 20_000:
         log(f"[{tag_label}] Reusing cached 1-Take flagship gemini-3.8-flash-tts PCM: {cache_1take_pcm}")
@@ -337,12 +340,12 @@ def build_1take_master(
             pcm_1take = f.read()
         sample_rate = 24000
     else:
-        log(f"[{tag_label}] Calling flagship gemini-3.8-flash-tts in Single-Pass 1-Take ({n_scenes} scenes)...")
+        log(f"[{tag_label}] Calling flagship gemini-3.8-flash-tts in Single-Pass 1-Take ({n_scenes} scenes x {scene_duration}s)...")
         pcm_1take, sample_rate = call_gemini_38_flash_tts_1take(
             full_text=full_1take_text,
             style=EMOTIONAL_DIRECTOR_STYLE,
             api_key=api_key,
-            voice="Puck",
+            voice=voice,
         )
         with open(cache_1take_pcm, "wb") as f:
             f.write(pcm_1take)
@@ -352,12 +355,13 @@ def build_1take_master(
 
     vo_wavs = []
     timing_meta = []
+    max_vo_slot = sc_dur - 0.95
     for i, (sc, seg_pcm) in enumerate(zip(scenes, scene_pcms)):
         idx = i + 1
         raw_dur = (len(seg_pcm) / 2.0) / sample_rate
-        # Keep natural emotional pacing! Only apply gentle tempo adjustment if > 9.05s
-        if raw_dur > 9.05:
-            tempo = min(1.14, round(raw_dur / 8.85, 3))
+        # Keep natural emotional pacing! Only apply gentle tempo adjustment if > max_vo_slot
+        if raw_dur > max_vo_slot:
+            tempo = min(1.14, round(raw_dur / (sc_dur - 1.15), 3))
         else:
             tempo = 1.00  # 100% untouched natural emotional cadence!
 
@@ -388,14 +392,14 @@ def build_1take_master(
         mid_pause_rel = find_mid_clause_pause(fit_pcm, sample_rate)
 
         start_offset = 0.32
-        base_t = i * 10.0
+        base_t = i * sc_dur
         c1_start = base_t + start_offset
         c1_end = base_t + start_offset + mid_pause_rel
         c2_start = c1_end + 0.06
-        c2_end = base_t + min(9.80, start_offset + fit_dur + 0.15)
+        c2_end = base_t + min(sc_dur - 0.20, start_offset + fit_dur + 0.15)
 
         log(
-            f"  [{tag_label} Scene {idx}/{n_scenes}] raw={raw_dur:.2f}s | tempo={tempo:.2f}x | fit={fit_dur:.2f}s | "
+            f"  [{tag_label} Scene {idx}/{n_scenes} ({scene_duration}s)] raw={raw_dur:.2f}s | tempo={tempo:.2f}x | fit={fit_dur:.2f}s | "
             f"Sub1={c1_start:.2f}..{c1_end:.2f}s | Sub2={c2_start:.2f}..{c2_end:.2f}s"
         )
         vo_wavs.append(fit_wav)
@@ -439,9 +443,9 @@ def build_1take_master(
     ]
     for m in timing_meta:
         sc = m["sc"]
-        base_t = (m["idx"] - 1) * 10.0
+        base_t = (m["idx"] - 1) * sc_dur
         st = fmt_ass(base_t + 0.15)
-        et = fmt_ass(base_t + 9.85)
+        et = fmt_ass(base_t + sc_dur - 0.15)
         ass_lines.append(f"Dialogue: 2,{st},{et},TopPill,,0,0,0,,{{\\fad(200,200)}}  {sc['badge']}  ")
         ass_lines.append(
             f"Dialogue: 2,{st},{et},BrandTag,,0,0,0,,{{\\fad(200,200)}}  HEBUM VIBE CODING CRM  •  690.000Đ  "
@@ -465,8 +469,9 @@ def build_1take_master(
     inputs.extend(["-i", bgm_wav])
 
     bgm_idx = n_scenes * 2
+    fade_out_st = round(sc_dur - 0.18, 2)
     v_build = [
-        f"[{i}:v]fps=24,setsar=1,fade=t=in:st=0:d=0.18,fade=t=out:st=9.82:d=0.18[v{i}];"
+        f"[{i}:v]fps=24,setsar=1,fade=t=in:st=0:d=0.18,fade=t=out:st={fade_out_st}:d=0.18[v{i}];"
         for i in range(n_scenes)
     ]
     v_concat_in = "".join(f"[v{i}]" for i in range(n_scenes))
@@ -475,7 +480,7 @@ def build_1take_master(
     vo_mix_in = []
     for i, m in enumerate(timing_meta):
         vo_idx = n_scenes + i
-        delay_ms = int(round(((i * 10.0) + m["start_offset"]) * 1000))
+        delay_ms = int(round(((i * sc_dur) + m["start_offset"]) * 1000))
         vo_delays.append(
             f"[{vo_idx}:a]aformat=sample_rates=48000:channel_layouts=stereo,"
             f"adelay={delay_ms}|{delay_ms},volume=1.62[vod{i}];"

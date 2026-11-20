@@ -844,7 +844,7 @@ def main():
     parser.add_argument("--scale", default="MINOR", help="Musical scale for Lyria (MAJOR, MINOR, PENTATONIC)")
     parser.add_argument("--brand-left", default="OMNI 1.1 FLASH  ×  VID.NEW STUDIO", help="Top-left HUD badge text")
     parser.add_argument("--brand-right", default="1080P FULL HD MASTER", help="Top-right HUD badge text")
-    parser.add_argument("--duration", type=int, default=10, help="Per-scene duration in seconds (default: 10)")
+    parser.add_argument("--duration", type=int, default=15, help="Per-scene duration in seconds (3-15, supports 10s or 15s; default: 15)")
     parser.add_argument("--product-lock", help="Optional 5-Point Product Blueprint Lock")
     parser.add_argument("--subject-lock", help="Optional Subject Identity Lock")
     parser.add_argument("--image", "-i", action="append", dest="images", help="Reference/Ingredient image(s) for StructuredImage (Node[11])")

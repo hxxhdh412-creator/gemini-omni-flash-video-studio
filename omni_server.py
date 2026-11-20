@@ -403,7 +403,7 @@ def run_job_generate_scene(job_id: str, payload: dict):
             JOBS[job_id]["logs"].append("Starting Omni 1.1 Flash scene generation...")
 
         prompt = payload.get("prompt", "")
-        duration = int(payload.get("duration", 10))
+        duration = max(3, min(15, int(payload.get("duration", 15))))
         upscale_1080p = bool(payload.get("upscale_1080p", True))
         out_name = payload.get("output_filename") or f"omni_scene_{job_id}.mp4"
         out_path = os.path.join(OUTPUTS_DIR, os.path.basename(out_name))
@@ -469,14 +469,17 @@ def run_job_produce_commercial(job_id: str, payload: dict):
         if not scenes_in:
             raise ValueError("payload.scenes array is required")
 
+        scene_dur = max(3, min(15, int(payload.get("scene_duration", 15))))
+        voice_name = payload.get("voice", "Puck")
         scene_mp4s = []
         node_jsons = []
         formatted_scenes = []
 
         for i, sc in enumerate(scenes_in):
             idx = i + 1
+            sc_dur_i = max(3, min(15, int(sc.get("duration", scene_dur))))
             with JOBS_LOCK:
-                JOBS[job_id]["logs"].append(f"[Scene {idx}/{len(scenes_in)}] Generating Omni 1.1 Flash clip...")
+                JOBS[job_id]["logs"].append(f"[Scene {idx}/{len(scenes_in)}] Generating {sc_dur_i}s Omni 1.1 Flash clip...")
 
             raw_mp4 = os.path.join(job_dir, f"s{idx}_raw720p.mp4")
             node_json = os.path.join(job_dir, f"s{idx}_node.json")
@@ -490,7 +493,7 @@ def run_job_produce_commercial(job_id: str, payload: dict):
                 output_path=raw_mp4,
                 prior_node_files=prior_files,
                 image_files=[p for p in img_files if p],
-                duration_sec=10,
+                duration_sec=sc_dur_i,
                 save_response_json=node_json,
                 upscale_1080p=False,
             )
@@ -501,14 +504,14 @@ def run_job_produce_commercial(job_id: str, payload: dict):
             formatted_scenes.append(
                 {
                     "idx": idx,
-                    "badge": sc.get("badge", f"0{idx} // OMNI 1.1 FLASH"),
+                    "badge": sc.get("badge", f"0{idx} // OMNI 1.1 FLASH ({sc_dur_i}S)"),
                     "vo": vo_text,
                     "sub_1": sc.get("sub_1") or vo_text[: len(vo_text) // 2],
                     "sub_2": sc.get("sub_2") or vo_text[len(vo_text) // 2 :],
                 }
             )
 
-        total_dur = len(scenes_in) * 10
+        total_dur = len(scenes_in) * scene_dur
         bgm_wav = os.path.join(job_dir, "bgm.wav")
         with JOBS_LOCK:
             JOBS[job_id]["logs"].append(f"Generating {total_dur}s soundtrack via Google Lyria RealTime...")
@@ -525,7 +528,7 @@ def run_job_produce_commercial(job_id: str, payload: dict):
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
 
         with JOBS_LOCK:
-            JOBS[job_id]["logs"].append("Synthesizing 1-Take Emotional Voiceover (gemini-3.8-flash-tts) & Mastering 1080p...")
+            JOBS[job_id]["logs"].append(f"Synthesizing 1-Take Emotional Voiceover (gemini-3.8-flash-tts, {scene_dur}s/scene) & Mastering 1080p...")
         build_1take_master(
             scenes=formatted_scenes,
             scene_mp4s=scene_mp4s,
@@ -535,6 +538,8 @@ def run_job_produce_commercial(job_id: str, payload: dict):
             api_key=api_key,
             ffmpeg_exe=ffmpeg_exe,
             tag_label=f"JOB-{job_id[:6]}",
+            scene_duration=scene_dur,
+            voice=voice_name,
         )
 
         final_file = os.path.basename(out_mp4)

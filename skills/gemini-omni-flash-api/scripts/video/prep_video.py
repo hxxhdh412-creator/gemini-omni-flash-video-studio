@@ -6,7 +6,7 @@ import sys
 from inspect_video import inspect_video, get_ffmpeg_exe
 
 
-def parse_timecode(time_str, total_duration=None):
+def parse_timecode(time_str, total_duration=None, target_dur=15.0):
     """Parses a time string (seconds, MM:SS, HH:MM:SS, or 'last') into float seconds."""
     if not time_str:
         return 0.0
@@ -15,7 +15,6 @@ def parse_timecode(time_str, total_duration=None):
     if time_str == "last":
         if total_duration is None:
             raise ValueError("Total duration is required to calculate 'last' starting point.")
-        target_dur = 10.0
         if total_duration <= target_dur:
             return 0.0
         return total_duration - target_dur

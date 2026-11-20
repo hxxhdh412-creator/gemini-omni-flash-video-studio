@@ -125,7 +125,7 @@ def slugify(text):
     return text.strip('_')[:50]
 
 def parse_and_validate_duration(value):
-    """Parses and formats a duration integer between 3 and 10 with optional 's' suffix."""
+    """Parses and formats a duration integer between 3 and 15 with optional 's' suffix."""
     if value is None:
         return None
     if isinstance(value, (int, float)):
@@ -139,14 +139,14 @@ def parse_and_validate_duration(value):
         try:
             val = float(clean_value)
         except ValueError:
-            raise ValueError(f"Invalid duration value: '{value}'. Must be an integer (e.g., 5, 10).")
+            raise ValueError(f"Invalid duration value: '{value}'. Must be an integer (e.g., 5, 10, 15).")
             
     if not val.is_integer():
         raise ValueError(f"Duration must be an integer, not a float (e.g., got {value}).")
         
     val_int = int(val)
-    if val_int < 3 or val_int > 10:
-        raise ValueError(f"Duration must be between 3 (inclusive) and 10 (inclusive) seconds. Got {val_int}.")
+    if val_int < 3 or val_int > 15:
+        raise ValueError(f"Duration must be between 3 (inclusive) and 15 (inclusive) seconds. Got {val_int}.")
         
     return f"{val_int}s"
 

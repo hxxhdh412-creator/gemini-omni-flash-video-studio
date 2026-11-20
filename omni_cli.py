@@ -49,11 +49,11 @@ def main():
     sub.add_parser("rotate-cookie", help="Rotate __Secure-1PSIDTS headless over HTTPS (no Chrome required)")
 
     # 4. scene
-    p_sc = sub.add_parser("scene", help="Generate a 10s Omni 1.1 Flash scene (with optional StructuredImage ingredient)")
+    p_sc = sub.add_parser("scene", help="Generate a 3s-15s Omni 1.1 Flash scene (supports 15s native clips + StructuredImage ingredient)")
     p_sc.add_argument("--prompt", "-p", required=True, help="Scene visual prompt")
     p_sc.add_argument("--image", "-i", action="append", dest="images", help="Ingredient image path(s) for StructuredImage (Node[11])")
     p_sc.add_argument("--prior-node", action="append", dest="priors", help="Prior scene _node.json path(s) for chaining")
-    p_sc.add_argument("--duration", type=int, default=10, help="Duration in seconds (default: 10)")
+    p_sc.add_argument("--duration", type=int, default=15, help="Duration in seconds (3-15, supports 10s or 15s; default: 15)")
     p_sc.add_argument("--no-upscale", action="store_true", help="Keep raw 720p instead of upscaling to 1080p")
     p_sc.add_argument("--output", "-o", required=True, help="Output MP4 file path")
 

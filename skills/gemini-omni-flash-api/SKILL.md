@@ -12,20 +12,20 @@ This skill uses the Gemini Omni 1.1 Flash model (`gemini-omni-1.1-flash`) to per
 
 ## Core capabilities
 
-1. **Text to video**: Generating videos from a text prompt.
+1. **Text to video**: Generating videos from a text prompt (`3s–15s` per clip).
 2. **First frame to video**: Generating videos from a starting image (`--first-frame`).
 3. **First and last frame transition**: Generating videos interpolating between a starting image and a final image (`--first-frame` and `--last-frame`; note: `--last-frame` must be used with `--first-frame`).
-4. **Video extensions**: Extending existing videos by up to 10 seconds per turn, up to a total length of 40 seconds (`--extend` or `--previous-interaction-id`).
-5. **Video editing and refinement**: Editing existing videos (maximum duration 10 seconds), applying stylistic changes, or performing inpainting/outpainting.
-6. **Image and video referenced generation**: Using style, character, or object references from images or videos to guide video generation.
+4. **Video extensions**: Extending existing videos by up to 15 seconds per turn (`--extend` or `--previous-interaction-id`).
+5. **Video editing and refinement**: Editing existing videos (up to 15 seconds per clip), applying stylistic changes, or performing inpainting/outpainting.
+6. **Image and video referenced generation**: Using style, character, or object references from images (`StructuredImage` / `Node[11]`) or videos to guide video generation.
 
 ## Workflow
 
 1. **Analyze request**: Determine the target task (e.g., first-frame-to-video, first-and-last-frame transition, video extension, reference-guided editing) and identify any input media assets.
 2. **Run SDK scripts**:
 
-   * Directly run the appropriate utility (`scripts/video/generate_video.py` or `scripts/upload_file.py`).
-   * Configure settings like `--aspect-ratio` (e.g. `16:9`, `9:16`), `--resolution` (`360p`, `720p`, `1080p`, `4k`; default: `720p`), and `--duration` (any integer between `3` and `10` seconds, e.g. `3`, `5`, `10`). *Note: `4k` requests take longer to generate.*
+   * Directly run the appropriate utility (`scripts/video/generate_video.py`, `scripts/video/edit_video.py`, or `scripts/upload_file.py`).
+   * Configure settings like `--aspect-ratio` (e.g. `16:9`, `9:16`), `--resolution` (`360p`, `720p`, `1080p`, `4k`; default: `720p`), and `--duration` (any integer between `3` and `15` seconds, e.g. `5`, `10`, `15`). *Note: `4k` requests take longer to generate.*
 
 3. **Retrieve and process output**: Outputs are saved to the local filesystem (e.g. `media/`). Report back the completed media path to the user.
 

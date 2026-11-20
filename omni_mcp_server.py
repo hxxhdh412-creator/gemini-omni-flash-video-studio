@@ -97,7 +97,7 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_generate_scene",
         "description": (
-            "Stage 1 Pipeline Tool: Generate or edit a 10-second cinematic video scene using `gemini-omni-1.1-flash` (`vids.new` RPC `374`). "
+            "Stage 1 Pipeline Tool: Generate or edit a 3s–15s cinematic video scene (supports 10s or 15s native clips!) using `gemini-omni-1.1-flash` (`vids.new` RPC `374`). "
             "Supports injecting a 1080p UI screenshot or product photo directly into Omni's native `StructuredImage` (`StructuredContentNode[11]` / Thành phần tạo) slot, "
             "chaining from a prior scene's `_node.json` (`prior_node_files`) for 100% character/office continuity, and upscaling to 1080p Full HD (`Lanczos + CAS 0.45`)."
         ),
@@ -107,6 +107,10 @@ MCP_TOOLS_SCHEMA = [
                 "prompt": {
                     "type": "string",
                     "description": "English cinematic visual prompt. Include 'No spoken dialogue.' when using external Vietnamese TTS voiceover. Do not include raw hex codes (#RRGGBB).",
+                },
+                "duration": {
+                    "type": "integer",
+                    "description": "Clip duration in seconds (`3` to `15`, supports `15`s native Omni 1.1 Flash generation or `10`s). Default: `15`.",
                 },
                 "image": {
                     "type": "string",
@@ -222,6 +226,10 @@ MCP_TOOLS_SCHEMA = [
                         },
                         "required": ["prompt", "vo"],
                     },
+                },
+                "scene_duration": {
+                    "type": "integer",
+                    "description": "Duration per scene in seconds (`15` for 15s native clips: 2 scenes = 30s, 4 scenes = 60s; or `10` for 10s clips: 3 scenes = 30s, 6 scenes = 60s). Default: `15`.",
                 },
                 "voice": {
                     "type": "string",

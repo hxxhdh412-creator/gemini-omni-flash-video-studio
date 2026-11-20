@@ -962,7 +962,7 @@ def main():
         help="Keep raw 720p output from Vids RPC without 1080p mastering",
     )
     parser.add_argument("--aspect-ratio", choices=["16:9", "9:16"], default="16:9", help="Aspect ratio (default: 16:9)")
-    parser.add_argument("--duration", type=int, default=10, help="Duration in seconds (3-10, default: 10)")
+    parser.add_argument("--duration", type=int, default=15, help="Duration in seconds (3-15, supports 10s or 15s; default: 15)")
     parser.add_argument("--output", "-o", default="media/edited_output.mp4", help="Output MP4 file path")
     parser.add_argument("--save-node-json", help="Optional path to save the Vids RPC StructuredContentNode JSON")
     parser.add_argument(

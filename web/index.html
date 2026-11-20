@@ -332,8 +332,8 @@
   <main class="container">
     <!-- Navigation Tabs -->
     <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('tab-commercial', this)">🎬 1. Sản Xuất TVC Đa Cảnh (30s / 60s)</button>
-      <button class="tab-btn" onclick="switchTab('tab-scene', this)">⚡ 2. Tạo Nhanh Cảnh 10s + Ảnh Thành Phần</button>
+      <button class="tab-btn active" onclick="switchTab('tab-commercial', this)">🎬 1. Sản Xuất TVC Đa Cảnh (15s/Cảnh • 30s / 60s)</button>
+      <button class="tab-btn" onclick="switchTab('tab-scene', this)">⚡ 2. Tạo Nhanh Cảnh 15s / 10s + Ảnh Thành Phần</button>
       <button class="tab-btn" onclick="switchTab('tab-audio', this)">🎙️ 3. Phòng Thu Giọng Đọc 1-Take & Nhạc Lyria</button>
       <button class="tab-btn" onclick="switchTab('tab-gallery', this); loadGallery();">📂 4. Kho Video Đã Xuất (`/outputs`)</button>
       <button class="tab-btn" onclick="switchTab('tab-session', this)">🔐 5. Cấu Hình Cookie `vids.new` & API Docs</button>
@@ -345,12 +345,17 @@
       <div class="grid-2">
         <!-- Left: Storyboard Scene List -->
         <div class="card">
-          <div class="card-header">
-            <h2 class="card-title">🎞️ Kịch Bản Phân Cảnh (`StructuredImage` + `1-Take Gemini 3.8 TTS`)</h2>
-            <div style="display:flex; gap:8px;">
-              <button class="btn btn-secondary btn-sm" onclick="loadPresetStoryboard(3)">⚡ Nạp Mẫu 30s (3 Cảnh)</button>
-              <button class="btn btn-secondary btn-sm" onclick="loadPresetStoryboard(6)">🌟 Nạp Mẫu 60s (6 Cảnh CRM)</button>
-              <button class="btn btn-sm" onclick="addSceneBox()">+ Thêm Cảnh 10s</button>
+          <div class="card-header" style="flex-wrap:wrap; gap:10px;">
+            <h2 class="card-title">🎞️ Kịch Bản Phân Cảnh (`15s/Cảnh` • `StructuredImage` + `1-Take TTS`)</h2>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+              <select id="tvcSceneDur" style="width:185px; padding:6px 10px; font-weight:700; color:var(--lime);" onchange="renderStoryboard()">
+                <option value="15" selected>⏱️ 15 Giây / Cảnh (Mới)</option>
+                <option value="10">⏱️ 10 Giây / Cảnh</option>
+              </select>
+              <button class="btn btn-secondary btn-sm" onclick="loadPresetStoryboard(2, 15)">🔥 Mẫu 30s (2×15s)</button>
+              <button class="btn btn-secondary btn-sm" onclick="loadPresetStoryboard(4, 15)">🔥 Mẫu 60s (4×15s)</button>
+              <button class="btn btn-secondary btn-sm" onclick="loadPresetStoryboard(6, 10)">🌟 Mẫu 60s (6×10s)</button>
+              <button class="btn btn-sm" onclick="addSceneBox()">+ Thêm Cảnh</button>
             </div>
           </div>
 
@@ -418,10 +423,26 @@
       <div class="grid-equal">
         <div class="card">
           <div class="card-header">
-            <h2 class="card-title">⚡ Tạo Nhanh Cảnh 10 Giây (`Omni 1.1 Flash` + `StructuredImage`)</h2>
+            <h2 class="card-title">⚡ Tạo Nhanh Cảnh `15 Giây` / `10 Giây` (`Omni 1.1 Flash` + `StructuredImage`)</h2>
           </div>
           <label>Prompt Mô Tả Cảnh (Tiếng Anh):</label>
-          <textarea id="scPrompt" style="min-height:110px;">Continuous unbroken cinematic shot in a sleek dark-emerald executive glass office. A charismatic 32-year-old Vietnamese male business founder in a tailored charcoal-black blazer stands on the left and gestures proudly toward a large frameless ultrawide glass monitor on the right that displays the exact HEBUM CRM interface from the reference image. Smooth camera push-in toward the glowing CRM monitor. No spoken dialogue.</textarea>
+          <textarea id="scPrompt" style="min-height:110px;">Continuous unbroken 15-second cinematic shot in a sleek dark-emerald executive glass office. A charismatic 32-year-old Vietnamese male business founder in a tailored charcoal-black blazer stands on the left and gestures proudly toward a large frameless ultrawide glass monitor on the right that displays the exact HEBUM CRM interface from the reference image. Smooth camera push-in toward the glowing CRM monitor. No spoken dialogue.</textarea>
+
+          <div class="grid-equal" style="gap:10px;">
+            <div>
+              <label>Thời Lượng Clip (`3s – 15s`):</label>
+              <select id="scDuration">
+                <option value="15" selected>🔥 15 Giây (Omni 1.1 Flash Chuẩn Mới)</option>
+                <option value="10">10 Giây</option>
+                <option value="8">8 Giây</option>
+                <option value="5">5 Giây</option>
+              </select>
+            </div>
+            <div>
+              <label>Tên File Video Xuất Ra:</label>
+              <input id="scOutName" value="omni_quick_scene_15s_1080p.mp4" />
+            </div>
+          </div>
 
           <label>Chọn Ảnh Thành Phần Có Sẵn (`assets_1080p/`) Hoặc Tải Ảnh Lên (`StructuredImage Node[11]`):</label>
           <div style="display:flex; gap:10px;">
@@ -750,13 +771,14 @@ claude mcp add --transport http omni-flash-http http://localhost:8765/mcp</pre>
 
     function renderStoryboard() {
       const container = document.getElementById('storyboardList');
+      const scDur = parseInt((document.getElementById('tvcSceneDur') || {}).value || '15', 10);
       container.innerHTML = '';
       storyboardScenes.forEach((sc, i) => {
         const div = document.createElement('div');
         div.className = 'scene-box';
         div.innerHTML = `
           <div class="scene-box-head">
-            <span class="scene-num">CẢNH ${i + 1} (${i * 10}s – ${(i + 1) * 10}s)</span>
+            <span class="scene-num">CẢNH ${i + 1} (${i * scDur}s – ${(i + 1) * scDur}s • ${scDur}s)</span>
             <button class="btn btn-danger" onclick="removeScene(${i})">✕ Xóa Cảnh</button>
           </div>
           <div class="grid-equal" style="gap:10px;">
@@ -791,8 +813,24 @@ claude mcp add --transport http omni-flash-http http://localhost:8765/mcp</pre>
       });
     }
 
-    function loadPresetStoryboard(count) {
-      if (count === 3) {
+    function loadPresetStoryboard(count, sceneDur = 15) {
+      const durSel = document.getElementById('tvcSceneDur');
+      if (durSel) durSel.value = String(sceneDur);
+      if (count === 2) {
+        storyboardScenes = [
+          JSON.parse(JSON.stringify(PRESET_60S[0])),
+          JSON.parse(JSON.stringify(PRESET_60S[5]))
+        ];
+        document.getElementById('tvcOutputName').value = 'hebum_tvc_30s_2x15s_1080p.mp4';
+      } else if (count === 4) {
+        storyboardScenes = [
+          JSON.parse(JSON.stringify(PRESET_60S[0])),
+          JSON.parse(JSON.stringify(PRESET_60S[1])),
+          JSON.parse(JSON.stringify(PRESET_60S[3])),
+          JSON.parse(JSON.stringify(PRESET_60S[5]))
+        ];
+        document.getElementById('tvcOutputName').value = 'hebum_tvc_60s_4x15s_1080p.mp4';
+      } else if (count === 3) {
         storyboardScenes = [
           JSON.parse(JSON.stringify(PRESET_60S[0])),
           JSON.parse(JSON.stringify(PRESET_60S[1])),
@@ -904,6 +942,7 @@ claude mcp add --transport http omni-flash-http http://localhost:8765/mcp</pre>
     async function submitCommercialJob() {
       const payload = {
         scenes: storyboardScenes,
+        scene_duration: parseInt((document.getElementById('tvcSceneDur') || {}).value || '15', 10),
         voice: document.getElementById('tvcVoice').value,
         bpm: parseInt(document.getElementById('tvcBpm').value || '116', 10),
         scale: document.getElementById('tvcScale').value,
@@ -923,6 +962,7 @@ claude mcp add --transport http omni-flash-http http://localhost:8765/mcp</pre>
       const priors = document.getElementById('scPriorNode').value.trim();
       const payload = {
         prompt: document.getElementById('scPrompt').value.trim(),
+        duration: parseInt((document.getElementById('scDuration') || {}).value || '15', 10),
         image: document.getElementById('scImagePath').value.trim(),
         prior_node_files: priors ? [priors] : [],
         output_filename: document.getElementById('scOutName').value.trim(),
@@ -1050,9 +1090,10 @@ claude mcp add --transport http omni-flash-http http://localhost:8765/mcp</pre>
         authuser: "0"
       },
       omni_generate_scene: {
-        prompt: "Continuous unbroken cinematic shot in a sleek dark-emerald executive glass office. A Vietnamese founder gestures toward a frameless ultrawide monitor displaying the exact CRM interface from the reference image. No spoken dialogue.",
+        prompt: "Continuous unbroken 15-second cinematic shot in a sleek dark-emerald executive glass office. A Vietnamese founder gestures toward a frameless ultrawide monitor displaying the exact CRM interface from the reference image. No spoken dialogue.",
+        duration: 15,
         image: "assets_1080p/asset_01_kenh_ket_noi_1080p.png",
-        output_filename: "mcp_scene1_1080p.mp4",
+        output_filename: "mcp_scene1_15s_1080p.mp4",
         upscale_1080p: true,
         wait: false
       },
@@ -1069,14 +1110,14 @@ claude mcp add --transport http omni-flash-http http://localhost:8765/mcp</pre>
         output_filename: "mcp_lyria_30s.wav"
       },
       omni_produce_commercial: {
-        output_filename: "mcp_commercial_30s_1080p.mp4",
+        output_filename: "mcp_commercial_30s_2x15s_1080p.mp4",
+        scene_duration: 15,
         voice: "Puck",
         bpm: 116,
         scale: "MINOR",
         wait: false,
         scenes: [
           PRESET_60S[0],
-          PRESET_60S[1],
           PRESET_60S[5]
         ]
       },
@@ -1134,7 +1175,7 @@ claude mcp add --transport http omni-flash-http http://localhost:8765/mcp</pre>
       refreshStatus();
     }
 
-    loadPresetStoryboard(6);
+    loadPresetStoryboard(4, 15);
     loadMcpTools();
     refreshStatus();
     setInterval(refreshStatus, 15000);

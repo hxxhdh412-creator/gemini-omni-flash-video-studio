@@ -12,8 +12,8 @@
 | **Preview Model ID** | `gemini-omni-flash-preview` (deprecated Sept 30, 2026) |
 | **API Endpoint** | Interactions API (`/v1beta/interactions` via `client.interactions.create`) |
 | **Context Window** | `1,048,576` tokens |
-| **Supported Inputs** | Text, Image (`PNG`, `JPEG`, `WEBP`), Video (`MP4` up to `10s` for upload edit/extend) |
-| **Output Video** | `3s`–`10s` per turn (`24 FPS`), up to `40s` total via multi-turn extension |
+| **Supported Inputs** | Text, Image (`PNG`, `JPEG`, `WEBP`), Video (`MP4` up to `15s` for upload edit/extend) |
+| **Output Video** | `3s`–`15s` per turn (`24 FPS`, supports `10s` or `15s` native clips), unlimited total length via multi-scene `StructuredContentNode` chaining |
 | **Output Resolutions** | `360p` (`640x360`), `720p` (`1280x720`, default), `1080p` (`1920x1080`), `4k` (`3840x2160`) |
 | **Aspect Ratios** | `16:9` (Landscape), `9:16` (Portrait) |
 | **Provenance** | Invisible SynthID watermark embedded in all generated frames |
