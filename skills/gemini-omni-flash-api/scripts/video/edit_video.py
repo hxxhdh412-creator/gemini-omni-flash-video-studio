@@ -729,10 +729,8 @@ def describe_image_subject_for_omni(image_path: str) -> dict:
             pass
 
     fallback_suggested_prompt = (
-        "Continuous unbroken 15-second cinematic shot. Mandatory visual reference binding: animate the exact person, "
-        "character, facial features, hairstyle, outfit, and environment shown in the attached reference image with "
-        "natural lifelike movement, confident expressive presence, and smooth cinematic camera motion. Preserve 100% "
-        "visual identity and scene consistency with the reference image. No spoken dialogue."
+        "The person in the reference image smiles warmly and presents naturally in a modern executive studio office "
+        "with soft cinematic lighting and smooth camera movement."
     )
 
     api_key = _resolve_gemini_api_key()
@@ -740,7 +738,7 @@ def describe_image_subject_for_omni(image_path: str) -> dict:
         return {
             "is_hebum_ui": False,
             "is_character_or_person": True,
-            "subject_description": "the exact person, character, facial features, hairstyle, outfit, and setting shown in the attached reference image",
+            "subject_description": "the person in the reference image",
             "suggested_prompt": fallback_suggested_prompt,
         }
 
@@ -807,7 +805,7 @@ def describe_image_subject_for_omni(image_path: str) -> dict:
         return {
             "is_hebum_ui": False,
             "is_character_or_person": True,
-            "subject_description": "the exact person, character, facial features, hairstyle, outfit, and setting shown in the attached reference image",
+            "subject_description": "the person in the reference image",
             "suggested_prompt": fallback_suggested_prompt,
         }
 
@@ -884,7 +882,7 @@ def normalize_image_canvas_for_vids_r2v(image_path: str, aspect_ratio: str = "16
 
     base, _ = os.path.splitext(norm_path)
     ar_tag = "9x16" if ar_key == "9:16" else "16x9"
-    padded_png = f"{base}_r2v_{ar_tag}.png"
+    padded_png = f"{base}_r2v2_{ar_tag}.png"
     if os.path.exists(padded_png) and os.path.getsize(padded_png) > 5000:
         return padded_png
 
@@ -1037,11 +1035,34 @@ def run_vids_rpc_edit_or_generate(
         "x-server-token": session["server_token"],
     }
 
-    def _build_uc376_r2v_payload(dur_val: int) -> list:
+    _blob_tok_cache: dict[str, str] = {}
+
+    def _get_tempblob_tok(img_p: str) -> str:
+        if img_p not in _blob_tok_cache:
+            _blob_tok_cache[img_p] = upload_image_to_vids_tempblob(img_p, session=session, aspect_ratio=ar_key)
+        return _blob_tok_cache[img_p]
+
+    def _sanitize_r2v_prompt(raw_p: str) -> str:
+        t = re.sub(r"Mandatory visual reference binding[^.]*\.\s*", "", raw_p or "", flags=re.IGNORECASE).strip()
+        t = re.sub(r"Preserve 100%\s+visual identity[^.]*\.\s*", "", t, flags=re.IGNORECASE).strip()
+        t = re.sub(
+            r"Continuous unbroken (?:\d+-second )?cinematic shot(?:,\s*no internal scene cuts)?\.?\s*",
+            "",
+            t,
+            flags=re.IGNORECASE,
+        ).strip()
+        t = re.sub(r"\bNo spoken dialogue\.?\s*", "", t, flags=re.IGNORECASE).strip()
+        t = re.sub(r"\b(?:facial features|exact face|biometric)\b", "appearance", t, flags=re.IGNORECASE)
+        t = re.sub(r"\b(?:is\s+)?(?:speaking|talking|spoken|dialogue)\b", "presenting", t, flags=re.IGNORECASE)
+        if len(t) < 12:
+            t = "The person smiles warmly and presents naturally in a modern studio with soft cinematic lighting."
+        return t
+
+    def _build_uc376_r2v_payload(dur_val: int, prompt_override: str = None) -> list:
         mentioned_context = []
         chip_children = []
         for idx, img_p in enumerate(valid_image_paths[:3]):
-            blob_tok = upload_image_to_vids_tempblob(img_p, session=session, aspect_ratio=ar_key)
+            blob_tok = _get_tempblob_tok(img_p)
             img_uid = str(uuid.uuid4()).upper()
             img_label = f"Image {idx + 1}"
             wdp = [None, None, None, blob_tok, 1]
@@ -1057,22 +1078,7 @@ def run_vids_rpc_edit_or_generate(
                 chip_children.append([None, None, " "])
             chip_children.append(chip_f1)
 
-        # Strip verbose boilerplate prefixes and any "speaking" trigger on portrait photos so UC 376 safety passes cleanly
-        r2v_text = re.sub(
-            r"Mandatory visual reference binding[^.]*\.\s*",
-            "",
-            clean_prompt,
-            flags=re.IGNORECASE,
-        ).strip()
-        r2v_text = re.sub(
-            r"Continuous unbroken (?:\d+-second )?cinematic shot(?:,\s*no internal scene cuts)?\.?\s*",
-            "",
-            r2v_text,
-            flags=re.IGNORECASE,
-        ).strip()
-        r2v_text = re.sub(r"\b(?:is\s+)?speaking\b", "presenting", r2v_text, flags=re.IGNORECASE)
-        if not r2v_text:
-            r2v_text = "in a modern studio with soft cinematic lighting, natural lifelike motion and smooth camera movement. No spoken dialogue."
+        r2v_text = _sanitize_r2v_prompt(prompt_override if prompt_override is not None else clean_prompt)
         chip_children.append([None, None, " " + r2v_text])
 
         r2v_req_id = f"goog_{uuid.uuid4().int % 2000000000}"
@@ -1161,6 +1167,86 @@ def run_vids_rpc_edit_or_generate(
                 [0, 12, None, 0, ar_enum, None, None, None, int(dur_val)],
             ],
             [1, None, [[None, "1", 1189]]],
+            1,
+        ]
+
+    def _build_uc375_i2v_payload(dur_val: int, prompt_override: str = None) -> list:
+        blob_tok = _get_tempblob_tok(valid_image_paths[0])
+        img_id = "image_1"
+        wdp = [None, None, None, blob_tok, 1]
+        r0 = [None, None, None, None, None, None, None, None, wdp, None, None, None, None, img_id]
+        yc = [None] * 11 + [r0]
+        v1 = [[None, None, None, None, None, None, None, [img_id, yc]]]
+        i2v_text = _sanitize_r2v_prompt(prompt_override if prompt_override is not None else clean_prompt)
+        i2v_req_id = f"goog_{uuid.uuid4().int % 2000000000}"
+        client_ctx = [
+            9,
+            None,
+            None,
+            None,
+            i2v_req_id,
+            None,
+            "0",
+            None,
+            [
+                None,
+                None,
+                None,
+                [
+                    [
+                        [
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            [None, None, [[session["doc_id"], "application/vnd.google-apps.flix", None, None, 1]]],
+                        ]
+                    ]
+                ],
+            ],
+            None,
+            None,
+            [24, 0],
+            None,
+            "vi",
+            None,
+            None,
+            None,
+            None,
+            None,
+            1,
+            None,
+            None,
+            None,
+            None,
+            None,
+            [v1],
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            "Asia/Bangkok",
+            None,
+            None,
+            None,
+            None,
+            None,
+            0,
+        ]
+        return [
+            375,
+            None,
+            client_ctx,
+            [None, None, None, [[[None, None, i2v_text]]]],
+            [None] * 15 + [[0, 12, None, 0, ar_enum, None, None, None, int(dur_val)]],
+            [1, None, [[None, "1", 1189]], [[[[0]]]]],
             1,
         ]
 
@@ -1254,7 +1340,7 @@ def run_vids_rpc_edit_or_generate(
             return txt
 
     def _do_rpc():
-        # Whenever reference images are provided, use native UseCase 376 (Ingredients/Reference-to-Video r2v — supports 3s..15s native Omni 1.2 Flash)!
+        # Whenever reference images are provided, use native UseCase 376 (Ingredients/Reference-to-Video r2v) -> retry safe R2V -> UseCase 375 (First-Frame I2V)!
         if valid_image_paths:
             r2v_dur = min(15, max(3, int(duration_sec or 15)))
             log(
@@ -1265,7 +1351,18 @@ def run_vids_rpc_edit_or_generate(
                 return _send_payload(pl_376, f"UC=376 R2V ({r2v_dur}s)")
             except urllib.error.HTTPError as e_376:
                 err_b = e_376.read().decode("utf-8", errors="replace")
-                log(f"[Vids RPC UC=376 R2V ({r2v_dur}s) Warning] HTTP {e_376.code}: {err_b[:220]} -> falling back to UC=374...")
+                log(f"[Vids RPC UC=376 R2V ({r2v_dur}s) Warning] HTTP {e_376.code}: {err_b[:200]} -> retrying UC=376 with safe studio motion prompt...")
+                safe_r2v_prompt = "The person smiles warmly and presents naturally in a modern studio with soft cinematic lighting."
+                try:
+                    pl_376_safe = _build_uc376_r2v_payload(10 if r2v_dur > 10 else r2v_dur, prompt_override=safe_r2v_prompt)
+                    return _send_payload(pl_376_safe, "UC=376 R2V (Safe Retry)")
+                except Exception as e_376_safe:
+                    log(f"[Vids RPC UC=376 Safe Retry Warning] {e_376_safe} -> trying UC=375 First-Frame I2V...")
+                try:
+                    pl_375 = _build_uc375_i2v_payload(10 if r2v_dur > 10 else r2v_dur, prompt_override=safe_r2v_prompt)
+                    return _send_payload(pl_375, "UC=375 First-Frame I2V")
+                except Exception as e_375:
+                    log(f"[Vids RPC UC=375 I2V Warning] {e_375} -> falling back to UC=374...")
             except Exception as e_376_gen:
                 log(f"[Vids RPC UC=376 R2V Warning] {e_376_gen} -> falling back to UC=374...")
 
