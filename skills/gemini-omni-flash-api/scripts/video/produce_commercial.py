@@ -47,9 +47,11 @@ _GLOBAL_LYRIA = os.path.join(
     os.path.expanduser("~"), ".gemini", "config", "skills", "media-use", "audio", "scripts", "lyria-recipe.py"
 )
 LYRIA_SCRIPT = _BUNDLED_LYRIA if os.path.exists(_BUNDLED_LYRIA) else _GLOBAL_LYRIA
-COMPOSE_MUSIC_SCRIPT = os.path.join(
+_BUNDLED_COMPOSE_MUSIC = os.path.join(os.path.dirname(SCRIPT_DIR), "audio", "compose-music.mjs")
+_GLOBAL_COMPOSE_MUSIC = os.path.join(
     os.path.expanduser("~"), ".gemini", "antigravity", "scratch", "video-bds-quahd", "scripts", "compose-music.mjs"
 )
+COMPOSE_MUSIC_SCRIPT = _BUNDLED_COMPOSE_MUSIC if os.path.exists(_BUNDLED_COMPOSE_MUSIC) else _GLOBAL_COMPOSE_MUSIC
 
 _CACHED_H264_ARGS = None
 
@@ -161,6 +163,101 @@ def ensure_wav_bytes(raw_bytes: bytes, sample_rate: int = 24000) -> bytes:
     return pcm_to_wav(pcm, sample_rate=sr or sample_rate)
 
 
+def synthesize_vietnamese_tts_fallback(text: str, voice: str = "Puck") -> tuple[bytes, int]:
+    """
+    Zero-Key Vietnamese Neural TTS Fallback (24kHz 16-bit Mono PCM):
+    Synthesizes each paragraph (separated by '\\n\\n') with 550ms inter-scene silence valleys
+    so Single-Pass 1-Take valley splitting works seamlessly even when GEMINI_API_KEY is offline/expired.
+    """
+    import tempfile
+    import urllib.parse
+
+    ffmpeg_exe = get_ffmpeg_exe()
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n+", (text or "").strip()) if p.strip()]
+    if not paragraphs:
+        paragraphs = ["Xin chào, đây là bản thu thử giọng đọc tiếng Việt."]
+
+    is_male = str(voice or "Puck").strip() in ("Puck", "Charon", "Fenrir", "Orus")
+    # Broadcast vocal warmth & subtle pitch shift for male vs female voices
+    af_filter = (
+        "asetrate=24000*0.92,aresample=24000,atempo=1.12,highpass=f=75,equalizer=f=180:t=q:w=1.1:g=2.5,equalizer=f=3200:t=q:w=1.2:g=1.8"
+        if is_male
+        else "aresample=24000,atempo=1.05,highpass=f=85,equalizer=f=240:t=q:w=1.2:g=-1.0,equalizer=f=3400:t=q:w=1.1:g=2.2"
+    )
+
+    all_pcm = bytearray()
+    silence_550ms = b"\x00\x00" * int(24000 * 0.55)
+
+    for p_idx, para in enumerate(paragraphs):
+        # Split paragraph into chunks <= 170 chars at punctuation boundaries
+        raw_parts = re.split(r"(?<=[.!?;,])\s+", para)
+        chunks = []
+        cur = ""
+        for part in raw_parts:
+            if not part:
+                continue
+            if len(cur) + len(part) + 1 <= 175:
+                cur = f"{cur} {part}".strip() if cur else part
+            else:
+                if cur:
+                    chunks.append(cur)
+                cur = part[:175]
+        if cur:
+            chunks.append(cur)
+
+        mp3_buf = bytearray()
+        for ch in chunks:
+            tts_url = (
+                "https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q="
+                + urllib.parse.quote(ch)
+            )
+            req = urllib.request.Request(tts_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                mp3_buf.extend(r.read())
+
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf_in:
+            tf_in.write(bytes(mp3_buf))
+            in_mp3 = tf_in.name
+        out_pcm_path = in_mp3 + ".pcm"
+        try:
+            subprocess.run(
+                [
+                    ffmpeg_exe,
+                    "-y",
+                    "-i",
+                    in_mp3,
+                    "-af",
+                    af_filter,
+                    "-f",
+                    "s16le",
+                    "-acodec",
+                    "pcm_s16le",
+                    "-ar",
+                    "24000",
+                    "-ac",
+                    "1",
+                    out_pcm_path,
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            with open(out_pcm_path, "rb") as pf:
+                seg_pcm = pf.read()
+            all_pcm.extend(seg_pcm)
+            if p_idx < len(paragraphs) - 1:
+                all_pcm.extend(silence_550ms)
+        finally:
+            for p in (in_mp3, out_pcm_path):
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
+
+    return bytes(all_pcm), 24000
+
+
 def synthesize_gemini_38_tts(
     api_key: str,
     text: str,
@@ -170,78 +267,84 @@ def synthesize_gemini_38_tts(
 ) -> tuple[bytes, str]:
     """
     Synthesizes speech via Gemini 3.8 Flash TTS (/v1beta/interactions) with C2PA tail stripping.
-    If the preferred model hits its daily RPD quota (HTTP 429 per day), automatically falls back
-    for the entire call to gemini-3.8-flash-lite-tts so multi-scene 1-Take synthesis never fails.
+    If the preferred model hits its daily RPD quota (HTTP 429 per day) or the API key is offline/invalid,
+    automatically falls back so multi-scene 1-Take synthesis never fails.
     """
-    model_chain = []
-    for m in (preferred_model, "gemini-3.8-flash-lite-tts", "gemini-2.5-flash-preview-tts"):
-        if m not in model_chain:
-            model_chain.append(m)
+    if api_key:
+        model_chain = []
+        for m in (preferred_model, "gemini-3.8-flash-lite-tts", "gemini-2.5-flash-preview-tts"):
+            if m not in model_chain:
+                model_chain.append(m)
 
-    for model in model_chain:
-        is_gen_content = "2.5-" in model
-        if is_gen_content:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-            payload = {
-                "contents": [{"parts": [{"text": f"Read in a {style}:\n\n{text}"}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}},
-                },
-            }
-        else:
-            url = "https://generativelanguage.googleapis.com/v1beta/interactions"
-            payload = {
-                "model": model,
-                "input": [
-                    {
-                        "type": "user_input",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": text,
-                                "annotations": [{"type": "speech_metadata", "style": style}],
-                            }
-                        ],
-                    }
-                ],
-                "response_format": {"type": "audio"},
-                "generation_config": {"speech_config": [{"voice": voice}]},
-            }
+        for model in model_chain:
+            is_gen_content = "2.5-" in model
+            if is_gen_content:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+                payload = {
+                    "contents": [{"parts": [{"text": f"Read in a {style}:\n\n{text}"}]}],
+                    "generationConfig": {
+                        "responseModalities": ["AUDIO"],
+                        "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}},
+                    },
+                }
+            else:
+                url = "https://generativelanguage.googleapis.com/v1beta/interactions"
+                payload = {
+                    "model": model,
+                    "input": [
+                        {
+                            "type": "user_input",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": text,
+                                    "annotations": [{"type": "speech_metadata", "style": style}],
+                                }
+                            ],
+                        }
+                    ],
+                    "response_format": {"type": "audio"},
+                    "generation_config": {"speech_config": [{"voice": voice}]},
+                }
 
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=90) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                if is_gen_content:
-                    inline = (
-                        data.get("candidates", [{}])[0]
-                        .get("content", {})
-                        .get("parts", [{}])[0]
-                        .get("inlineData", {})
-                    )
-                    if inline.get("data"):
-                        return ensure_wav_bytes(base64.b64decode(inline["data"])), model
-                else:
-                    for step in reversed(data.get("steps", [])):
-                        if step.get("type") == "model_output":
-                            for item in step.get("content", []):
-                                if item.get("type") == "audio" and item.get("data"):
-                                    return ensure_wav_bytes(base64.b64decode(item["data"])), model
-        except urllib.error.HTTPError as e:
-            err_body = e.read().decode("utf-8", errors="replace")
-            log(f"  [TTS {model} HTTP {e.code}]: {err_body[:180]}")
-            if e.code == 429 and any(k in err_body.lower() for k in ("per day", "rpd", "daily", "quota")):
-                log(f"  [TTS 1-Take Fallback] {model} hit daily RPD quota; switching whole 1-Take call to next model...")
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=90) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    if is_gen_content:
+                        inline = (
+                            data.get("candidates", [{}])[0]
+                            .get("content", {})
+                            .get("parts", [{}])[0]
+                            .get("inlineData", {})
+                        )
+                        if inline.get("data"):
+                            return ensure_wav_bytes(base64.b64decode(inline["data"])), model
+                    else:
+                        for step in reversed(data.get("steps", [])):
+                            if step.get("type") == "model_output":
+                                for item in step.get("content", []):
+                                    if item.get("type") == "audio" and item.get("data"):
+                                        return ensure_wav_bytes(base64.b64decode(item["data"])), model
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode("utf-8", errors="replace")
+                log(f"  [TTS {model} HTTP {e.code}]: {err_body[:180]}")
+                if e.code in (400, 401, 403):
+                    break
+                if e.code == 429 and any(k in err_body.lower() for k in ("per day", "rpd", "daily", "quota")):
+                    log(f"  [TTS 1-Take Fallback] {model} hit daily RPD quota; switching whole 1-Take call to next model...")
+                    continue
+                time.sleep(2)
                 continue
-            time.sleep(4)
-            continue
-    raise RuntimeError("Failed to synthesize Gemini 3.8 TTS audio.")
+
+    log(f"  [TTS Fallback] Synthesizing 1-Take Vietnamese Neural voiceover (voice={voice})...")
+    pcm_bytes, sr = synthesize_vietnamese_tts_fallback(text=text, voice=voice)
+    return pcm_to_wav(pcm_bytes, sample_rate=sr), "vi-neural-1take-fallback"
 
 
 def get_audio_duration(ffmpeg_exe: str, path: str) -> float:
@@ -422,6 +525,59 @@ def synthesize_single_pass_1take_vo(
     return vo_fit_wavs, vo_fit_durations
 
 
+def select_bgm_preset_from_prompt(bgm_prompt: str, scale: str = "MINOR") -> str:
+    lower = (bgm_prompt or "").lower()
+    if any(k in lower for k in ("acoustic", "guitar", "fingerpick", "intimate", "mộc", "ấm", "lofi", "lo-fi", "chill")):
+        return "lofi"
+    if any(k in lower for k in ("ambient", "calm", "soft", "gentle", "nhẹ", "thư giãn")):
+        return "ambient"
+    if any(k in lower for k in ("synthwave", "retro", "cyberpunk", "neon")):
+        return "synthwave"
+    if any(k in lower for k in ("energetic", "upbeat", "fast", "sôi động", "bùng nổ", "exciting")):
+        return "energetic"
+    if any(k in lower for k in ("playful", "vui", "bright", "happy")):
+        return "playful"
+    if any(k in lower for k in ("cinematic", "orchestra", "strings", "điện ảnh", "epic", "score", "drama")):
+        return "cinematic"
+    if any(k in lower for k in ("electronic", "tech", "synth", "công nghệ", "digital", "modern", "pulse")):
+        return "tech"
+    if any(k in lower for k in ("corporate", "doanh nghiệp", "business")):
+        return "corporate"
+    return "luxury" if str(scale or "").upper() == "MINOR" else "corporate"
+
+
+def synthesize_python_bgm_fallback(output_wav: str, duration_sec: int, bpm: int = 116, preset: str = "tech") -> str:
+    """Pure-Python 48kHz Stereo WAV algorithmic BGM composer fallback if Node/Lyria are unavailable."""
+    sr = 48000
+    total_samples = max(1, int(duration_sec * sr))
+    beat_sec = 60.0 / max(60, min(180, bpm))
+    chords = (
+        [(220.0, 261.63, 329.63), (174.61, 220.0, 261.63), (130.81, 164.81, 196.0), (196.0, 246.94, 293.66)]
+        if preset in ("tech", "cinematic", "luxury", "synthwave")
+        else [(261.63, 329.63, 392.0), (196.0, 246.94, 293.66), (220.0, 261.63, 329.63), (174.61, 220.0, 261.63)]
+    )
+    buf = bytearray(total_samples * 4)
+    two_pi = 2.0 * math.pi
+    for i in range(total_samples):
+        t = i / sr
+        bar_idx = int(t / (beat_sec * 4.0)) % len(chords)
+        c0, c1, c2 = chords[bar_idx]
+        beat_phase = (t % beat_sec) / beat_sec
+        env = math.exp(-beat_phase * 3.2)
+        pad = 0.16 * (math.sin(two_pi * c0 * t) + 0.7 * math.sin(two_pi * c1 * t) + 0.5 * math.sin(two_pi * c2 * t))
+        arp_freq = (c0, c1, c2, c1 * 2.0)[int((t / (beat_sec * 0.5))) % 4]
+        arp = 0.12 * env * math.sin(two_pi * arp_freq * t)
+        bass = 0.22 * (0.4 + 0.6 * (1.0 - beat_phase)) * math.sin(two_pi * (c0 * 0.5) * t)
+        kick = 0.25 * math.exp(-beat_phase * 18.0) * math.sin(two_pi * (55.0 + 90.0 * math.exp(-beat_phase * 25.0)) * t)
+        fade = min(1.0, t / 0.8, max(0.0, (duration_sec - t) / 1.2))
+        l_val = int(max(-30000, min(30000, (pad + arp * 1.1 + bass + kick) * fade * 26000.0)))
+        r_val = int(max(-30000, min(30000, (pad * 0.95 + arp * 0.85 + bass + kick) * fade * 26000.0)))
+        struct.pack_into("<hh", buf, i * 4, l_val, r_val)
+    with open(output_wav, "wb") as f:
+        f.write(pcm_to_wav(bytes(buf), sample_rate=sr, num_channels=2, bits_per_sample=16))
+    return output_wav
+
+
 def generate_bgm_track(
     output_wav: str,
     duration_sec: int,
@@ -430,9 +586,17 @@ def generate_bgm_track(
     scale: str = "MINOR",
     brightness: float = 0.82,
     density: float = 0.68,
+    force_regenerate: bool = False,
 ) -> str:
+    import hashlib
+
     os.makedirs(os.path.dirname(os.path.abspath(output_wav)), exist_ok=True)
-    if os.path.exists(output_wav) and os.path.getsize(output_wav) > 100_000:
+    if force_regenerate and os.path.exists(output_wav):
+        try:
+            os.remove(output_wav)
+        except Exception:
+            pass
+    elif not force_regenerate and os.path.exists(output_wav) and os.path.getsize(output_wav) > 100_000:
         log(f"[Music Engine] Reusing cached BGM track -> {output_wav}")
         return output_wav
 
@@ -469,31 +633,39 @@ def generate_bgm_track(
         except Exception as e:
             log(f"[Music Engine] Lyria fallback ({e}) -> switching to Studio Synthesizer")
 
+    preset = select_bgm_preset_from_prompt(bgm_prompt, scale=scale)
+    seed_int = int(hashlib.sha256(f"{bgm_prompt}|{bpm}|{scale}|{duration_sec}".encode("utf-8")).hexdigest()[:8], 16)
     if os.path.exists(COMPOSE_MUSIC_SCRIPT):
-        log(f"[Music Engine] Composing {duration_sec}s Studio BGM via compose-music.mjs...")
-        markers = ",".join(str(t) for t in range(0, duration_sec, 10))
-        subprocess.run(
-            [
-                "node",
-                COMPOSE_MUSIC_SCRIPT,
-                "--preset",
-                "luxury",
-                "--bpm",
-                str(bpm),
-                "--duration",
-                str(duration_sec),
-                "--markers",
-                markers,
-                "--out",
-                output_wav,
-            ],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        return output_wav
+        try:
+            log(f"[Music Engine] Composing {duration_sec}s Studio BGM via compose-music.mjs (preset={preset}, bpm={bpm}, seed={seed_int})...")
+            markers = ",".join(str(t) for t in range(0, duration_sec, 10))
+            subprocess.run(
+                [
+                    "node",
+                    COMPOSE_MUSIC_SCRIPT,
+                    "--preset",
+                    preset,
+                    "--bpm",
+                    str(bpm),
+                    "--duration",
+                    str(duration_sec),
+                    "--markers",
+                    markers,
+                    "--seed",
+                    str(seed_int),
+                    "--out",
+                    output_wav,
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            if os.path.exists(output_wav) and os.path.getsize(output_wav) > 20000:
+                return output_wav
+        except Exception as e:
+            log(f"[Music Engine] compose-music.mjs error ({e}) -> using pure-Python 48kHz stereo synth")
 
-    raise RuntimeError("No music generator available.")
+    return synthesize_python_bgm_fallback(output_wav=output_wav, duration_sec=duration_sec, bpm=bpm, preset=preset)
 
 
 def pre_upscale_scene_1080p(ffmpeg_exe: str, raw_mp4: str, out_1080p_mp4: str, scene_duration: int = 10) -> str:

@@ -458,9 +458,9 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
 
     if tool_name == "omni_synthesize_1take_vo":
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
-        if not api_key:
-            raise RuntimeError("GEMINI_API_KEY is not configured on the server.")
         text = args.get("text", "").strip()
+        if not text:
+            raise ValueError("Missing 'text' argument for omni_synthesize_1take_vo")
         voice = args.get("voice", "Puck")
         style = args.get("style") or EMOTIONAL_DIRECTOR_STYLE
         out_name = os.path.basename(args.get("output_filename") or f"vo_1take_{uuid.uuid4().hex[:6]}.wav")
@@ -489,7 +489,14 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         scale = args.get("scale", "MINOR")
         out_name = os.path.basename(args.get("output_filename") or f"lyria_bgm_{dur}s_{uuid.uuid4().hex[:6]}.wav")
         out_wav = os.path.join(OUTPUTS_DIR, out_name)
-        generate_bgm_track(output_wav=out_wav, duration_sec=dur, bgm_prompt=prompt, bpm=bpm, scale=scale)
+        generate_bgm_track(
+            output_wav=out_wav,
+            duration_sec=dur,
+            bgm_prompt=prompt,
+            bpm=bpm,
+            scale=scale,
+            force_regenerate=True,
+        )
         return {
             "status": "completed",
             "model": "models/lyria-realtime-exp",

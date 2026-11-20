@@ -1185,8 +1185,8 @@ def run_vids_rpc_generate_image(
         1,
     ]
 
-    # Ndh(193) -> 141 (Vids GenerateImagesUseCase); fallback to 103 (Ndh(154)) or 32 (Ndh(69)) if needed
-    use_cases_to_try = [141, 103, 32, 4]
+    # Tier 1: Try Vids GenerateImagesUseCase (Ndh(193) -> 141) on espresso-pa if enabled on this Workspace doc
+    use_cases_to_try = [141]
     text = None
     last_err = None
 
@@ -1210,7 +1210,7 @@ def run_vids_rpc_generate_image(
                 None,
                 client_context,
                 [clean_prompt],
-                [[style_code, count, None, ar_code]],
+                [[style_code, None, None, ar_code]],
                 None,
                 1,
             ]
@@ -1225,7 +1225,7 @@ def run_vids_rpc_generate_image(
                 log(
                     f"[Vids Image RPC] Generating AI image via Cookie (uc={uc}, style={style_key}[{style_code}], aspect_ratio={ar_key}[{ar_code}], count={count})..."
                 )
-                with urllib.request.urlopen(req, timeout=120) as resp:
+                with urllib.request.urlopen(req, timeout=45) as resp:
                     raw_bytes = resp.read()
                     if resp.headers.get("Content-Encoding") == "gzip":
                         raw_bytes = gzip.decompress(raw_bytes)
@@ -1237,8 +1237,97 @@ def run_vids_rpc_generate_image(
                 last_err = f"HTTP {e.code}: {err_body[:300]}"
                 log(f"[Vids Image RPC] uc={uc} returned {last_err}")
 
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    base_out, ext = os.path.splitext(output_path)
+    if not ext:
+        ext = ".png"
+
+    # Tier 2 & 3 Fallback: If UC 141 (espresso-pa) returned REQUEST_REFUSED on this Workspace doc,
+    # synthesize high-resolution 1080p still frame(s) directly via Google Vids Cookie UC 374 (gemini-omni-1.1-flash)!
     if not text:
-        raise RuntimeError(f"Google Vids Cookie Image RPC failed across use cases: {last_err}")
+        style_descriptors = {
+            "PHOTOGRAPHY": "Photorealistic 4K ultra-sharp commercial studio photography still shot, rich natural lighting, crisp focus",
+            "VECTOR_ART": "Clean flat modern vector art illustration graphic design, sharp geometric shapes, vibrant palette",
+            "ILLUSTRATION": "High-detail digital commercial editorial illustration, expressive brushwork and polished lighting",
+            "BACKGROUND": "Cinematic atmospheric background wallpaper with clean composition and spacious depth",
+            "WATERCOLOR": "Artistic hand-painted watercolor illustration with soft textured washes and delicate detail",
+            "CYBERPUNK": "High-tech futuristic cyberpunk neon digital artwork with dramatic reflections",
+            "FLATLAY": "Top-down overhead flat-lay studio photography with balanced commercial arrangement",
+            "LANDSCAPE": "Expansive cinematic wide-angle landscape photography with dramatic natural light",
+            "UNSPECIFIED": "High-resolution 4K commercial visual composition, sharp detail",
+        }
+        style_prefix = style_descriptors.get(style_key, style_descriptors["PHOTOGRAPHY"])
+        still_prompt = (
+            f"{style_prefix}: {clean_prompt}. "
+            "Locked-off static camera tripod composition, crystal-clear visual detail, no spoken dialogue."
+        )
+        omni_ar = "9:16" if ar_code == 5 else "16:9"
+        tmp_clip = f"{base_out}_uc374_tmp_{uuid.uuid4().hex[:5]}.mp4"
+        tmp_node = f"{base_out}_uc374_tmp_{uuid.uuid4().hex[:5]}_node.json"
+        log(
+            f"[Vids Image RPC -> Omni 374 Still Engine] UC 141 refused by espresso-pa; generating 1080p still image(s) via Cookie UC 374 (style={style_key}, aspect_ratio={ar_key})..."
+        )
+        try:
+            run_vids_rpc_edit_or_generate(
+                prompt_text=still_prompt,
+                output_path=tmp_clip,
+                duration_sec=3,
+                save_response_json=tmp_node,
+                session_path=session_path,
+                upscale_1080p=False,
+                aspect_ratio=omni_ar,
+                use_lock=True,
+            )
+            ffmpeg_exe = get_ffmpeg_exe()
+            if ar_code == 1:
+                vf_filter = "crop=min(iw\\,ih):min(iw\\,ih),scale=1080:1080:flags=lanczos,cas=0.45"
+            elif ar_code == 5:
+                vf_filter = "scale=1080:1920:flags=lanczos,cas=0.45"
+            else:
+                vf_filter = "scale=1920:1080:flags=lanczos,cas=0.45"
+
+            timestamps = [0.6, 1.3, 2.0, 2.6][:count]
+            saved_files = []
+            for idx, ts in enumerate(timestamps):
+                target_path = output_path if idx == 0 else f"{base_out}_{idx + 1}{ext}"
+                subprocess.run(
+                    [
+                        ffmpeg_exe,
+                        "-y",
+                        "-ss",
+                        f"{ts:.2f}",
+                        "-i",
+                        tmp_clip,
+                        "-vf",
+                        vf_filter,
+                        "-frames:v",
+                        "1",
+                        target_path,
+                    ],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                log(
+                    f"[Vids Image RPC -> Omni 374 Still Engine] Saved 1080p image #{idx + 1} ({os.path.getsize(target_path):,} bytes) -> {target_path}"
+                )
+                saved_files.append(target_path)
+            return {
+                "backend": "vids_cookie_omni_374_still",
+                "output_path": saved_files[0],
+                "images": saved_files,
+                "aspect_ratio": ar_key,
+                "style": style_key,
+            }
+        finally:
+            for p in (tmp_clip, tmp_node):
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
 
     clean_text = text.lstrip()
     if clean_text.startswith(")]}'"):
@@ -1268,15 +1357,8 @@ def run_vids_rpc_generate_image(
         "x-goog-authuser": authuser,
     }
 
-    out_dir = os.path.dirname(os.path.abspath(output_path))
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
-
     saved_files = []
     urls_to_download = dl_urls[:count] if save_all or count > 1 else [dl_urls[0]]
-    base_out, ext = os.path.splitext(output_path)
-    if not ext:
-        ext = ".png"
 
     for idx, raw_url in enumerate(urls_to_download):
         dl_url = raw_url

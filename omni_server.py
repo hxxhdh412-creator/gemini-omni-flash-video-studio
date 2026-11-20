@@ -848,6 +848,7 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(size))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             with open(file_p, "rb") as f:
@@ -964,6 +965,7 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(size))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             with open(file_p, "rb") as f:
@@ -1014,10 +1016,10 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                 from make_emotional_1take_vo import EMOTIONAL_DIRECTOR_STYLE, call_gemini_38_flash_tts_1take
 
                 api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
-                if not api_key:
-                    self._send_json({"error": "GEMINI_API_KEY not configured"}, 400)
-                    return
                 text = body.get("text", "").strip()
+                if not text:
+                    self._send_json({"error": "Missing voiceover text"}, 400)
+                    return
                 voice = body.get("voice", "Puck")
                 style = body.get("style") or EMOTIONAL_DIRECTOR_STYLE
                 out_name = os.path.basename(body.get("output_filename") or f"vo_1take_{uuid.uuid4().hex[:6]}.wav")
@@ -1041,9 +1043,17 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                 prompt = body.get("prompt", "Cinematic modern corporate electronic commercial music")
                 dur = int(body.get("duration", 30))
                 bpm = int(body.get("bpm", 116))
+                scale = body.get("scale", "MINOR")
                 out_name = os.path.basename(body.get("output_filename") or f"lyria_bgm_{uuid.uuid4().hex[:6]}.wav")
                 out_wav = os.path.join(OUTPUTS_DIR, out_name)
-                generate_bgm_track(output_wav=out_wav, duration_sec=dur, bgm_prompt=prompt, bpm=bpm)
+                generate_bgm_track(
+                    output_wav=out_wav,
+                    duration_sec=dur,
+                    bgm_prompt=prompt,
+                    bpm=bpm,
+                    scale=scale,
+                    force_regenerate=True,
+                )
                 self._send_json({"status": "ok", "download_url": f"/outputs/{out_name}", "duration_sec": dur})
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)

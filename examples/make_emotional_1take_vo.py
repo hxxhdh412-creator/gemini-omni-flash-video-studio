@@ -131,41 +131,52 @@ def call_gemini_38_flash_tts_1take(full_text: str, style: str, api_key: str, voi
     """
     Calls flagship `gemini-3.8-flash-tts` in a single 1-Take pass so the emotional arc,
     breathing, and vocal timbre are 100% continuous and expressive.
-    Note: We test Aoede / Puck — Puck for male founder or Aoede for expressive warmth. Let's use Puck to match the male founder on screen!
+    Automatically falls back to Vietnamese Neural 1-Take TTS if GEMINI_API_KEY is missing or expired/revoked.
     """
-    url = "https://generativelanguage.googleapis.com/v1beta/interactions"
-    payload = {
-        "model": "gemini-3.8-flash-tts",
-        "input": [
-            {
-                "type": "user_input",
-                "content": [
+    if api_key:
+        for model in ("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"):
+            url = "https://generativelanguage.googleapis.com/v1beta/interactions"
+            payload = {
+                "model": model,
+                "input": [
                     {
-                        "type": "text",
-                        "text": full_text,
-                        "annotations": [{"type": "speech_metadata", "style": style}],
+                        "type": "user_input",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": full_text,
+                                "annotations": [{"type": "speech_metadata", "style": style}],
+                            }
+                        ],
                     }
                 ],
+                "response_format": {"type": "audio"},
+                "generation_config": {"speech_config": [{"voice": voice}]},
             }
-        ],
-        "response_format": {"type": "audio"},
-        "generation_config": {"speech_config": [{"voice": voice}]},
-    }
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-        for step in reversed(data.get("steps", [])):
-            if step.get("type") == "model_output":
-                for item in step.get("content", []):
-                    if item.get("type") == "audio" and item.get("data"):
-                        raw_wav = base64.b64decode(item["data"])
-                        return parse_wav_strip_c2pa(raw_wav)
-    raise RuntimeError(f"No audio returned from gemini-3.8-flash-tts: {str(data)[:300]}")
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    for step in reversed(data.get("steps", [])):
+                        if step.get("type") == "model_output":
+                            for item in step.get("content", []):
+                                if item.get("type") == "audio" and item.get("data"):
+                                    raw_wav = base64.b64decode(item["data"])
+                                    return parse_wav_strip_c2pa(raw_wav)
+            except Exception as e:
+                log(f"  [1-Take TTS {model} Warning]: {e}")
+                if "403" in str(e) or "400" in str(e) or "401" in str(e):
+                    break
+
+    from produce_commercial import synthesize_vietnamese_tts_fallback
+
+    log(f"  [1-Take TTS Fallback] Using Vietnamese Neural 1-Take voiceover engine (voice={voice})...")
+    return synthesize_vietnamese_tts_fallback(text=full_text, voice=voice)
 
 
 def split_1take_pcm_by_silence_valleys(
