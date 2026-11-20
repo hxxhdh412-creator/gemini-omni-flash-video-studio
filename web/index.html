@@ -756,7 +756,7 @@ Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng k�
               Nhạc nền Lyria
             </h2><span class="chip">Stereo · WAV 48 kHz</span>
           </div>
-          <label>Mô tả phong cách nhạc nền (hỗ trợ tiếng Việt: piano, guitar, lofi chill, điện ảnh, EDM sôi động, không trống...)</label>
+          <label>Mô tả phong cách nhạc hoặc lời bài hát (hỗ trợ cả Nhạc không lời & Bài hát có ca sĩ AI hát)</label>
           <textarea id="bgmPromptInput">Cinematic futuristic corporate synthwave electronic commercial music, deep driving bassline, inspiring warm pads</textarea>
           <div class="audio-presets" aria-label="Mẫu phong cách nhạc nền">
             <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('cinematic')">Điện ảnh</button>
@@ -765,15 +765,23 @@ Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng k�
             <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('piano_ballad')">Piano sâu lắng</button>
             <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('lofi_chill')">Lo-Fi Chill</button>
             <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('edm_upbeat')">EDM Sôi động</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('vocal_pop')">🎤 Bài hát có lời (Vocal Pop)</button>
           </div>
           <div class="field-grid">
             <div>
-              <label>Thời lượng (giây)</label>
-              <input id="bgmDurInput" type="number" value="30" />
+              <label>Chế độ nhạc (Lyria v3.5)</label>
+              <select id="bgmVocalMode">
+                <option value="auto" selected>Tự động theo mô tả (Không lời / Có lời)</option>
+                <option value="instrumental">Nhạc nền không lời (Instrumental)</option>
+                <option value="vocal">🎤 Bài hát có lời ca sĩ hát (Full Vocal Song)</option>
+              </select>
             </div>
             <div>
-              <label>Nhịp độ (BPM)</label>
-              <input id="bgmBpmInput" type="number" value="116" />
+              <label>Thời lượng (giây) & BPM</label>
+              <div style="display:flex; gap:6px;">
+                <input id="bgmDurInput" type="number" value="30" aria-label="Thời lượng giây" />
+                <input id="bgmBpmInput" type="number" value="116" aria-label="Nhịp độ BPM" />
+              </div>
             </div>
           </div>
           <label>Tên tệp WAV</label>
@@ -1602,7 +1610,13 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
       },
       edm_upbeat: {
         prompt: 'Nhạc quảng cáo EDM sôi động, bùng nổ năng lượng, tiết tấu nhanh mạnh mẽ và giai điệu tươi sáng.',
-        bpm: 128
+        bpm: 128,
+        mode: 'instrumental'
+      },
+      vocal_pop: {
+        prompt: 'Bài hát Pop hiện đại có lời ca sĩ nữ hát truyền cảm về công nghệ tương lai, đổi mới sáng tạo và bứt phá thành công, giai điệu bắt tai.',
+        bpm: 120,
+        mode: 'vocal'
       }
     };
 
@@ -1611,8 +1625,10 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
       if (!cfg) return;
       const prompt = document.getElementById('bgmPromptInput');
       const bpmBox = document.getElementById('bgmBpmInput');
+      const modeSel = document.getElementById('bgmVocalMode');
       prompt.value = cfg.prompt;
       if (bpmBox && cfg.bpm) bpmBox.value = cfg.bpm;
+      if (modeSel) modeSel.value = cfg.mode || 'auto';
       prompt.focus();
     }
 
@@ -1687,13 +1703,16 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
 
     function generateStandaloneBGM(button) {
       const prompt = document.getElementById('bgmPromptInput').value.trim();
+      const vocalMode = (document.getElementById('bgmVocalMode') || {}).value || 'auto';
       const payload = {
         prompt,
         duration: parseInt(document.getElementById('bgmDurInput').value || '30', 10),
         bpm: parseInt(document.getElementById('bgmBpmInput').value || '116', 10),
         output_filename: document.getElementById('bgmOutName').value.trim()
       };
-      return generateAudioPreview(button, 'bgmAudioResult', '/api/bgm-preview', payload, prompt, 'Nhập mô tả trước khi tạo nhạc nền.', 'Đang sáng tác nhạc nền…');
+      if (vocalMode === 'vocal') payload.instrumental = false;
+      else if (vocalMode === 'instrumental') payload.instrumental = true;
+      return generateAudioPreview(button, 'bgmAudioResult', '/api/bgm-preview', payload, prompt, 'Nhập mô tả trước khi tạo nhạc nền.', 'Đang sáng tác nhạc Lyria v3.5…');
     }
 
     async function generateAudioPreview(button, resultId, endpoint, payload, input, emptyMessage, pendingMessage) {

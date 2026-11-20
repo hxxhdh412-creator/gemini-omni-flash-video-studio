@@ -724,6 +724,7 @@ def generate_bgm_track(
     brightness: float = 0.82,
     density: float = 0.68,
     force_regenerate: bool = False,
+    instrumental: bool = None,
 ) -> str:
     import hashlib
 
@@ -744,14 +745,14 @@ def generate_bgm_track(
 
     # 1. Primary Engine: Google Vids (vids.new) Native Cookie Lyria v3.5 Full Song RPC (UseCase 242 — zero API key!)
     try:
-        log(f"[Music Engine] Generating {duration_sec}s BGM via vids.new Cookie Lyria v3.5 (uc=242, BPM={eff_bpm}, Scale={scale})...")
+        log(f"[Music Engine] Generating {duration_sec}s BGM via vids.new Cookie Lyria v3.5 (uc=242, BPM={eff_bpm}, Scale={scale}, instrumental={instrumental})...")
         run_vids_rpc_lyria_music(
             bgm_prompt=bgm_prompt,
             output_wav=output_wav,
             duration_sec=duration_sec,
             bpm=eff_bpm,
             scale=scale,
-            instrumental=True,
+            instrumental=instrumental,
         )
         if os.path.exists(output_wav) and os.path.getsize(output_wav) > 20000:
             log(f"[Music Engine] vids.new Cookie Lyria v3.5 BGM saved -> {output_wav} ({os.path.getsize(output_wav):,} bytes)")

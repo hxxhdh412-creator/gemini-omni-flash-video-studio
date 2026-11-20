@@ -1618,21 +1618,45 @@ def _translate_vi_music_prompt_to_en(prompt_text: str) -> str:
     return raw
 
 
+def _is_vocal_song_prompt(prompt_text: str) -> bool:
+    lower = (prompt_text or "").lower()
+    if any(k in lower for k in ("không lời", "nhạc nền không lời", "instrumental", "no lyrics", "no vocals")):
+        return False
+    return any(
+        k in lower
+        for k in (
+            "có lời",
+            "bài hát",
+            "ca sĩ",
+            "giọng hát",
+            "lời bài hát",
+            "hát về",
+            "vocal",
+            "vocals",
+            "lyrics",
+            "singing",
+            "singer",
+            "full song",
+        )
+    )
+
+
 def run_vids_rpc_lyria_music(
     bgm_prompt: str,
     output_wav: str = None,
     duration_sec: int = 30,
     bpm: int = None,
     scale: str = None,
-    instrumental: bool = True,
+    instrumental: bool = None,
     session_path: str = DEFAULT_SESSION_PATH,
 ) -> bytes:
     """
-    Composes AI background music directly via Google Vids (`vids.new`) Native Cookie Lyria v3.5 RPC
-    (`UseCase 242` -> `/flix/generate_music_full_song/v0`, `vids_generate_music_config_full_song_v3p5`,
+    Composes AI background music or full vocal songs directly via Google Vids (`vids.new`) Native Cookie
+    Lyria v3.5 RPC (`UseCase 242` -> `/flix/generate_music_full_song/v0`, `vids_generate_music_config_full_song_v3p5`,
     zero GEMINI_API_KEY required!).
-    Downloads the native `audio/wav` from `contribution-rt.usercontent.google.com/download`, and if
-    `output_wav` is given, masters it to 48kHz Stereo WAV of `duration_sec` seconds with smooth fade-in/out.
+    - When `instrumental=True` (or prompt does not ask for vocals/lyrics): prepends 'Instrumental, no lyrics or vocals.'
+    - When `instrumental=False` (or prompt asks for 'có lời', 'bài hát', 'ca sĩ', 'vocal', 'lyrics'): generates a
+      full song with AI vocals & lyrics!
     """
     try:
         refresh_session_from_cdp(session_path)
@@ -1643,13 +1667,19 @@ def run_vids_rpc_lyria_music(
     req_id = f"goog_{uuid.uuid4().int % 2000000000}"
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
 
+    want_vocals = (not instrumental) if instrumental is not None else _is_vocal_song_prompt(bgm_prompt)
     clean_prompt = _translate_vi_music_prompt_to_en(bgm_prompt)
     if bpm and f"{bpm}" not in clean_prompt.lower():
         clean_prompt = f"{clean_prompt}, {bpm} BPM"
     if scale and str(scale).lower() not in clean_prompt.lower():
         clean_prompt = f"{clean_prompt}, {scale} key"
-    if instrumental and not clean_prompt.lower().startswith("instrumental"):
-        clean_prompt = f"Instrumental, no lyrics or vocals. {clean_prompt}"
+    if want_vocals:
+        clean_prompt = re.sub(r"^Instrumental,?\s*no lyrics or vocals\.?\s*", "", clean_prompt, flags=re.IGNORECASE)
+        if not any(w in clean_prompt.lower() for w in ("vocal", "singing", "singer", "lyrics", "song")):
+            clean_prompt = f"Full song with expressive vocals and singing: {clean_prompt}"
+    else:
+        if not clean_prompt.lower().startswith("instrumental"):
+            clean_prompt = f"Instrumental, no lyrics or vocals. {clean_prompt}"
 
     payload = [
         242,

@@ -1060,6 +1060,8 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                 dur = int(body.get("duration", 30))
                 bpm = int(body.get("bpm", 116))
                 scale = body.get("scale", "MINOR")
+                inst_raw = body.get("instrumental")
+                instrumental = bool(inst_raw) if isinstance(inst_raw, bool) else None
                 out_name = os.path.basename(body.get("output_filename") or f"lyria_bgm_{uuid.uuid4().hex[:6]}.wav")
                 out_wav = os.path.join(OUTPUTS_DIR, out_name)
                 profile = parse_bgm_prompt_profile(prompt, requested_bpm=bpm, scale=scale)
@@ -1070,6 +1072,7 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                     bpm=bpm,
                     scale=scale,
                     force_regenerate=True,
+                    instrumental=instrumental,
                 )
                 self._send_json(
                     {
