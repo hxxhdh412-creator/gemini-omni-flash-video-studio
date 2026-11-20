@@ -731,7 +731,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         slug = args.get("skill_slug", "gemini-omni-flash-api")
         skill_md_path = os.path.join(REPO_ROOT, "skills", "gemini-omni-flash-api", "SKILL.md")
         guide_md_path = os.path.join(REPO_ROOT, "skills", "gemini-omni-flash-api", "references", "omni_1_1_complete_guide.md")
-        host_url = os.environ.get("OMNI_PUBLIC_URL", "http://localhost:8765").rstrip("/")
+        host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
         mcp_link = f"{host_url}/mcp"
 
         if action == "list_packs":

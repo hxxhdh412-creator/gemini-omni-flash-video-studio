@@ -221,6 +221,7 @@
     .utility-details summary { cursor: pointer; font-size: .8125rem; font-weight: 600; }
     .mcp-layout { display: grid; grid-template-columns: minmax(0,1fr); gap: var(--panel-gap); align-items: start; }
     .mcp-catalog { display: grid; grid-template-columns: minmax(0,1fr); gap: 5px; }
+    .mcp-search { margin-bottom: 8px; }
     .mcp-tool { display: block; text-align: left; overflow-wrap: anywhere; padding: 8px; border: 1px solid var(--border-hairline); border-radius: 8px; color: var(--text-primary); background: var(--bg-input); }
     .mcp-tool[aria-pressed=true] { color: var(--apple-blue); background: #edf4ff; border-color: #a7cbff; }
     .mcp-tool:hover { border-color: #a7cbff; }
@@ -229,6 +230,12 @@
     .mcp-result pre { min-height: 110px; max-height: 440px; }
     .monitor-frame { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 16/9; background: #10141e; border: 1px solid #242c3c; border-radius: 10px; overflow: hidden; margin-bottom: 9px; }
     .monitor-frame video { width: 100%; height: 100%; object-fit: contain; position: relative; z-index: 2; background: #10141e; }
+    .monitor-frame[data-aspect="9:16"] { width: min(100%, 290px, 32dvh); aspect-ratio: 9/16; margin-inline: auto; }
+    .monitor-frame[data-aspect="1:1"] { width: min(100%, 440px, 58dvh); aspect-ratio: 1; margin-inline: auto; }
+    .scene-source { margin-top: 10px; padding: 10px; border: 1px solid #dce7f6; border-radius: 8px; background: #f2f7ff; }
+    .scene-source label:first-child { margin-top: 0; }
+    .scene-mode-hint { margin-top: 5px; }
+    .preview-actions { flex-wrap: wrap; }
     .monitor-empty { display: flex; align-items: center; justify-content: center; flex-direction: column; position: absolute; inset: 0; isolation: isolate; color: white; text-align: center; padding: 20px; }
     .monitor-empty::before { content: ''; position: absolute; z-index: -1; inset: 0; background: radial-gradient(ellipse at 27% 75%,#205d6338,transparent 65%),radial-gradient(ellipse at 80% 20%,#6b52ae42,transparent 65%),linear-gradient(140deg,#151b2a,#0d1018); }
     .monitor-empty::after { content: ''; width: 200px; height: 200px; border: 1px solid #ffffff08; border-radius: 50%; position: absolute; z-index: -1; box-shadow: 0 0 0 36px #ffffff02,0 0 0 72px #ffffff02; }
@@ -590,19 +597,21 @@
           <label for="scOutName">Tên File Xuất Ra</label>
           <input id="scOutName" value="omni_scene_15s_1080p.mp4" />
 
-          <label for="scExtendMode">Cơ chế Mở rộng video (như Google Vids)</label>
-          <select id="scExtendMode" onchange="onExtendModeChanged(this.value)">
-            <option value="none" selected>Tạo cảnh mới độc lập</option>
-            <option value="extend_concat">➕ Mở rộng & Ghép nối liền mạch vào cuối video trước (Extend Video)</option>
-            <option value="chain_only">🔗 Giữ đồng nhất nhân vật & bối cảnh từ cảnh trước (Xuất clip riêng)</option>
+          <label for="scExtendMode">Cách tạo cảnh</label>
+          <select id="scExtendMode" aria-describedby="scModeHint" onchange="onExtendModeChanged(this.value)">
+            <option value="none" selected>Tạo cảnh mới</option>
+            <option value="extend_concat">Nối dài video có sẵn</option>
+            <option value="chain_only">Tạo cảnh tiếp theo (tệp riêng)</option>
           </select>
+          <p class="media-hint scene-mode-hint" id="scModeHint">Tạo một video độc lập từ mô tả và ảnh tham chiếu.</p>
 
-          <label for="scPriorSelect">Chọn video / cảnh trước để Mở rộng</label>
-          <div style="display:flex; gap:6px;">
-            <select id="scPriorSelect" style="flex:1;" onchange="onPriorVideoSelected(this.value)">
-              <option value="">-- Không nối (Tạo cảnh 1 mới) --</option>
+          <div class="scene-source" id="scPriorFields" hidden>
+            <label for="scPriorSelect">Chọn video từ thư viện</label>
+            <select id="scPriorSelect" onchange="onPriorVideoSelected(this.value)">
+              <option value="">Chọn video…</option>
             </select>
-            <input id="scPriorNode" style="flex:1;" placeholder="Hoặc nhập tên file .mp4 / _node.json" />
+            <label for="scPriorNode" id="scPriorLabel">Tệp nguồn</label>
+            <input id="scPriorNode" placeholder="Tên tệp .mp4" oninput="document.getElementById('scPriorSelect').value = this.value" />
           </div>
 
           <button class="btn" id="scSubmitBtn" onclick="submitQuickScene(this)">
@@ -621,9 +630,9 @@
           <div class="monitor-frame" id="scVideoStage">
             <div class="monitor-empty"><span class="preview-mark"><svg class="sf-icon" aria-hidden="true"><use href="#sf-film"/></svg></span><strong>Chưa có cảnh để xem</strong></div>
           </div>
-          <div id="scExtendActionBar" style="display:none; margin:8px 0; gap:8px; justify-content:space-between; align-items:center;">
+          <div id="scExtendActionBar" class="preview-actions" style="display:none; margin:8px 0; gap:8px; justify-content:space-between; align-items:center;">
             <button type="button" class="btn btn-xs" onclick="prepareExtendFromLatestQuickVideo()">
-              <svg class="sf-icon"><use href="#sf-plus"/></svg> Mở rộng tiếp video này (+15s như Google Vids)
+              <svg class="sf-icon"><use href="#sf-plus"/></svg> Nối dài video này
             </button>
             <a id="scQuickDownloadLink" class="btn btn-ghost btn-xs" href="#" download>
               <svg class="sf-icon"><use href="#sf-download"/></svg> Tải MP4
@@ -664,7 +673,7 @@
           <div class="field-grid">
             <div>
               <label for="imgAspectRatio">Tỷ lệ khung hình</label>
-              <select id="imgAspectRatio">
+              <select id="imgAspectRatio" onchange="setPreviewAspect('imgPreviewStage', this.value)">
                 <option value="16:9" selected>16:9 · Khổ ngang (Video)</option>
                 <option value="1:1">1:1 · Hình vuông</option>
                 <option value="9:16">9:16 · Khổ dọc (Shorts/Reels)</option>
@@ -760,6 +769,7 @@ Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng k�
             <div>
               <label>Giọng Đọc (vids.new Cookie UC 254)</label>
               <select id="voVoiceSelect">
+                <optgroup label="Giọng Studio">
                 <option value="Puck" selected>Puck (Nam — Truyền Lửa · vids.new)</option>
                 <option value="Aoede">Aoede (Nữ — Truyền Cảm · vids.new)</option>
                 <option value="Achernar">Achernar (Studio Mặc Định · vids.new)</option>
@@ -768,10 +778,13 @@ Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng k�
                 <option value="Fenrir">Fenrir (Nam Quyết Đoán · vids.new)</option>
                 <option value="Orus">Orus (Nam Ấm Áp · vids.new)</option>
                 <option value="Zephyr">Zephyr (Nữ Thanh Lịch · vids.new)</option>
+                </optgroup>
+                <optgroup label="Giọng tiếng Việt chuyên dụng">
                 <option value="vi-vn-concierge-2">Tiếng Việt — Chuyên Viên Tư Vấn (vi-vn-concierge-2)</option>
                 <option value="vi-vn-csagent-1">Tiếng Việt — Chăm Sóc Khách Hàng (vi-vn-csagent-1)</option>
                 <option value="vi-vn-training-1">Tiếng Việt — Đào Tạo & Thuyết Trình (vi-vn-training-1)</option>
                 <option value="vi-vn-tutor-1">Tiếng Việt — Giảng Viên Hướng Dẫn (vi-vn-tutor-1)</option>
+                </optgroup>
               </select>
             </div>
             <div>
@@ -813,12 +826,13 @@ Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng k�
           </div>
           <div class="field-grid">
             <div>
-              <label>Chế độ nhạc (Lyria v3.5)</label>
-              <select id="bgmVocalMode">
-                <option value="auto" selected>Tự động theo mô tả (Không lời / Có lời)</option>
-                <option value="instrumental">Nhạc nền không lời (Instrumental)</option>
-                <option value="vocal">🎤 Bài hát có lời ca sĩ hát (Full Vocal Song)</option>
+              <label for="bgmVocalMode">Chế độ nhạc (Lyria v3.5)</label>
+              <select id="bgmVocalMode" aria-describedby="bgmModeHint" onchange="updateMusicModeHint()">
+                <option value="auto" selected>Tự động theo mô tả</option>
+                <option value="instrumental">Nhạc không lời</option>
+                <option value="vocal">Bài hát có lời</option>
               </select>
+              <p class="media-hint scene-mode-hint" id="bgmModeHint">Studio chọn có lời hoặc không lời theo mô tả.</p>
             </div>
             <div>
               <label>Thời lượng (giây) & BPM</label>
@@ -929,6 +943,7 @@ POST /api/produce-commercial
       <div class="mcp-layout">
         <div class="panel">
           <div class="panel-header"><h2 class="panel-title">Danh mục công cụ</h2><span class="chip" id="mcpToolCount">Đang tải…</span></div>
+          <input type="search" class="mcp-search" id="mcpToolSearch" placeholder="Tìm theo tên hoặc mô tả…" aria-label="Tìm công cụ MCP" oninput="filterMcpTools()" />
           <div class="mcp-catalog" id="mcpToolsCatalog" onclick="selectMcpTool(event)"></div>
           <details class="utility-details" open><summary>Kết nối 1-Link (`serverUrl` như `ads-mcp-da-kenh`)</summary><pre class="apple-console">{
   "mcpServers": {
@@ -1409,8 +1424,21 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
       activity.finished = state === 'done' || state === 'failed';
     }
 
+    function setPreviewAspect(id, aspect) {
+      document.getElementById(id).dataset.aspect = aspect;
+    }
+
+    function fitVideoPreview(stage, video) {
+      video.addEventListener('loadedmetadata', () => {
+        if (!video.videoWidth || !video.videoHeight) return;
+        const ratio = video.videoWidth / video.videoHeight;
+        stage.dataset.aspect = ratio < .92 ? '9:16' : ratio <= 1.08 ? '1:1' : '16:9';
+      }, {once:true});
+    }
+
     function updateTvcAspectRatioUI(val) {
       const ar = val || '16:9';
+      if (!document.querySelector('#tvcVideoStage video')) setPreviewAspect('tvcVideoStage', ar);
       const topSel = document.getElementById('tvcAspectRatio');
       const expSel = document.getElementById('tvcAspectRatioExport');
       if (topSel && topSel.value !== ar) topSel.value = ar;
@@ -1427,6 +1455,7 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
 
     function updateQuickSceneAspectRatioUI(val) {
       const ar = val || '16:9';
+      if (!document.querySelector('#scVideoStage video')) setPreviewAspect('scVideoStage', ar);
       const chip = document.getElementById('scResChip');
       if (chip) chip.textContent = '1080p · ' + ar;
     }
@@ -1542,28 +1571,20 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
 
     function onExtendModeChanged(mode) {
       const btn = document.getElementById('scSubmitBtn');
-      if (!btn) return;
-      if (mode === 'extend_concat') {
-        btn.innerHTML = '<svg class="sf-icon"><use href="#sf-plus"/></svg> Mở rộng & Ghép nối video';
-      } else if (mode === 'chain_only') {
-        btn.innerHTML = '<svg class="sf-icon"><use href="#sf-play"/></svg> Tạo cảnh nối tiếp đồng nhất';
-      } else {
-        btn.innerHTML = '<svg class="sf-icon"><use href="#sf-play"/></svg> Tạo cảnh video';
-      }
+      const needsSource = mode !== 'none';
+      const concat = mode === 'extend_concat';
+      document.getElementById('scPriorFields').hidden = !needsSource;
+      document.getElementById('scPriorLabel').textContent = concat ? 'Tên hoặc đường dẫn video nguồn' : 'Video hoặc tệp node nguồn';
+      document.getElementById('scPriorNode').placeholder = concat ? 'Ví dụ: scene_01.mp4' : 'Ví dụ: scene_01.mp4 hoặc scene_01_node.json';
+      document.getElementById('scModeHint').textContent = concat ? 'Tạo đoạn tiếp theo và ghép vào cuối video nguồn.' :
+        needsSource ? 'Dùng cảnh nguồn làm điểm nối và xuất đoạn mới thành tệp riêng.' : 'Tạo một video độc lập từ mô tả và ảnh tham chiếu.';
+      btn.innerHTML = concat ? '<svg class="sf-icon"><use href="#sf-plus"/></svg> Nối dài và ghép video' :
+        needsSource ? '<svg class="sf-icon"><use href="#sf-play"/></svg> Tạo cảnh tiếp theo' : '<svg class="sf-icon"><use href="#sf-play"/></svg> Tạo cảnh video';
     }
 
     function onPriorVideoSelected(val) {
       const inp = document.getElementById('scPriorNode');
       if (inp) inp.value = val || '';
-      const modeSel = document.getElementById('scExtendMode');
-      if (modeSel) {
-        if (val && modeSel.value === 'none') {
-          modeSel.value = 'extend_concat';
-        } else if (!val) {
-          modeSel.value = 'none';
-        }
-        onExtendModeChanged(modeSel.value);
-      }
     }
 
     function selectVideoToExtend(fileName) {
@@ -1593,7 +1614,7 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
       }
       const con = document.getElementById('scConsole');
       if (con) {
-        con.textContent = `➕ Đã chọn mở rộng video "${fileName}".\nNhập diễn biến tiếp theo vào ô "Mô tả cảnh quay" rồi bấm "Mở rộng & Ghép nối video" để nối dài thêm 10s–15s từ khung hình cuối!`;
+        con.textContent = `Đã chọn "${fileName}". Nhập diễn biến tiếp theo rồi bấm "Nối dài và ghép video".`;
       }
     }
 
@@ -1604,14 +1625,21 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
     }
 
     async function submitQuickScene(button) {
-      const priors = document.getElementById('scPriorNode').value.trim();
+      const source = document.getElementById('scPriorNode');
       const scAr = (document.getElementById('scAspectRatio') || {}).value || '16:9';
-      const extendMode = (document.getElementById('scExtendMode') || {}).value || (priors ? 'extend_concat' : 'none');
+      const extendMode = document.getElementById('scExtendMode').value;
+      const priors = extendMode === 'none' ? '' : source.value.trim();
+      if (extendMode !== 'none' && (!priors || (extendMode === 'extend_concat' && !/\.mp4$/i.test(priors)))) {
+        showResultActivity('scVideoStage', 'failed', 'Cần chọn tệp nguồn',
+          extendMode === 'extend_concat' ? 'Chọn video MP4 để nối dài và ghép.' : 'Chọn video hoặc tệp node trước khi tạo cảnh tiếp theo.');
+        source.focus();
+        return;
+      }
       const payload = {
         prompt: document.getElementById('scPrompt').value.trim(),
         duration: parseInt((document.getElementById('scDuration') || {}).value || '15', 10),
         aspect_ratio: scAr,
-        extend_mode: priors ? (extendMode === 'none' ? 'extend_concat' : extendMode) : 'none',
+        extend_mode: extendMode,
         image: document.getElementById('scImagePath').value.trim(),
         prior_node_files: priors ? [priors] : [],
         output_filename: document.getElementById('scOutName').value.trim(),
@@ -1681,6 +1709,7 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
           showResultActivity(stageId, 'done', 'Video đã sẵn sàng');
           const stage = document.getElementById(stageId);
           stage.innerHTML = `<video src="${d.download_url}?t=${Date.now()}" controls autoplay></video>`;
+          fitVideoPreview(stage, stage.querySelector('video'));
           if (dlBarId && dlLinkId) {
             const barEl = document.getElementById(dlBarId);
             if (barEl) barEl.style.display = dlBarId === 'scExtendActionBar' ? 'flex' : 'block';
@@ -1773,7 +1802,18 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
       prompt.value = cfg.prompt;
       if (bpmBox && cfg.bpm) bpmBox.value = cfg.bpm;
       if (modeSel) modeSel.value = cfg.mode || 'auto';
+      updateMusicModeHint();
       prompt.focus();
+    }
+
+    function updateMusicModeHint() {
+      const mode = document.getElementById('bgmVocalMode').value;
+      const hints = {
+        auto: 'Studio chọn có lời hoặc không lời theo mô tả.',
+        instrumental: 'Tạo nhạc nền không có giọng hát.',
+        vocal: 'Nhập chủ đề hoặc lời bài hát, kèm phong cách giọng hát nếu cần.'
+      };
+      document.getElementById('bgmModeHint').textContent = hints[mode];
     }
 
     function updateVoiceScriptCount() {
@@ -1948,6 +1988,7 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
       video.setAttribute('aria-label', link.dataset.videoName);
       const stage = document.getElementById('scVideoStage');
       stage.replaceChildren(video);
+      fitVideoPreview(stage, video);
       video.focus({ preventScroll: true });
       stage.scrollIntoView({ block: 'nearest' });
     }
@@ -2198,12 +2239,30 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
         cat.innerHTML = mcpToolsList.map(tool => `
           <button type="button" class="mcp-tool" data-tool="${escapeHtml(tool.name)}" aria-pressed="false"><code>${escapeHtml(tool.name)}</code></button>
         `).join('');
-        count.textContent = mcpToolsList.length + ' công cụ';
+        count.textContent = mcpToolsList.length + ' công cụ' + (data.server?.version ? ' · v' + data.server.version : '');
+        filterMcpTools();
         document.getElementById('mcpRunButton').disabled = !mcpToolsList.length;
         populateMcpSampleArgs();
       } catch {
         count.textContent = 'Không tải được';
         cat.innerHTML = '<button class="btn btn-ghost btn-xs" onclick="loadMcpTools()">Thử lại</button>';
+      }
+    }
+
+    function filterMcpTools() {
+      const search = document.getElementById('mcpToolSearch').value.trim().toLowerCase();
+      const catalog = document.getElementById('mcpToolsCatalog');
+      const buttons = [...catalog.querySelectorAll('[data-tool]')];
+      buttons.forEach((button, index) => {
+        const tool = mcpToolsList[index];
+        button.hidden = !(tool.name + ' ' + (tool.description || '')).toLowerCase().includes(search);
+      });
+      catalog.querySelector('.mcp-no-match')?.remove();
+      if (buttons.length && buttons.every(button => button.hidden)) {
+        const message = document.createElement('p');
+        message.className = 'media-hint mcp-no-match';
+        message.textContent = 'Không có công cụ phù hợp.';
+        catalog.append(message);
       }
     }
 
