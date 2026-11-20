@@ -489,7 +489,8 @@ def run_job_generate_scene(job_id: str, payload: dict):
             is_extending = True
 
         image_files = []
-        raw_img = str(payload.get("image") or "").strip()
+        input_mode = str(payload.get("input_mode") or "auto").strip().lower()
+        raw_img = "" if input_mode == "text" else str(payload.get("image") or "").strip()
         # If extending a prior video and the user didn't explicitly upload a new custom image (or left default asset_01),
         # extract the exact final frame from prior_video_mp4 to guarantee seamless visual continuation
         use_last_frame_from_prior = False
@@ -514,11 +515,22 @@ def run_job_generate_scene(job_id: str, payload: dict):
             except Exception:
                 pass
 
-        if not image_files and raw_img:
-            image_files.append(save_base64_image_if_needed(raw_img, job_dir, 1))
-        for i, img in enumerate(payload.get("images") or []):
-            image_files.append(save_base64_image_if_needed(img, job_dir, i + 1))
-        image_files = [p for p in image_files if p]
+        if input_mode != "text":
+            if not image_files and raw_img:
+                image_files.append(save_base64_image_if_needed(raw_img, job_dir, 1))
+            for i, img in enumerate(payload.get("images") or []):
+                image_files.append(save_base64_image_if_needed(img, job_dir, i + 1))
+            image_files = [p for p in image_files if p]
+
+        if image_files:
+            with JOBS_LOCK:
+                JOBS[job_id]["logs"].append(
+                    f"🖼️ [Reference-to-Video UC=376] Using reference image: {', '.join(os.path.basename(p) for p in image_files)}"
+                )
+        else:
+            prompt = re.sub(r"\s+from the reference image\b", "", prompt, flags=re.IGNORECASE)
+            with JOBS_LOCK:
+                JOBS[job_id]["logs"].append("📝 [Text-to-Video UC=374] Generating scene directly from text prompt (no reference image)...")
 
         if is_extending:
             with JOBS_LOCK:
@@ -712,9 +724,10 @@ def run_job_produce_commercial(job_id: str, payload: dict):
 
         # Pre-resolve Scene 1 subject identity if a custom image was uploaded so Scene 2..N prompts
         # don't accidentally revert to the default "32-year-old Vietnamese male founder" template.
+        input_mode = str(payload.get("input_mode") or "auto").strip().lower()
         scene1_custom_subject = ""
         scene1_custom_img_path = ""
-        if scenes_in and scenes_in[0].get("image"):
+        if input_mode != "text" and scenes_in and scenes_in[0].get("image"):
             try:
                 s1_img_p = save_base64_image_if_needed(scenes_in[0]["image"], job_dir, 1)
                 if s1_img_p and os.path.exists(s1_img_p):
@@ -726,6 +739,10 @@ def run_job_produce_commercial(job_id: str, payload: dict):
             except Exception:
                 pass
 
+        def _is_default_hebum_asset(img_str: str) -> bool:
+            b = os.path.basename(str(img_str or "").strip()).lower()
+            return any(b.startswith(f"asset_0{k}_") for k in range(1, 7))
+
         def _gen_single_scene(zero_idx: int, prior_files: list, use_rpc_lock: bool):
             sc = scenes_in[zero_idx]
             idx = zero_idx + 1
@@ -735,25 +752,32 @@ def run_job_produce_commercial(job_id: str, payload: dict):
             raw_mp4 = os.path.join(OUTPUTS_DIR, f"job_{job_id}_s{idx}_720p.mp4")
             node_json = os.path.join(job_dir, f"s{idx}_node.json")
             img_files = []
-            if zero_idx > 0 and chain_anchor and scene1_custom_img_path:
-                img_files.append(scene1_custom_img_path)
-            if sc.get("image"):
-                cur_img_p = save_base64_image_if_needed(sc["image"], job_dir, idx)
-                if cur_img_p and cur_img_p not in img_files:
-                    img_files.append(cur_img_p)
+            sc_img_raw = "" if input_mode == "text" else str(sc.get("image") or "").strip()
+            if input_mode != "text":
+                if zero_idx > 0 and chain_anchor and scene1_custom_img_path:
+                    # If Scene 1 has a custom uploaded portrait/product and Scene 2..N still had a default asset_01..06,
+                    # use Scene 1's custom portrait instead of the default HEBUM UI screenshot!
+                    if not sc_img_raw or _is_default_hebum_asset(sc_img_raw):
+                        img_files.append(scene1_custom_img_path)
+                    else:
+                        cur_img_p = save_base64_image_if_needed(sc_img_raw, job_dir, idx)
+                        if cur_img_p:
+                            img_files.append(cur_img_p)
+                elif sc_img_raw:
+                    cur_img_p = save_base64_image_if_needed(sc_img_raw, job_dir, idx)
+                    if cur_img_p and cur_img_p not in img_files:
+                        img_files.append(cur_img_p)
             sc_prompt = sc.get("prompt", "")
-            if scene1_custom_subject and ("32-year-old vietnamese male" in sc_prompt.lower() or "charcoal-black blazer" in sc_prompt.lower()):
-                sc_prompt = re.sub(
-                    r"[Aa]\s+charismatic\s+32-year-old\s+Vietnamese\s+male\s+business\s+founder\s+in\s+a\s+tailored\s+charcoal-black\s+blazer",
-                    scene1_custom_subject,
-                    sc_prompt,
-                    flags=re.IGNORECASE,
-                )
-                sc_prompt = re.sub(
-                    r"[Tt]he\s+same\s+32-year-old\s+Vietnamese\s+male\s+founder\s+in\s+the\s+charcoal-black\s+blazer",
-                    f"the same person from Scene 1 ({scene1_custom_subject})",
-                    sc_prompt,
-                    flags=re.IGNORECASE,
+            if input_mode == "text" or not img_files:
+                sc_prompt = re.sub(r"\s+from the reference image\b", "", sc_prompt, flags=re.IGNORECASE)
+            elif scene1_custom_img_path and (
+                "32-year-old vietnamese male" in sc_prompt.lower()
+                or "charcoal-black blazer" in sc_prompt.lower()
+                or "hebum" in sc_prompt.lower()
+            ):
+                sc_prompt = (
+                    "The person in the reference image smiles warmly and presents naturally with confident gestures "
+                    "in a modern executive studio office with soft cinematic lighting and smooth camera movement."
                 )
             res = run_vids_rpc_edit_or_generate(
                 prompt_text=sc_prompt,
@@ -957,13 +981,19 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Mcp-Session-Id, Last-Event-ID")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Expose-Headers", "Mcp-Session-Id")
         self.end_headers()
         self.wfile.write(raw)
 
     def do_OPTIONS(self):
         self._send_json({"ok": True})
+
+    def do_DELETE(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)

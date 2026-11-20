@@ -52,22 +52,22 @@ MCP_SERVER_INFO = {
 
 MCP_INSTRUCTIONS = (
     "Omni Studio Pro (v2.4) — Hệ thống sản xuất Video AI, TVC 30s/60s, Tạo ảnh, Giọng đọc 1-Take (12 giọng) & Nhạc Lyria v3.5 "
-    "chạy 100% trực tiếp trên Cookie Google Vids (vids.new) tốc độ cao (không phụ thuộc GEMINI_API_KEY). "
+    "qua dịch vụ đám mây Google Workspace Vids API chính thức (đã xác thực sẵn tại máy chủ Studio). "
     "Quy trình chuẩn cho AI Agent: "
-    "(1) Gọi omni_session_status trước để kiểm tra kết nối Cookie vids.new (session_ready=true). "
+    "(1) Gọi omni_session_status trước để kiểm tra trạng thái kết nối dịch vụ (session_ready=true). "
     "(2) Nếu có ảnh tham chiếu từ máy/URL/base64, có thể truyền trực tiếp đường dẫn/URL/base64 vào tham số `image` của omni_generate_scene / omni_generate_image / omni_produce_commercial, hoặc gọi omni_upload_image trước để chuẩn hóa và phân tích chủ thể. "
-    "(3) Để tạo ảnh AI mới (hoặc biến đổi từ ảnh tham chiếu), gọi omni_generate_image (Cookie vids.new UseCase 141, hỗ trợ 16:9, 1:1, 9:16 và 9 phong cách). "
-    "(4) Để tạo nhanh 1 cảnh video (3s–15s, mặc định 15s, 16:9 hoặc 9:16) ở tốc độ gốc vids.new (~22s–28s), gọi omni_generate_scene: "
-    "khi truyền `image`, hệ thống tự động chuẩn hóa khung 16:9/9:16 và tải lên Google Vids TemporaryBlob (Resumable 2 bước) để kích hoạt UseCase 376 (Reference-to-Video `@Image 1`) giữ nguyên 100% gương mặt/sản phẩm/UI; "
+    "(3) Để tạo ảnh AI mới (hoặc biến đổi từ ảnh tham chiếu), gọi omni_generate_image (hỗ trợ 16:9, 1:1, 9:16 và 9 phong cách). "
+    "(4) Để tạo nhanh 1 cảnh video (3s–15s, mặc định 15s, 16:9 hoặc 9:16) ở tốc độ cao (~22s–28s), gọi omni_generate_scene: "
+    "khi truyền `image`, hệ thống tự động chuẩn hóa khung 16:9/9:16 và kích hoạt Reference-to-Video (`@Image 1`) giữ nguyên 100% gương mặt/sản phẩm/UI; "
     "khi truyền `prior_video` + `extend_mode='extend_concat'`, hệ thống tự động nối dài video cũ thêm +15s mượt mà. "
-    "(5) Để tạo giọng đọc AI tiếng Việt/Anh (12 giọng vids.new UseCase 254: Puck, Aoede, Achernar, Charon, Kore, Fenrir, Orus, Zephyr, vi-vn-concierge-2, vi-vn-csagent-1, vi-vn-training-1, vi-vn-tutor-1) kèm chỉ dẫn phong cách (nhanh, chậm, trầm ấm, quyền lực, sôi động, vang điện ảnh), gọi omni_synthesize_1take_vo. "
-    "(6) Để sáng tác nhạc 48kHz Stereo bằng Lyria v3.5 trên Cookie vids.new (UseCase 242), gọi omni_generate_lyria_bgm: đặt `instrumental=true` cho nhạc nền không lời hoặc `instrumental=false` cho bài hát hoàn chỉnh có ca sĩ AI hát lời (Full Vocal Song). "
+    "(5) Để tạo giọng đọc AI tiếng Việt/Anh (12 giọng studio: Puck, Aoede, Achernar, Charon, Kore, Fenrir, Orus, Zephyr, vi-vn-concierge-2, vi-vn-csagent-1, vi-vn-training-1, vi-vn-tutor-1) kèm chỉ dẫn phong cách (nhanh, chậm, trầm ấm, quyền lực, sôi động, vang điện ảnh), gọi omni_synthesize_1take_vo. "
+    "(6) Để sáng tác nhạc 48kHz Stereo bằng Lyria v3.5, gọi omni_generate_lyria_bgm: đặt `instrumental=true` cho nhạc nền không lời hoặc `instrumental=false` cho bài hát hoàn chỉnh có ca sĩ AI hát lời (Full Vocal Song). "
     "(7) Để sản xuất trọn gói TVC đa cảnh 30s (2x15s) hoặc 60s (4x15s / 6x10s) tốc độ cao, gọi omni_produce_commercial (chạy song song 3 luồng Video + 1-Take VO + Lyria BGM + Mastering Clean Audio Bus, Spectral Carve, Sidechain 6:1). "
     "(8) Khi chạy tác vụ bất đồng bộ (wait=false), dùng omni_job_status để lấy preview_url (720p tức thì) và download_url (/outputs/<file>.mp4)."
 )
 
 ALL_12_VIDS_VOICES_DESC = (
-    "Voice ID (12 native `vids.new` Cookie voices via UseCase 254): "
+    "Voice ID (12 Google Vids Studio voices): "
     "`Puck` (Nam trẻ năng động/Founder), `Aoede` (Nữ ấm áp truyền cảm), `Achernar` (Nữ nhẹ nhàng tinh tế), "
     "`Charon` (Nam trầm quyền lực), `Kore` (Nữ trẻ trung hiện đại), `Fenrir` (Nam mạnh mẽ kịch tính), "
     "`Orus` (Nam điềm tĩnh chuyên gia), `Zephyr` (Nữ thanh lịch phóng khoáng), "
@@ -79,15 +79,15 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_session_status",
         "description": (
-            "Check the live health of the Gemini Omni 1.1 Flash (`vids.new`) session cookie (`__Secure-1PSIDTS`, `SAPISID`), "
-            "active `doc_id`, `authuser`, `tts_backend` (`vids_cookie_uc254`), and 24/7 headless `RotateCookies` keep-alive counter."
+            "Check the live health of the Gemini Omni 1.1 Flash Studio workspace session, "
+            "active `doc_id`, `authuser`, `tts_backend`, and 24/7 session keep-alive counter."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "rotate_now": {
                     "type": "boolean",
-                    "description": "If true, immediately triggers a headless HTTPS `RotateCookies` refresh before returning status.",
+                    "description": "If true, immediately triggers a session refresh before returning status.",
                 }
             },
         },
@@ -95,8 +95,8 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_session_update",
         "description": (
-            "Hot-update the Google Vids (`vids.new`) session credentials (`cookie` string, browser `curl` command, `doc_id`, `authuser`) "
-            "and/or `gemini_api_key` on the server without restarting."
+            "Hot-update the Google Vids Workspace session configuration (`doc_id`, `authuser`, `gemini_api_key`) "
+            "on the Studio server without restarting."
         ),
         "inputSchema": {
             "type": "object",
@@ -164,9 +164,14 @@ MCP_TOOLS_SCHEMA = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "input_mode": {
+                    "type": "string",
+                    "enum": ["reference", "text", "auto"],
+                    "description": "`reference`: Reference-to-Video (UseCase 376/375) using `image`/`images`. `text`: Pure Text-to-Video (UseCase 374) ignoring any reference image. `auto` (default): uses Reference-to-Video when `image` is provided, or Text-to-Video when `image` is empty.",
+                },
                 "prompt": {
                     "type": "string",
-                    "description": "English cinematic visual prompt. Include 'No spoken dialogue.' when using external Vietnamese TTS voiceover. Do not include raw hex codes (#RRGGBB).",
+                    "description": "English or Vietnamese cinematic visual prompt. Do not include raw hex codes (#RRGGBB).",
                 },
                 "duration": {
                     "type": "integer",
@@ -218,9 +223,9 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_generate_image",
         "description": (
-            "Generate high-resolution AI images (or transform a reference image) directly via the Google Vids (`vids.new`) session Cookie "
-            "(`appsgenaiserver-pa.clients6.google.com/v1/genai/generate`, UseCase `141` + 1080p Still Fallback). "
-            "No API key quota required! Generated images are saved in `/outputs` and can be passed directly into `omni_generate_scene`'s `image` parameter."
+            "Generate high-resolution AI images (or transform a reference image) via the Google Vids Studio Image API "
+            "(UseCase `141` + 1080p Still Engine). "
+            "Generated images are saved in `/outputs` and can be passed directly into `omni_generate_scene`'s `image` parameter."
         ),
         "inputSchema": {
             "type": "object",
@@ -261,9 +266,9 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_synthesize_1take_vo",
         "description": (
-            "Stage 2 Pipeline Tool: Synthesize expressive Vietnamese or English voiceover directly via Google Vids (`vids.new`) Cookie Voiceover RPC "
-            "(`UseCase 254` -> `/flix/generate_text_to_speech/v1`, zero API key needed!) or flagship `gemini-3.8-flash-tts` in **Single-Pass 1-Take** mode. "
-            "Supports all **12 distinct `vids.new` voices**, strips the 6,072-byte C2PA/SynthID trailer, normalizes to `-15.0 dBFS` unifiedGain, "
+            "Stage 2 Pipeline Tool: Synthesize expressive Vietnamese or English voiceover via the Google Vids Studio Voiceover Engine "
+            "(`UseCase 254` / `gemini-3.8-flash-tts`) in **Single-Pass 1-Take** mode. "
+            "Supports all **12 distinct studio voices**, strips the 6,072-byte C2PA/SynthID trailer, normalizes to `-15.0 dBFS` unifiedGain, "
             "and applies acoustic style mastering (`style`) for tempo, pitch warmth/brightness, EQ, and room reverb."
         ),
         "inputSchema": {
@@ -295,8 +300,7 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_generate_lyria_bgm",
         "description": (
-            "Stage 3 Pipeline Tool: Compose a custom 48kHz Stereo WAV soundtrack or Full Vocal Song directly via Google Vids (`vids.new`) Cookie Lyria v3.5 RPC "
-            "(`UseCase 242` -> `/flix/generate_music_full_song/v0`, zero API key needed!). "
+            "Stage 3 Pipeline Tool: Compose a custom 48kHz Stereo WAV soundtrack or Full Vocal Song via Google Lyria v3.5 Studio API (`UseCase 242`). "
             "Supports both **Instrumental BGM** (`instrumental=true`) and **Full Vocal Songs with AI singer & lyrics** (`instrumental=false`), "
             "with automatic Vietnamese-to-English musical genre/instrument translation."
         ),
@@ -341,11 +345,11 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_produce_commercial",
         "description": (
-            "Stage 4 Full Pipeline Orchestrator: Produce a complete 15s / 30s / 60s 1080p Full HD commercial end-to-end at `vids.new` parallel speed. "
+            "Stage 4 Full Pipeline Orchestrator: Produce a complete 15s / 30s / 60s 1080p Full HD commercial end-to-end at parallel studio speed. "
             "Combines in 3 concurrent threads: "
             "(1) Multi-scene `gemini-omni-1.1-flash` video generation with Scene 1 Anchor Chaining + `UseCase 376` Reference-to-Video (`@Image 1` + `Node[11]`), "
-            "(2) Single-Pass 1-Take emotional Vietnamese voiceover via `vids.new` Cookie TTS (`UseCase 254`, 12 voices, C2PA stripped, `-15.0 dBFS` unifiedGain), "
-            "(3) Custom 48kHz Stereo soundtrack via `vids.new` Cookie Lyria v3.5 (`UseCase 242`), and "
+            "(2) Single-Pass 1-Take emotional Vietnamese voiceover via Studio TTS (`UseCase 254`, 12 voices, C2PA stripped, `-15.0 dBFS` unifiedGain), "
+            "(3) Custom 48kHz Stereo soundtrack via Google Lyria v3.5 (`UseCase 242`), and "
             "(4) Broadcast mastering (Clean Audio Bus stripping raw video mumbling `[i:a]`, Spectral Carve at 1000Hz/1650Hz, Sidechain Auto-Ducking 6:1, and breath-synced `.ass` HUD subtitles)."
         ),
         "inputSchema": {
