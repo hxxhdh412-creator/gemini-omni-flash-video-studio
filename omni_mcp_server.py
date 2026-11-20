@@ -112,6 +112,10 @@ MCP_TOOLS_SCHEMA = [
                     "type": "integer",
                     "description": "Clip duration in seconds (`3` to `15`, supports `15`s native Omni 1.1 Flash generation or `10`s). Default: `15`.",
                 },
+                "aspect_ratio": {
+                    "type": "string",
+                    "description": "Aspect ratio: `16:9` (Landscape) or `9:16` (Portrait). Default: `16:9`.",
+                },
                 "image": {
                     "type": "string",
                     "description": "Optional path (e.g. `assets_1080p/asset_01_kenh_ket_noi_1080p.png`) or base64 data URI of the reference image to inject into `StructuredContentNode[11]` (`StructuredImage`).",
@@ -127,7 +131,7 @@ MCP_TOOLS_SCHEMA = [
                 },
                 "upscale_1080p": {
                     "type": "boolean",
-                    "description": "Upscale raw 720p output to 1920x1080 Full HD with Lanczos + CAS 0.45 (default: true).",
+                    "description": "If false, returns the native 720p clip immediately at `vids.new` speed (~22s). If true, masters to 1920x1080 Full HD (`veryfast`). Default: false for instant speed.",
                 },
                 "wait": {
                     "type": "boolean",
@@ -264,6 +268,22 @@ MCP_TOOLS_SCHEMA = [
                 "scene_duration": {
                     "type": "integer",
                     "description": "Duration per scene in seconds (`15` for 15s native clips: 2 scenes = 30s, 4 scenes = 60s; or `10` for 10s clips: 3 scenes = 30s, 6 scenes = 60s). Default: `15`.",
+                },
+                "aspect_ratio": {
+                    "type": "string",
+                    "description": "Aspect ratio: `16:9` or `9:16`. Default: `16:9`.",
+                },
+                "parallel_scenes": {
+                    "type": "boolean",
+                    "description": "If true (default), generates Scene 2..N in parallel threads alongside 1-Take TTS and Lyria BGM, cutting total render time by ~55%.",
+                },
+                "chain_anchor": {
+                    "type": "boolean",
+                    "description": "If true (default), chains Scene 2..N from Scene 1's Anchor Node (`s1_node.json`). If false, generates all scenes concurrently.",
+                },
+                "burn_subtitles": {
+                    "type": "boolean",
+                    "description": "If true (default), burns breath-synced ASS HUD subtitles. If false, outputs clean video without text overlay.",
                 },
                 "voice": {
                     "type": "string",

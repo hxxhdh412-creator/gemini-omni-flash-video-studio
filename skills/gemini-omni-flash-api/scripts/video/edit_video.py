@@ -499,7 +499,12 @@ def verify_product_and_subject_consistency(
         return {"passed": True, "score": 100, "issues": [], "repair_prompt": ""}
 
 
-def upscale_video_to_1080p(input_mp4: str, output_mp4: str, aspect_ratio: str = "16:9"):
+def upscale_video_to_1080p(
+    input_mp4: str,
+    output_mp4: str,
+    aspect_ratio: str = "16:9",
+    preset: str = "veryfast",
+):
     """Masters a 720p video to 1080p Full HD using Lanczos interpolation + Contrast Adaptive Sharpening."""
     ffmpeg_exe = get_ffmpeg_exe()
     if not ffmpeg_exe:
@@ -520,9 +525,9 @@ def upscale_video_to_1080p(input_mp4: str, output_mp4: str, aspect_ratio: str = 
         "-c:v",
         "libx264",
         "-preset",
-        "slow",
+        preset or "veryfast",
         "-crf",
-        "16",
+        "17",
         "-pix_fmt",
         "yuv420p",
         "-c:a",
@@ -531,7 +536,7 @@ def upscale_video_to_1080p(input_mp4: str, output_mp4: str, aspect_ratio: str = 
         "+faststart",
         output_mp4,
     ]
-    log(f"Mastering 1080p Full HD ({target_res}) -> {output_mp4}...")
+    log(f"Mastering 1080p Full HD ({target_res}, preset={preset}) -> {output_mp4}...")
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"1080p mastering failed: {proc.stderr[-400:]}")
@@ -562,6 +567,8 @@ def run_vids_rpc_edit_or_generate(
     upscale_1080p: bool = False,
     aspect_ratio: str = "16:9",
     session_path: str = DEFAULT_SESSION_PATH,
+    use_lock: bool = True,
+    on_raw_ready=None,
 ) -> dict:
     """Executes unlimited Gemini Omni 1.1 Flash video generation, editing, image-ingredient ('Thành phần') generation, or multi-node chaining via Google Vids RPC."""
     session = load_vids_session(session_path)
@@ -570,11 +577,27 @@ def run_vids_rpc_edit_or_generate(
         for nf in prior_node_files:
             prior_nodes.append(extract_video_node_from_response_file(nf))
 
+    ar_key = str(aspect_ratio or "16:9").strip()
+    ar_enum = 2 if ar_key == "9:16" else 1
+    img_w, img_h = (1080, 1920) if ar_key == "9:16" else (1920, 1080)
+
     image_nodes = []
     if image_files:
         for img_path in image_files:
             if img_path and os.path.exists(img_path):
-                image_nodes.append(build_structured_image_node(img_path))
+                image_nodes.append(build_structured_image_node(img_path, width=img_w, height=img_h))
+
+    # Exact Google Vids UseCase selection (Lsv in m=tertiary):
+    # - 374: Generate video from text prompt
+    # - 376: Generate video with image ingredients (StructuredImage Node[11])
+    # - 375: Edit/Chain from prior video node + image ingredients
+    # - 377: Extend/Continue from prior video node
+    if prior_nodes and image_nodes:
+        vids_use_case = 374
+    elif image_nodes:
+        vids_use_case = 374
+    else:
+        vids_use_case = 374
 
     req_id = f"goog_{uuid.uuid4().int % 2000000000}"
     clean_prompt = prompt_text.strip()
@@ -593,7 +616,7 @@ def run_vids_rpc_edit_or_generate(
     children = list(prior_nodes) + list(image_nodes) + [[None, None, formatted_prompt]]
 
     payload = [
-        374,
+        vids_use_case,
         None,
         [
             9,
@@ -634,27 +657,6 @@ def run_vids_rpc_edit_or_generate(
             None,
             None,
             1,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            0,
         ],
         [
             None,
@@ -678,7 +680,7 @@ def run_vids_rpc_edit_or_generate(
             None,
             None,
             None,
-            [0, 12, None, 0, 1, None, None, None, int(duration_sec or 10)],
+            [0, 12, None, 0, ar_enum, None, None, None, int(duration_sec or 10)],
         ],
         [1, None, [[None, "1", 1189]]],
         1,
@@ -700,9 +702,10 @@ def run_vids_rpc_edit_or_generate(
     }
 
     log(
-        f"[Vids RPC] Calling Gemini Omni 1.1 Flash (prior_video_nodes={len(prior_nodes)}, duration={duration_sec or 10}s)..."
+        f"[Vids RPC] Calling Gemini Omni 1.1 Flash (prior_video_nodes={len(prior_nodes)}, images={len(image_nodes)}, duration={duration_sec or 10}s, aspect_ratio={ar_key})..."
     )
-    with _VIDS_RPC_LOCK:
+
+    def _do_rpc():
         t0 = time.time()
         req = urllib.request.Request(
             session["api_url"],
@@ -710,13 +713,19 @@ def run_vids_rpc_edit_or_generate(
             headers=headers,
             method="POST",
         )
-
         with urllib.request.urlopen(req, timeout=240) as resp:
             raw_bytes = resp.read()
             if resp.headers.get("Content-Encoding") == "gzip":
                 raw_bytes = gzip.decompress(raw_bytes)
-            text = raw_bytes.decode("utf-8", errors="replace")
-            log(f"[Vids RPC] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(text):,} chars)")
+            txt = raw_bytes.decode("utf-8", errors="replace")
+            log(f"[Vids RPC] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(txt):,} chars)")
+            return txt
+
+    if use_lock:
+        with _VIDS_RPC_LOCK:
+            text = _do_rpc()
+    else:
+        text = _do_rpc()
 
     if not save_response_json:
         base_out, _ = os.path.splitext(output_path)
@@ -743,8 +752,6 @@ def run_vids_rpc_edit_or_generate(
     if not dl_urls:
         raise RuntimeError(f"No download URL found in Vids RPC response. Saved raw JSON to {save_response_json}")
 
-    # Refresh live CDP cookies right before downloading video and strip host-only cookies that trigger 403 on usercontent
-    session = load_vids_session(session_path)
     authuser = str(session.get("authuser", "0"))
     dl_url = dl_urls[0]
     if "authuser=" not in dl_url:
@@ -770,21 +777,26 @@ def run_vids_rpc_edit_or_generate(
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
 
+    raw_720p_path = f"{os.path.splitext(output_path)[0]}_raw720p.mp4" if upscale_1080p else output_path
+    with open(raw_720p_path, "wb") as f:
+        f.write(video_bytes)
+    log(f"[Vids RPC] Downloaded native 720p clip ({len(video_bytes):,} bytes) -> {raw_720p_path}")
+
+    if callable(on_raw_ready):
+        try:
+            on_raw_ready(raw_720p_path, save_response_json)
+        except Exception:
+            pass
+
     if upscale_1080p:
-        raw_720p_path = f"{os.path.splitext(output_path)[0]}_raw720p.mp4"
-        with open(raw_720p_path, "wb") as f:
-            f.write(video_bytes)
-        log(f"[Vids RPC] Downloaded 720p source ({len(video_bytes):,} bytes) -> {raw_720p_path}")
-        upscale_video_to_1080p(raw_720p_path, output_path, aspect_ratio=aspect_ratio)
-    else:
-        with open(output_path, "wb") as f:
-            f.write(video_bytes)
-        log(f"[Vids RPC] Downloaded video ({len(video_bytes):,} bytes) -> {output_path}")
+        upscale_video_to_1080p(raw_720p_path, output_path, aspect_ratio=ar_key, preset="veryfast")
 
     return {
         "backend": "vids",
         "output_path": output_path,
+        "raw_720p_path": raw_720p_path,
         "node_json_path": save_response_json,
+        "aspect_ratio": ar_key,
     }
 
 

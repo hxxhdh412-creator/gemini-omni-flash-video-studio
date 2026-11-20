@@ -324,6 +324,9 @@ def build_1take_master(
     tag_label: str,
     scene_duration: int = 10,
     voice: str = "Puck",
+    aspect_ratio: str = "16:9",
+    burn_subtitles: bool = True,
+    precomputed_pcm_tuple: tuple = None,
 ):
     os.makedirs(work_dir, exist_ok=True)
     n_scenes = len(scenes)
@@ -334,7 +337,11 @@ def build_1take_master(
     full_1take_text = "\n\n".join(sc["vo"] for sc in scenes)
     cache_1take_pcm = os.path.join(work_dir, f"vo_1take_38flash_{n_scenes}scenes_{scene_duration}s_{voice}.pcm")
 
-    if os.path.exists(cache_1take_pcm) and os.path.getsize(cache_1take_pcm) > 20_000:
+    if precomputed_pcm_tuple and precomputed_pcm_tuple[0]:
+        pcm_1take, sample_rate = precomputed_pcm_tuple
+        with open(cache_1take_pcm, "wb") as f:
+            f.write(pcm_1take)
+    elif os.path.exists(cache_1take_pcm) and os.path.getsize(cache_1take_pcm) > 20_000:
         log(f"[{tag_label}] Reusing cached 1-Take flagship gemini-3.8-flash-tts PCM: {cache_1take_pcm}")
         with open(cache_1take_pcm, "rb") as f:
             pcm_1take = f.read()
@@ -488,11 +495,13 @@ def build_1take_master(
         vo_mix_in.append(f"[vod{i}]")
 
     ass_escaped = ass_path.replace("\\", "/").replace(":", "\\:")
+    scale_res = "1080:1920" if str(aspect_ratio).strip() == "9:16" else "1920:1080"
+    ass_filter = f",ass='{ass_escaped}'" if burn_subtitles else ""
     filter_complex = (
         "".join(v_build)
         + f"{v_concat_in}concat=n={n_scenes}:v=1:a=0,"
-        + "scale=1920:1080:flags=lanczos,"
-        + f"cas=0.45,eq=contrast=1.02:saturation=1.04,setsar=1,ass='{ass_escaped}'[vfinal];"
+        + f"scale={scale_res}:flags=lanczos,"
+        + f"cas=0.45,eq=contrast=1.02:saturation=1.04,setsar=1{ass_filter}[vfinal];"
         + "".join(vo_delays)
         + f"{''.join(vo_mix_in)}amix=inputs={n_scenes}:duration=longest:normalize=0,"
         + f"apad=whole_dur={total_dur},atrim=0:{total_dur},asplit=2[vo_sc][vo_main];"

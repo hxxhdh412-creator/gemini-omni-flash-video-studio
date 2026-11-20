@@ -75,6 +75,28 @@
     .seg-btn:hover { background: #e5e8ee; color: var(--text-primary); }
     .seg-btn.active { color: var(--apple-blue); background: white; border-color: #e2e6ed; box-shadow: 0 2px 5px #24293608; font-weight: 650; }
     .status-bar { display: flex; justify-self: end; align-items: center; gap: 5px; white-space: nowrap; }
+    .header-tools { display: flex; align-items: center; justify-self: end; gap: 7px; }
+    .jobs-button { white-space: nowrap; }
+    .jobs-button[data-active=true] { background: #e9f2ff; color: var(--apple-blue); border-color: #bdd7fa; }
+    .jobs-count { font-variant-numeric: tabular-nums; }
+    .jobs-popover { inset: 60px var(--workspace-gutter) auto auto; margin: 0; padding: 14px; width: min(430px,calc(100% - 2 * var(--workspace-gutter))); max-height: calc(100dvh - 76px); border: 1px solid #dce2ed; border-radius: 14px; box-shadow: 0 14px 50px #15254326; color: var(--text-primary); }
+    .jobs-list { display: grid; grid-template-columns: minmax(0,1fr); gap: 7px; margin-top: 10px; }
+    .job-card { min-width: 0; padding: 9px; border: 1px solid var(--border-hairline); background: var(--bg-input); border-radius: 8px; }
+    .job-card-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 5px; }
+    .job-card p { margin: 5px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .job-card a { font-size: .8125rem; }
+    .result-activity { margin: 0 0 9px; padding: 9px 11px; border: 1px solid #d5e5fb; border-radius: 8px; background: #f2f7ff; color: #215388; }
+    .result-activity[data-state=done] { border-color: #d2e9d8; background: #f0f8f2; color: #24643d; }
+    .result-activity[data-state=failed], .result-activity[data-state=reconnecting] { border-color: #edddbd; background: #fff8ec; color: #815317; }
+    .result-activity-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 3px 10px; font-size: .8125rem; }
+    .result-activity-time { font-size: .75rem; font-variant-numeric: tabular-nums; }
+    .result-activity-detail { margin: 4px 0 0; overflow-wrap: anywhere; font-size: .75rem; }
+    .result-activity-track { height: 4px; margin-top: 8px; overflow: hidden; border-radius: 8px; background: #d6e6fb; }
+    .result-activity-track::before { content: ''; display: block; width: 36%; height: 100%; border-radius: inherit; background: #0071e3; animation: result-sweep 1.45s ease-in-out infinite alternate; }
+    .result-activity[data-state=reconnecting] .result-activity-track { background: #efe2cc; }
+    .result-activity[data-state=reconnecting] .result-activity-track::before { background: #b98a40; animation-play-state: paused; }
+    .result-activity[data-state=done] .result-activity-track, .result-activity[data-state=failed] .result-activity-track { display: none; }
+    @keyframes result-sweep { from { transform: translateX(0); } to { transform: translateX(177%); } }
     .status-short { display: none; }
     .chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 9px; border-radius: 7px; color: var(--text-secondary); background: #eef0f3; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
     .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: #9297a2; }
@@ -262,7 +284,7 @@
       .scene-upload { flex-wrap: wrap; }
       .scene-upload input[type=file] { max-width: none; }
     }
-    @media (max-width: 1390px) {
+    @media (max-width: 1660px) {
       .topbar { grid-template-columns: auto minmax(0, 1fr) auto; }
       .segmented-nav { justify-self: center; max-width: 100%; overflow-x: auto; padding: 3px; }
       .seg-btn { gap: 5px; padding-inline: 7px; font-size: .8125rem; }
@@ -281,6 +303,9 @@
       .seg-btn svg { width: 14px; height: 14px; }
       .page-heading { padding: 11px 0; }
       input, select, textarea { font-size: 1rem; }
+    }
+    @media (max-width: 480px) {
+      .header-tools .status-bar { display: none; }
     }
     @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
   </style>
@@ -368,10 +393,18 @@
       </button>
     </nav>
 
-    <div class="status-bar" id="topStatusPills" aria-live="polite">
-      <span class="chip"><span class="dot"></span><span class="status-full">Đang kết nối...</span><span class="status-short" aria-hidden="true">…</span></span>
+    <div class="header-tools">
+      <div class="status-bar" id="topStatusPills">
+        <span class="chip"><span class="dot"></span><span class="status-full">Đang kết nối...</span><span class="status-short" aria-hidden="true">…</span></span>
+      </div>
+      <button id="jobsButton" class="btn btn-ghost btn-xs jobs-button" popovertarget="jobsPopover" onclick="refreshJobActivity()">Tiến trình <span class="jobs-count" id="jobsCount" aria-live="polite">–</span></button>
     </div>
   </header>
+  <section id="jobsPopover" class="jobs-popover" popover aria-label="Tiến trình Studio">
+    <div class="panel-header"><h2 class="panel-title">Tiến trình Studio</h2><button class="btn btn-ghost btn-xs" onclick="refreshJobActivity()">Kiểm tra lại</button></div>
+    <p id="jobsSync" class="media-hint" role="status">Đang kiểm tra máy chủ…</p>
+    <div id="jobsList" class="jobs-list"></div>
+  </section>
 
   <main class="workspace">
     <div class="page-heading">
@@ -535,7 +568,7 @@
           <label>Nối với cảnh trước (tùy chọn)</label>
           <input id="scPriorNode" placeholder="Ví dụ: omni_scene_s1_node.json (để trống nếu là Cảnh 1)" />
 
-          <button class="btn" onclick="submitQuickScene()">
+          <button class="btn" onclick="submitQuickScene(this)">
             <svg class="sf-icon"><use href="#sf-play"/></svg> Tạo cảnh video
           </button>
         </div>
@@ -1177,6 +1210,39 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
       }
     }
 
+    const resultActivities = new Map();
+
+    function updateResultClocks() {
+      for (const activity of resultActivities.values()) {
+        if (activity.finished) continue;
+        const seconds = Math.floor((performance.now() - activity.started) / 1000);
+        activity.clock.textContent = 'Thời gian · ' + Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+      }
+    }
+
+    function showResultActivity(targetId, state, title, detail = '') {
+      let activity = resultActivities.get(targetId);
+      if (!activity) {
+        const panel = document.createElement('div');
+        panel.className = 'result-activity';
+        panel.innerHTML = '<div class="result-activity-heading"><strong role="status"></strong><span class="result-activity-time" aria-label="Thời gian đã chờ"></span></div><p class="result-activity-detail"></p><div class="result-activity-track" aria-hidden="true"></div>';
+        document.getElementById(targetId).before(panel);
+        activity = { panel, clock: panel.querySelector('.result-activity-time'), started: performance.now(), finished: false };
+        resultActivities.set(targetId, activity);
+      } else if (activity.finished) {
+        activity.started = performance.now();
+        activity.finished = false;
+      }
+      activity.panel.dataset.state = state;
+      const status = activity.panel.querySelector('strong');
+      if (status.textContent !== title) status.textContent = title;
+      const note = activity.panel.querySelector('p');
+      if (note.textContent !== detail) note.textContent = detail;
+      note.hidden = !detail;
+      updateResultClocks();
+      activity.finished = state === 'done' || state === 'failed';
+    }
+
     async function submitCommercialJob() {
       if (commercialJobPending || !storyboardScenes.length) return;
       commercialJobPending = true;
@@ -1185,6 +1251,7 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
       button.setAttribute('aria-busy', 'true');
       const originalLabel = button.innerHTML;
       button.textContent = 'Đang gửi yêu cầu...';
+      showResultActivity('tvcVideoStage', 'working', 'Đang gửi yêu cầu', 'Đang gửi storyboard đến máy chủ.');
       document.getElementById('tvcProgressDetails').open = true;
       document.getElementById('tvcDownloadBar').style.display = 'none';
       const payload = {
@@ -1215,11 +1282,73 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
         const badge = document.getElementById('tvcJobBadge');
         badge.className = 'chip warn';
         badge.textContent = 'Chưa thể tạo phim';
+        showResultActivity('tvcVideoStage', 'failed', 'Gửi yêu cầu thất bại', error.message);
         restoreButton();
       }
     }
 
-    async function submitQuickScene() {
+    const localTasks = new Map();
+    let serverJobs = [];
+    let jobsFetchPending = false;
+    let lastJobsMarkup = '';
+
+    function setLocalTask(key, label) {
+      if (label) localTasks.set(key, label);
+      else localTasks.delete(key);
+      renderJobActivity();
+    }
+
+    function renderJobActivity() {
+      const active = serverJobs.filter(job => ['queued', 'running'].includes(job.status));
+      const finished = serverJobs.filter(job => !active.includes(job)).slice(0, 8);
+      const count = active.length + localTasks.size;
+      const counter = document.getElementById('jobsCount');
+      if (counter.textContent !== String(count)) counter.textContent = count;
+      document.getElementById('jobsButton').dataset.active = String(count > 0);
+      const list = document.getElementById('jobsList');
+      const labels = { queued: 'Đang chờ', running: 'Đang chạy', completed: 'Hoàn tất', failed: 'Gặp lỗi' };
+      const markup = [...localTasks.values()].map(label => `
+        <article class="job-card"><div class="job-card-heading"><strong>${escapeHtml(label)}</strong><span class="chip warn">Chờ phản hồi</span></div>
+        <p class="media-hint">Yêu cầu vẫn đang chờ máy chủ phản hồi.</p></article>`).join('') + [...active, ...finished].map(job => {
+        const type = job.type === 'produce-commercial' ? 'TVC đa cảnh' : job.type === 'generate-scene' ? 'Cảnh nhanh' : job.type || 'Tác vụ';
+        const state = labels[job.status] || job.status;
+        const css = job.status === 'completed' ? 'ok' : ['running', 'failed'].includes(job.status) ? 'warn' : '';
+        const lastLog = (job.logs || []).at(-1);
+        const detail = job.status === 'failed' ? job.error || lastLog : lastLog;
+        const download = job.status === 'completed' && job.output_file
+          ? `<a class="apple-link" href="/outputs/${escapeHtml(encodeURIComponent(job.output_file))}" download>Tải video</a>` : '';
+        return `<article class="job-card">
+          <div class="job-card-heading"><strong>${escapeHtml(type)}</strong><span class="chip ${css}">${escapeHtml(state)}</span></div>
+          <p class="media-hint">#${escapeHtml(job.job_id)} · ${escapeHtml(job.created_at || '')}</p>
+          <p class="media-hint">${escapeHtml(String(detail || 'Chưa có nhật ký mới.').slice(0, 400))}</p>${download}
+        </article>`;
+      }).join('') || '<p class="media-hint">Chưa có tác vụ nào trong phiên máy chủ này.</p>';
+      if (markup !== lastJobsMarkup) {
+        list.innerHTML = markup;
+        lastJobsMarkup = markup;
+      }
+    }
+
+    async function refreshJobActivity() {
+      if (jobsFetchPending) return;
+      jobsFetchPending = true;
+      const sync = document.getElementById('jobsSync');
+      try {
+        const response = await fetch('/api/jobs', { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        if (!Array.isArray(data.jobs)) throw new Error();
+        serverJobs = data.jobs.slice().reverse();
+        renderJobActivity();
+        sync.textContent = 'Cập nhật lúc ' + new Date().toLocaleTimeString('vi-VN') + ' · Tự kiểm tra mỗi 5 giây';
+      } catch {
+        sync.textContent = 'Mất kết nối với máy chủ. Trạng thái hiện tại chưa được xác nhận.';
+      } finally {
+        jobsFetchPending = false;
+      }
+    }
+
+    async function submitQuickScene(button) {
       const priors = document.getElementById('scPriorNode').value.trim();
       const payload = {
         prompt: document.getElementById('scPrompt').value.trim(),
@@ -1229,13 +1358,29 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
         output_filename: document.getElementById('scOutName').value.trim(),
         upscale_1080p: true
       };
-      const r = await fetch('/api/generate-scene', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-      });
-      const d = await r.json();
-      monitorJob(d.job_id, 'scConsole', 'scJobBadge', 'scVideoStage', null, null, loadQuickVideos);
+      button.disabled = true;
+      const badge = document.getElementById('scJobBadge');
+      badge.className = 'chip warn';
+      badge.textContent = 'Đang gửi';
+      showResultActivity('scVideoStage', 'working', 'Đang gửi yêu cầu', 'Đang gửi mô tả cảnh đến máy chủ.');
+      try {
+        const r = await fetch('/api/generate-scene', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const d = await r.json();
+        if (!r.ok || !d.job_id) throw new Error(d.error || 'Không gửi được yêu cầu tạo cảnh.');
+        monitorJob(d.job_id, 'scConsole', 'scJobBadge', 'scVideoStage', null, null, () => {
+          button.disabled = false;
+          loadQuickVideos();
+        });
+      } catch (error) {
+        badge.textContent = 'Gửi yêu cầu thất bại';
+        showResultActivity('scVideoStage', 'failed', 'Gửi yêu cầu thất bại', error.message);
+        document.getElementById('scConsole').textContent = error.message;
+        button.disabled = false;
+      }
     }
 
     function monitorJob(jobId, consoleId, badgeId, stageId, dlBarId, dlLinkId, onFinished) {
@@ -1243,9 +1388,24 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
       const badge = document.getElementById(badgeId);
       badge.className = 'chip warn';
       badge.innerHTML = '<span class="dot"></span> Đang xử lý #' + jobId;
+      showResultActivity(stageId, 'working', 'Đã nhận yêu cầu', 'Đang lấy trạng thái tác vụ #' + jobId + '.');
+      refreshJobActivity();
+      let checking = false;
       const timer = setInterval(async () => {
+        if (checking) return;
+        checking = true;
         try {
-        const r = await fetch('/api/jobs/' + jobId);
+        const r = await fetch('/api/jobs/' + jobId, { signal: AbortSignal.timeout(8000) });
+        if (r.status === 404) {
+          clearInterval(timer);
+          badge.className = 'chip warn';
+          badge.textContent = 'Không tìm thấy tác vụ';
+          con.textContent = 'Máy chủ không còn trả về tác vụ #' + jobId + '.';
+          showResultActivity(stageId, 'failed', 'Không tìm thấy tác vụ', 'Máy chủ không còn trả về tác vụ #' + jobId + '.');
+          if (onFinished) onFinished();
+          refreshJobActivity();
+          return;
+        }
         if (!r.ok) throw new Error('Không thể lấy tiến trình. Vui lòng kiểm tra kết nối studio.');
         const d = await r.json();
         con.textContent = (d.logs || []).join('\n') + (d.error ? '\nERROR: ' + d.error : '');
@@ -1254,6 +1414,7 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
           clearInterval(timer);
           badge.className = 'chip ok';
           badge.innerHTML = '<span class="dot"></span> Hoàn tất';
+          showResultActivity(stageId, 'done', 'Video đã sẵn sàng');
           const stage = document.getElementById(stageId);
           stage.innerHTML = `<video src="${d.download_url}?t=${Date.now()}" controls autoplay></video>`;
           if (dlBarId && dlLinkId) {
@@ -1261,18 +1422,29 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
             document.getElementById(dlLinkId).href = d.download_url;
           }
           if (onFinished) onFinished();
+          refreshJobActivity();
         } else if (d.status === 'failed') {
           clearInterval(timer);
           badge.className = 'chip warn';
           badge.innerHTML = '<span class="dot"></span> Lỗi tiến trình';
+          showResultActivity(stageId, 'failed', 'Tác vụ gặp lỗi', (d.error || '').slice(0, 220));
           if (onFinished) onFinished();
+          refreshJobActivity();
+        } else {
+          badge.className = 'chip warn';
+          badge.textContent = (d.status === 'queued' ? 'Đang chờ' : 'Đang chạy') + ' · #' + jobId;
+          const lastLog = String((d.logs || []).at(-1) || '').slice(0, 220);
+          showResultActivity(stageId, 'working', d.status === 'queued' ? 'Đang chờ xử lý' : 'Máy chủ đang xử lý', lastLog || 'Chưa có bước mới từ máy chủ.');
         }
         } catch (error) {
           con.textContent = error.message;
           badge.className = 'chip warn';
           badge.textContent = 'Mất kết nối tiến trình';
+          showResultActivity(stageId, 'reconnecting', 'Đang kết nối lại', 'Chưa xác nhận được trạng thái tác vụ.');
           // A connection failure does not mean the server-side job stopped.
           // Keep the active job locked and continue polling to avoid duplicates.
+        } finally {
+          checking = false;
         }
       }, 2200);
     }
@@ -1373,10 +1545,13 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
       const result = document.getElementById(resultId);
       if (!input) {
         result.textContent = emptyMessage;
+        showResultActivity(resultId, 'failed', 'Thiếu nội dung');
         return;
       }
       button.disabled = true;
-      result.textContent = pendingMessage;
+      result.replaceChildren();
+      showResultActivity(resultId, 'working', pendingMessage, 'Đang chờ máy chủ trả về bản WAV.');
+      setLocalTask(resultId, resultId === 'voAudioResult' ? 'Tạo giọng đọc' : 'Sáng tác nhạc nền');
       try {
         const response = await fetch(endpoint, {
           method: 'POST',
@@ -1387,10 +1562,12 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
         if (!response.ok || !data.download_url) throw new Error(data.error || 'Không tạo được âm thanh. Vui lòng thử lại.');
         const label = data.duration_sec ? 'Tải WAV · ' + data.duration_sec + ' giây' : 'Tải WAV';
         showAudioPlayer(result, data.download_url, label, payload.output_filename, true);
+        showResultActivity(resultId, 'done', 'Bản WAV đã sẵn sàng');
         loadSavedAudio();
       } catch (error) {
-        result.textContent = error.message;
+        showResultActivity(resultId, 'failed', 'Không tạo được âm thanh', error.message);
       } finally {
+        setLocalTask(resultId);
         button.disabled = false;
       }
     }
@@ -1506,6 +1683,8 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
       badge.className = 'chip warn';
       badge.innerHTML = '<span class="dot"></span> Đang xử lý';
       con.textContent = 'Đang gửi yêu cầu tạo ảnh qua Cookie lên Google Vids RPC (UC 141)...';
+      showResultActivity('imgPreviewStage', 'working', 'Đang tạo ảnh', 'Đang chờ Google Vids trả ảnh.');
+      setLocalTask('image', 'Tạo ảnh');
       try {
         const payload = {
           prompt: document.getElementById('imgPromptInput').value.trim(),
@@ -1524,6 +1703,7 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
         lastGeneratedCookieImagePath = d.relative_path || '';
         badge.className = 'chip ok';
         badge.innerHTML = '<span class="dot"></span> Hoàn tất';
+        showResultActivity('imgPreviewStage', 'done', 'Ảnh đã sẵn sàng');
         stage.innerHTML = `<img src="${d.download_url}?t=${Date.now()}" alt="Generated AI Image" style="width:100%; height:100%; object-fit:contain; position:relative; z-index:2;" />`;
         actionRow.style.display = 'flex';
         document.getElementById('imgDownloadLink').href = d.download_url;
@@ -1531,8 +1711,10 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
       } catch (err) {
         badge.className = 'chip warn';
         badge.innerHTML = '<span class="dot"></span> Lỗi tạo ảnh';
+        showResultActivity('imgPreviewStage', 'failed', 'Không tạo được ảnh', err.message);
         con.textContent = 'Lỗi: ' + err.message;
       } finally {
+        setLocalTask('image');
         btn.disabled = false;
         btn.innerHTML = origHtml;
       }
@@ -1675,6 +1857,7 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
         status.className = 'chip warn';
         status.textContent = 'JSON chưa hợp lệ';
         outBox.textContent = e.message;
+        showResultActivity('mcpCallResult', 'failed', 'Tham số JSON chưa hợp lệ');
         return;
       }
       const rpcReq = {
@@ -1687,6 +1870,8 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
       status.className = 'chip';
       status.textContent = 'Đang chạy';
       outBox.textContent = name;
+      showResultActivity('mcpCallResult', 'working', 'Đang chạy công cụ', name);
+      setLocalTask('mcp', 'MCP · ' + name);
       try {
         const response = await fetch('/mcp', {
           method: 'POST',
@@ -1698,12 +1883,16 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
         status.className = 'chip ' + (failed ? 'warn' : 'ok');
         status.textContent = failed ? 'Có lỗi' : 'Hoàn tất';
         outBox.textContent = JSON.stringify(data, null, 2);
+        showResultActivity('mcpCallResult', failed ? 'failed' : 'done', failed ? 'Công cụ gặp lỗi' : 'Đã nhận kết quả', name);
         refreshStatus();
       } catch (error) {
         status.className = 'chip warn';
         status.textContent = 'Có lỗi';
         outBox.textContent = error.message;
+        showResultActivity('mcpCallResult', 'failed', 'Không nhận được kết quả', error.message);
       } finally {
+        setLocalTask('mcp');
+        refreshJobActivity();
         button.disabled = false;
       }
     }
@@ -1712,7 +1901,10 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
     document.querySelector('.seg-btn.active').setAttribute('aria-current', 'page');
     loadPresetStoryboard(4, 15);
     refreshStatus();
+    refreshJobActivity();
     setInterval(refreshStatus, 15000);
+    setInterval(refreshJobActivity, 5000);
+    setInterval(updateResultClocks, 1000);
   </script>
 </body>
 </html>
