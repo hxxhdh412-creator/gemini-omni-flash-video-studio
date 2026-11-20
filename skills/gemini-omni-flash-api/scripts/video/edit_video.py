@@ -120,21 +120,62 @@ def refresh_session_from_cdp(
 
         detected_doc_id = None
         detected_authuser = None
+        detected_server_token = None
+        vids_tab_ws = None
         try:
             tabs_raw = urllib.request.urlopen(f"http://127.0.0.1:{cdp_port}/json/list", timeout=2).read().decode("utf-8")
             tabs = json.loads(tabs_raw)
             for t in tabs:
+                if t.get("type") != "page":
+                    continue
                 t_url = t.get("url", "")
+                t_title = t.get("title", "")
+                if "Không tìm thấy trang" in t_title or "Page not found" in t_title:
+                    continue
                 m_doc = re.search(r"docs\.google\.com/videos/(?:u/(\d+)/)?d/([a-zA-Z0-9_-]{25,60})", t_url)
                 if m_doc:
                     if m_doc.group(1) is not None:
                         detected_authuser = m_doc.group(1)
                     detected_doc_id = m_doc.group(2)
+                    vids_tab_ws = t.get("webSocketDebuggerUrl")
                     break
         except Exception:
             pass
 
         async def _fetch():
+            nonlocal detected_doc_id, detected_authuser, detected_server_token
+            if vids_tab_ws:
+                try:
+                    async with websockets.connect(vids_tab_ws, max_size=50_000_000) as tab_ws:
+                        expr = """(() => {
+                            const d = window._docs_flag_initialData || {};
+                            return JSON.stringify({
+                                est: d['docs-est'] || null,
+                                au: d['gaia_session_id'] != null ? String(d['gaia_session_id']) : null,
+                                ci: d['docs-ci'] || null
+                            });
+                        })()"""
+                        await tab_ws.send(
+                            json.dumps(
+                                {
+                                    "id": 99,
+                                    "method": "Runtime.evaluate",
+                                    "params": {"expression": expr, "returnByValue": True},
+                                }
+                            )
+                        )
+                        tab_resp = json.loads(await asyncio.wait_for(tab_ws.recv(), timeout=2.5))
+                        val_str = tab_resp.get("result", {}).get("result", {}).get("value")
+                        if val_str:
+                            init_info = json.loads(val_str)
+                            if init_info.get("est"):
+                                detected_server_token = init_info["est"]
+                            if init_info.get("au") is not None:
+                                detected_authuser = str(init_info["au"])
+                            if init_info.get("ci"):
+                                detected_doc_id = init_info["ci"]
+                except Exception:
+                    pass
             ver_url = f"http://127.0.0.1:{cdp_port}/json/version"
             ver = json.loads(urllib.request.urlopen(ver_url, timeout=2).read().decode("utf-8"))
             ws_url = ver["webSocketDebuggerUrl"]
@@ -183,9 +224,9 @@ def refresh_session_from_cdp(
             "api_url": existing.get("api_url", DEFAULT_API_URL),
             "origin": existing.get("origin", DEFAULT_ORIGIN),
             "doc_id": detected_doc_id or existing.get("doc_id", DEFAULT_DOC_ID),
-            "authuser": detected_authuser or existing.get("authuser", "0"),
+            "authuser": detected_authuser if detected_authuser is not None else existing.get("authuser", "0"),
             "sapisid": sapisid,
-            "server_token": existing.get("server_token", DEFAULT_SERVER_TOKEN),
+            "server_token": detected_server_token or existing.get("server_token", DEFAULT_SERVER_TOKEN),
             "cookie": "; ".join(f"{k}={v}" for k, v in cookie_map.items()),
         }
         try:
@@ -1380,6 +1421,148 @@ def run_vids_rpc_generate_image(
         "aspect_ratio": ar_key,
         "style": style_key,
     }
+
+
+def run_vids_rpc_tts_voiceover(
+    full_text: str,
+    voice: str = "Puck",
+    language: str = "vi",
+    session_path: str = DEFAULT_SESSION_PATH,
+) -> bytes:
+    """
+    Synthesizes Single-Pass 1-Take Vietnamese/Multilingual Voiceover directly via Google Vids (`vids.new`)
+    Native Cookie RPC (`UseCase 254` -> `/flix/generate_text_to_speech/v1`, zero GEMINI_API_KEY required!).
+    Returns raw WAV bytes downloaded from `contribution-rt.usercontent.google.com/download`.
+    """
+    try:
+        refresh_session_from_cdp(session_path)
+    except Exception:
+        pass
+    session = load_vids_session(session_path)
+    authuser = str(session.get("authuser", "0"))
+    req_id = f"goog_{uuid.uuid4().int % 2000000000}"
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
+
+    voice_raw = (voice or "Puck").strip()
+    if voice_raw.lower().startswith("docs-preset-voice-"):
+        voice_raw = voice_raw[len("docs-preset-voice-") :]
+
+    if voice_raw.lower().startswith("vi-vn-"):
+        voice_entry = [voice_raw.lower(), 0, "vi-VN"]
+    else:
+        voice_entry = [voice_raw[0].upper() + voice_raw[1:] if voice_raw else "Puck"]
+
+    payload = [
+        254,
+        None,
+        [
+            9,
+            None,
+            None,
+            None,
+            req_id,
+            None,
+            "0",
+            None,
+            None,
+            None,
+            None,
+            [16, 0],
+            None,
+            language,
+            None,
+            None,
+            None,
+            None,
+            None,
+            1,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            "Asia/Bangkok",
+            None,
+            None,
+            None,
+            None,
+            None,
+            0,
+        ],
+        [None, None, (full_text or "").strip()],
+        [None] * 25 + [voice_entry],
+        None,
+        1,
+    ]
+
+    headers = {
+        "accept": "*/*",
+        "accept-language": "vi",
+        "authorization": make_sapisidhash(session["sapisid"], session["origin"]),
+        "content-type": "application/json+protobuf",
+        "cookie": session["cookie"],
+        "origin": session["origin"],
+        "priority": "u=1, i",
+        "referer": "https://docs.google.com/",
+        "user-agent": ua,
+        "x-goog-authuser": authuser,
+        "x-server-token": session["server_token"],
+    }
+
+    log(f"[Vids Voiceover RPC] Generating 1-Take Voiceover via vids.new Cookie (uc=254, voice={voice_entry[0]}, authuser={authuser})...")
+    t0 = time.time()
+    req = urllib.request.Request(
+        session["api_url"],
+        data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    with _VIDS_RPC_LOCK:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            raw_bytes = resp.read()
+            if resp.headers.get("Content-Encoding") == "gzip":
+                raw_bytes = gzip.decompress(raw_bytes)
+            text = raw_bytes.decode("utf-8", errors="replace")
+            log(f"[Vids Voiceover RPC] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(text):,} chars)")
+
+    clean_text = text.lstrip()
+    if clean_text.startswith(")]}'"):
+        clean_text = clean_text.split("\n", 1)[-1]
+    parsed = json.loads(clean_text)
+    all_strs = extract_strings(parsed)
+    dl_urls = [s for s in all_strs if s.startswith("https://contribution-rt.usercontent.google.com/download")]
+    if not dl_urls:
+        raise RuntimeError(f"No audio/wav download URL found in Vids Voiceover RPC response: {clean_text[:300]}")
+
+    dl_url = dl_urls[0]
+    if "authuser=" not in dl_url:
+        sep = "&" if "?" in dl_url else "?"
+        dl_url = f"{dl_url}{sep}authuser={authuser}"
+    dl_cookie_parts = [
+        p.strip()
+        for p in session["cookie"].split(";")
+        if p.strip() and p.strip().split("=", 1)[0].strip() not in ("OSID", "__Secure-OSID", "COMPASS")
+    ]
+    dl_headers = {
+        "cookie": "; ".join(dl_cookie_parts),
+        "user-agent": ua,
+        "referer": "https://docs.google.com/",
+        "origin": session["origin"],
+        "x-goog-authuser": authuser,
+    }
+    with urllib.request.urlopen(urllib.request.Request(dl_url, headers=dl_headers), timeout=90) as dl_resp:
+        wav_bytes = dl_resp.read()
+    log(f"[Vids Voiceover RPC] Downloaded native audio/wav ({len(wav_bytes):,} bytes) via vids.new Cookie.")
+    return wav_bytes
 
 
 def format_editing_prompt(

@@ -30,7 +30,7 @@ if hasattr(sys.stderr, "reconfigure"):
 
 SKILL_VIDEO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "skills", "gemini-omni-flash-api", "scripts", "video"))
 sys.path.insert(0, SKILL_VIDEO_DIR)
-from edit_video import get_ffmpeg_exe, log
+from edit_video import get_ffmpeg_exe, log, run_vids_rpc_tts_voiceover
 
 ARTIFACT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCRATCH_60S_DIR = os.path.join(ARTIFACT_DIR, "scratch", "vibe_coding_crm_omni")
@@ -127,13 +127,23 @@ def parse_wav_strip_c2pa(raw_bytes: bytes) -> tuple[bytes, int]:
     return raw_bytes[44 : len(raw_bytes) & ~1], sample_rate
 
 
-def call_gemini_38_flash_tts_1take(full_text: str, style: str, api_key: str, voice: str = "Aoede") -> tuple[bytes, int]:
+def call_gemini_38_flash_tts_1take(full_text: str, style: str = "", api_key: str = "", voice: str = "Puck") -> tuple[bytes, int]:
     """
-    Calls flagship `gemini-3.8-flash-tts` in a single 1-Take pass so the emotional arc,
-    breathing, and vocal timbre are 100% continuous and expressive.
-    Automatically falls back to Vietnamese Neural 1-Take TTS if GEMINI_API_KEY is missing or expired/revoked.
+    1. Primary: Connects directly to Google Vids (`vids.new`) Native Cookie Voiceover RPC (`UseCase 254` ->
+       `/flix/generate_text_to_speech/v1`, `workspace_text_to_speech_generation_llm_agent`), downloading the
+       native `audio/wav` via Vids Cookie (zero GEMINI_API_KEY required!) and stripping any trailing C2PA tail.
+    2. Secondary: If `api_key` is configured and Vids Cookie RPC is unavailable, calls `gemini-3.8-flash-tts`
+       via `/v1beta/interactions`.
+    3. Tertiary: Falls back to local Vietnamese Neural 1-Take TTS (`synthesize_vietnamese_tts_fallback`).
     """
-    if api_key:
+    try:
+        raw_wav = run_vids_rpc_tts_voiceover(full_text=full_text, voice=voice, language="vi")
+        if raw_wav and len(raw_wav) > 100:
+            return parse_wav_strip_c2pa(raw_wav)
+    except Exception as e_vids:
+        log(f"  [Vids Cookie Voiceover UC=254 Warning]: {e_vids}")
+
+    if api_key and not api_key.startswith("AIzaSyDW-lir"):
         for model in ("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"):
             url = "https://generativelanguage.googleapis.com/v1beta/interactions"
             payload = {

@@ -363,15 +363,17 @@ def get_session_status() -> dict:
     cookie_str = sess.get("cookie", "")
     has_1psidts = "__Secure-1PSIDTS=" in cookie_str
     has_sapisid = bool(sess.get("sapisid")) or ("SAPISID=" in cookie_str)
+    session_ready = bool(has_file and has_1psidts and has_sapisid)
     gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
     return {
-        "session_ready": bool(has_file and has_1psidts and has_sapisid),
+        "session_ready": session_ready,
         "doc_id": sess.get("doc_id"),
         "authuser": sess.get("authuser", "0"),
         "has_1psidts": has_1psidts,
         "has_sapisid": has_sapisid,
         "cookie_length": len(cookie_str),
-        "gemini_api_key_configured": bool(gemini_key),
+        "gemini_api_key_configured": bool(session_ready or gemini_key),
+        "tts_backend": "vids_cookie_uc254" if session_ready else ("gemini_api" if gemini_key else "neural_fallback"),
         "last_rotated_at": SESSION_META["last_rotated_at"],
         "last_rotate_status": SESSION_META["last_rotate_status"],
         "rotate_count": SESSION_META["rotate_count"],
@@ -852,7 +854,10 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             with open(file_p, "rb") as f:
-                shutil.copyfileobj(f, self.wfile)
+                try:
+                    shutil.copyfileobj(f, self.wfile)
+                except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+                    pass
             return
 
         if path == "/api/outputs":
@@ -969,7 +974,10 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             with open(file_p, "rb") as f:
-                shutil.copyfileobj(f, self.wfile)
+                try:
+                    shutil.copyfileobj(f, self.wfile)
+                except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+                    pass
             return
 
         self._send_json({"error": f"Unknown endpoint: {path}"}, 404)
