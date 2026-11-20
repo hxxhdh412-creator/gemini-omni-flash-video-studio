@@ -337,6 +337,7 @@
       <button class="tab-btn" onclick="switchTab('tab-audio', this)">🎙️ 3. Phòng Thu Giọng Đọc 1-Take & Nhạc Lyria</button>
       <button class="tab-btn" onclick="switchTab('tab-gallery', this); loadGallery();">📂 4. Kho Video Đã Xuất (`/outputs`)</button>
       <button class="tab-btn" onclick="switchTab('tab-session', this)">🔐 5. Cấu Hình Cookie `vids.new` & API Docs</button>
+      <button class="tab-btn" onclick="switchTab('tab-mcp', this); loadMcpTools();">🔌 6. Hệ Thống Luồng MCP (Agent Pipeline)</button>
     </div>
 
     <!-- TAB 1: MULTI-SCENE COMMERCIAL BUILDER (30s / 60s) -->
@@ -605,6 +606,82 @@ Content-Type: application/json
     }
   ]
 }</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 6: MCP AGENT PIPELINE HUB & INTERACTIVE RUNNER -->
+    <section id="tab-mcp" class="tab-pane">
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header">
+          <h2 class="card-title">🔄 Sơ Đồ Hệ Thống Luồng MCP Cho AI Agent (`omni-flash-video-studio-mcp v2.0`)</h2>
+          <span class="pill ok">● 8 MCP TOOLS ACTIVE (STDIO + HTTP /mcp)</span>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
+          <div style="background:var(--bg-panel); border:1px solid var(--border); border-radius:10px; padding:14px;">
+            <div style="color:var(--lime); font-weight:800; font-size:13px;">LUỒNG 1 // PHIÊN & AUTO-ROTATE</div>
+            <div style="font-size:12px; color:var(--muted); margin-top:6px;"><code>omni_session_status</code><br/><code>omni_session_update</code></div>
+            <div style="font-size:11.5px; color:var(--dim); margin-top:6px;">Kiểm tra & xoay vòng Cookie <code>__Secure-1PSIDTS</code> 24/7 qua <code>RotateCookies</code>.</div>
+          </div>
+          <div style="background:var(--bg-panel); border:1px solid var(--border); border-radius:10px; padding:14px;">
+            <div style="color:var(--lime); font-weight:800; font-size:13px;">LUỒNG 2 // VIDEO & THÀNH PHẦN TẠO</div>
+            <div style="font-size:12px; color:var(--muted); margin-top:6px;"><code>omni_generate_scene</code></div>
+            <div style="font-size:11.5px; color:var(--dim); margin-top:6px;">Sinh cảnh 10s qua <code>gemini-omni-1.1-flash</code> + nạp ảnh <code>StructuredImage (Node[11])</code> + nối chuỗi <code>Anchor Node</code>.</div>
+          </div>
+          <div style="background:var(--bg-panel); border:1px solid var(--border); border-radius:10px; padding:14px;">
+            <div style="color:var(--lime); font-weight:800; font-size:13px;">LUỒNG 3 // GIỌNG ĐỌC 1-TAKE & NHẠC</div>
+            <div style="font-size:12px; color:var(--muted); margin-top:6px;"><code>omni_synthesize_1take_vo</code><br/><code>omni_generate_lyria_bgm</code></div>
+            <div style="font-size:11.5px; color:var(--dim); margin-top:6px;">Thu âm 1-Take <code>gemini-3.8-flash-tts</code> (tốc độ <code>1.00x</code>, lọc 6KB C2PA) + nhạc <code>Lyria 48kHz</code>.</div>
+          </div>
+          <div style="background:var(--bg-panel); border:1px solid var(--border); border-radius:10px; padding:14px;">
+            <div style="color:var(--lime); font-weight:800; font-size:13px;">LUỒNG 4 // MASTERING TVC 1080P</div>
+            <div style="font-size:12px; color:var(--muted); margin-top:6px;"><code>omni_produce_commercial</code><br/><code>omni_job_status</code> • <code>omni_list_outputs</code></div>
+            <div style="font-size:11.5px; color:var(--dim); margin-top:6px;">Hòa âm Clean Audio Bus + Spectral Carve + Sidechain 6:1 + Phụ đề ASS 1080p.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-equal">
+        <!-- Left: Live Interactive MCP JSON-RPC Tester -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🧪 Bảng Điều Khiển & Test Trực Tiếp Các Tool MCP (`POST /mcp`)</h2>
+          </div>
+          <label>Chọn Công Cụ MCP Trong Luồng (`tools/call`):</label>
+          <select id="mcpToolSelect" onchange="populateMcpSampleArgs()"></select>
+          <div id="mcpToolDesc" style="font-size:12px; color:var(--muted); margin-top:8px; line-height:1.45;"></div>
+
+          <label>Tham Số Đầu Vào (`arguments` JSON):</label>
+          <textarea id="mcpArgsInput" style="min-height:170px; font-family:Consolas, monospace;"></textarea>
+
+          <button class="btn" style="margin-top:14px; width:100%;" onclick="invokeMcpToolLive()">⚡ Thực Thi Tool MCP Qua JSON-RPC 2.0 (`POST /mcp`)</button>
+          <pre class="console" id="mcpCallResult" style="max-height:300px;">Kết quả trả về từ MCP Server sẽ hiển thị tại đây...</pre>
+        </div>
+
+        <!-- Right: Ready-to-Use MCP Config for Claude Code, Antigravity & Cloud Agents -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">⚙️ Cấu Hình Kết Nối MCP Cho Agent (Claude Code / Antigravity / Cloud)</h2>
+          </div>
+          <label>1. Cấu hình `mcp_config.json` (Chuẩn `stdio` cho Antigravity / Claude Desktop / Cursor):</label>
+          <pre class="console" id="mcpStdioConfig" style="max-height:170px;">{
+  "mcpServers": {
+    "omni-flash-video-studio": {
+      "command": "python3",
+      "args": ["/app/omni_mcp_server.py"],
+      "env": {
+        "GEMINI_API_KEY": "AIzaSyDW-lirVQOCgt30PPK4nT_KxZqRiYcZwc4"
+      }
+    }
+  }
+}</pre>
+          <label>2. Lệnh cài 1-Click vào Claude Code CLI trên Máy Chủ Cloud:</label>
+          <pre class="console" style="max-height:110px;">claude mcp add omni-flash-video-studio -- python3 $(pwd)/omni_mcp_server.py
+# Hoặc kết nối qua cổng HTTP MCP trực tiếp:
+claude mcp add --transport http omni-flash-http http://localhost:8765/mcp</pre>
+
+          <label>3. Danh sách 8 Tool MCP Đang Hoạt Động Trên Máy Chủ:</label>
+          <div id="mcpToolsCatalog" style="max-height:260px; overflow-y:auto; margin-top:8px;"></div>
         </div>
       </div>
     </section>
@@ -965,7 +1042,100 @@ Content-Type: application/json
       }).join('');
     }
 
+    let mcpToolsList = [];
+    const MCP_SAMPLE_ARGS = {
+      omni_session_status: { rotate_now: true },
+      omni_session_update: {
+        doc_id: "1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc",
+        authuser: "0"
+      },
+      omni_generate_scene: {
+        prompt: "Continuous unbroken cinematic shot in a sleek dark-emerald executive glass office. A Vietnamese founder gestures toward a frameless ultrawide monitor displaying the exact CRM interface from the reference image. No spoken dialogue.",
+        image: "assets_1080p/asset_01_kenh_ket_noi_1080p.png",
+        output_filename: "mcp_scene1_1080p.mp4",
+        upscale_1080p: true,
+        wait: false
+      },
+      omni_synthesize_1take_vo: {
+        text: "Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập... Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!\n\nĐó là lúc Hebum xuất hiện! Gom trọn mọi hội thoại về một màn hình Live Chat, phản hồi khách tức thì!",
+        voice: "Puck",
+        output_filename: "mcp_vo_1take.wav"
+      },
+      omni_generate_lyria_bgm: {
+        prompt: "Cinematic modern corporate electronic commercial music, driving synth pulse and warm deep bass",
+        duration: 30,
+        bpm: 116,
+        scale: "MINOR",
+        output_filename: "mcp_lyria_30s.wav"
+      },
+      omni_produce_commercial: {
+        output_filename: "mcp_commercial_30s_1080p.mp4",
+        voice: "Puck",
+        bpm: 116,
+        scale: "MINOR",
+        wait: false,
+        scenes: [
+          PRESET_60S[0],
+          PRESET_60S[1],
+          PRESET_60S[5]
+        ]
+      },
+      omni_job_status: {},
+      omni_list_outputs: {}
+    };
+
+    async function loadMcpTools() {
+      const r = await fetch('/api/mcp/tools');
+      const d = await r.json();
+      mcpToolsList = d.tools || [];
+      const sel = document.getElementById('mcpToolSelect');
+      sel.innerHTML = mcpToolsList.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+      const cat = document.getElementById('mcpToolsCatalog');
+      cat.innerHTML = mcpToolsList.map(t => `
+        <div style="background:var(--bg-panel); border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:8px;">
+          <div style="color:var(--lime); font-weight:800; font-size:13px;"><code>${t.name}</code></div>
+          <div style="font-size:12px; color:var(--muted); margin-top:4px;">${t.description}</div>
+        </div>
+      `).join('');
+      populateMcpSampleArgs();
+    }
+
+    function populateMcpSampleArgs() {
+      const name = document.getElementById('mcpToolSelect').value;
+      const tool = mcpToolsList.find(t => t.name === name);
+      document.getElementById('mcpToolDesc').textContent = tool ? tool.description : '';
+      document.getElementById('mcpArgsInput').value = JSON.stringify(MCP_SAMPLE_ARGS[name] || {}, null, 2);
+    }
+
+    async function invokeMcpToolLive() {
+      const name = document.getElementById('mcpToolSelect').value;
+      const outBox = document.getElementById('mcpCallResult');
+      outBox.textContent = '⏳ Đang gửi JSON-RPC 2.0 tools/call -> ' + name + '...';
+      let args = {};
+      try {
+        args = JSON.parse(document.getElementById('mcpArgsInput').value || '{}');
+      } catch (e) {
+        outBox.textContent = 'Lỗi cú pháp JSON arguments: ' + e;
+        return;
+      }
+      const rpcReq = {
+        jsonrpc: "2.0",
+        id: Date.now(),
+        method: "tools/call",
+        params: { name, arguments: args }
+      };
+      const r = await fetch('/mcp', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(rpcReq)
+      });
+      const d = await r.json();
+      outBox.textContent = JSON.stringify(d, null, 2);
+      refreshStatus();
+    }
+
     loadPresetStoryboard(6);
+    loadMcpTools();
     refreshStatus();
     setInterval(refreshStatus, 15000);
   </script>

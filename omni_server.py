@@ -717,6 +717,22 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "ok", "service": "omni-1.1-flash-video-studio", "session": get_session_status()})
             return
 
+        if path in ("/mcp", "/api/mcp/tools"):
+            from omni_mcp_server import MCP_SERVER_INFO, MCP_TOOLS_SCHEMA
+
+            self._send_json(
+                {
+                    "server": MCP_SERVER_INFO,
+                    "transports": {
+                        "streamable_http": "/mcp",
+                        "stdio_command": f"python {os.path.join(REPO_ROOT, 'omni_mcp_server.py')}",
+                    },
+                    "tools_count": len(MCP_TOOLS_SCHEMA),
+                    "tools": MCP_TOOLS_SCHEMA,
+                }
+            )
+            return
+
         if path == "/api/session/status":
             self._send_json(get_session_status())
             return
@@ -765,6 +781,21 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             body = json.loads(raw_body) if raw_body.strip() else {}
         except Exception as e:
             self._send_json({"error": f"Invalid JSON: {e}"}, 400)
+            return
+
+        if path == "/mcp":
+            from omni_mcp_server import handle_mcp_jsonrpc
+
+            if isinstance(body, list):
+                res_list = [r for r in (handle_mcp_jsonrpc(item) for item in body) if r is not None]
+                self._send_json(res_list)
+            else:
+                resp = handle_mcp_jsonrpc(body)
+                if resp is None:
+                    self.send_response(202)
+                    self.end_headers()
+                else:
+                    self._send_json(resp)
             return
 
         if path == "/api/session":
@@ -856,7 +887,7 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description="Omni 1.1 Flash Video Studio — Cloud Server & REST API")
     parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"), help="Bind host (default: 0.0.0.0)")
-    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")), help="Bind port (default: 8080)")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8765")), help="Bind port (default: 8765)")
     parser.add_argument("--rotate-interval", type=int, default=480, help="Cookie keep-alive rotation interval in seconds (default: 480)")
     args = parser.parse_args()
 
