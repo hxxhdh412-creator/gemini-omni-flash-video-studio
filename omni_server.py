@@ -1,0 +1,819 @@
+#!/usr/bin/env python3
+"""
+OMNI 1.1 FLASH VIDEO STUDIO — Production Cloud Server & REST API (`omni_server.py`)
+===================================================================================
+Deployable on any Linux/Windows VPS, Docker container, or Cloud VM (Claude Code, Railway, Render, etc.).
+
+Key Server Features:
+1. Zero-Dependency HTTP Server + Modern Dark-Emerald Web Studio UI (`http://0.0.0.0:8080`).
+2. Headless 24/7 Cookie Keep-Alive & Auto-Rotator:
+   - Automatically refreshes `__Secure-1PSIDTS` via Google's `RotateCookies` endpoint every 8 minutes
+     using `SAPISIDHASH` + `__Secure-1PSIDRTS` (works on headless Linux servers without Chrome!).
+   - Also auto-syncs with Chrome CDP (`port 9222`) if available on the host.
+3. Environment & Hot-Reload Session Management:
+   - Bootstraps `vids_session.json` automatically from `OMNI_COOKIE`, `OMNI_DOC_ID`, `OMNI_AUTHUSER` env vars,
+     or via `POST /api/session` (accepts raw Cookie string, `vids_session.json` object, or raw browser cURL).
+4. Full Async Job Queue & REST API for AI Agents (Claude Code, n8n, Make, Custom Apps):
+   - `GET  /api/health`             -> Server & session health check
+   - `GET  /api/session/status`     -> Current `doc_id`, `authuser`, cookie status, last rotation time
+   - `POST /api/session`            -> Hot-update cookie / cURL / `doc_id` / `GEMINI_API_KEY` without restarting
+   - `POST /api/session/rotate`     -> Force immediate headless `__Secure-1PSIDTS` rotation
+   - `POST /api/generate-scene`     -> Generate a 10s Omni 1.1 Flash clip (with optional `StructuredImage` ingredient & chaining)
+   - `POST /api/produce-commercial` -> End-to-End 10s/30s/60s 1080p Commercial (Multi-Scene Omni + 1-Take Gemini 3.8 TTS + Lyria BGM)
+   - `GET  /api/jobs`               -> List all active & completed jobs
+   - `GET  /api/jobs/<job_id>`      -> Poll job progress, logs, and download URLs
+   - `GET  /outputs/<filename>`     -> Download generated `.mp4` / `.json` files
+"""
+
+import argparse
+import base64
+import hashlib
+import http.cookies
+import json
+import mimetypes
+import os
+import re
+import shutil
+import ssl
+import subprocess
+import sys
+import threading
+import time
+import traceback
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
+
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+SKILL_VIDEO_DIR = os.path.join(REPO_ROOT, "skills", "gemini-omni-flash-api", "scripts", "video")
+EXAMPLES_DIR = os.path.join(REPO_ROOT, "examples")
+OUTPUTS_DIR = os.path.join(REPO_ROOT, "outputs")
+UPLOADS_DIR = os.path.join(OUTPUTS_DIR, "uploads")
+JOBS_DIR = os.path.join(OUTPUTS_DIR, "jobs")
+
+os.makedirs(OUTPUTS_DIR, exist_ok=True)
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+os.makedirs(JOBS_DIR, exist_ok=True)
+
+sys.path.insert(0, SKILL_VIDEO_DIR)
+sys.path.insert(0, EXAMPLES_DIR)
+
+from edit_video import (
+    DEFAULT_API_URL,
+    DEFAULT_DOC_ID,
+    DEFAULT_ORIGIN,
+    DEFAULT_SERVER_TOKEN,
+    DEFAULT_SESSION_PATH,
+    format_editing_prompt,
+    get_ffmpeg_exe,
+    load_vids_session,
+    log,
+    refresh_session_from_cdp,
+    run_vids_rpc_edit_or_generate,
+    update_session_from_curl,
+)
+
+# Global Job Registry & Rotation State
+JOBS_LOCK = threading.Lock()
+JOBS: dict[str, dict] = {}
+SESSION_META = {
+    "last_rotated_at": None,
+    "last_rotate_status": "idle",
+    "rotate_count": 0,
+}
+
+
+def load_dotenv_if_present():
+    env_path = os.path.join(REPO_ROOT, ".env")
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+                if k and v and k not in os.environ:
+                    os.environ[k] = v
+
+
+def bootstrap_session_from_env():
+    """
+    If OMNI_COOKIE is set in environment/.env, automatically writes/updates vids_session.json
+    so cloud deployments can be configured purely via environment variables.
+    """
+    load_dotenv_if_present()
+    env_cookie = os.environ.get("OMNI_COOKIE", "").strip()
+    if not env_cookie:
+        return
+    cookie_parts = []
+    sapisid = None
+    for part in env_cookie.split(";"):
+        part = part.strip()
+        if not part or "=" not in part:
+            continue
+        k, v = part.split("=", 1)
+        k, v = k.strip(), v.strip()
+        if k in ("OSID", "__Secure-OSID"):
+            continue
+        cookie_parts.append(f"{k}={v}")
+        if k == "SAPISID":
+            sapisid = v
+        elif k in ("__Secure-1PAPISID", "__Secure-3PAPISID") and not sapisid:
+            sapisid = v
+
+    sess = {
+        "api_url": os.environ.get("OMNI_API_URL", DEFAULT_API_URL),
+        "origin": DEFAULT_ORIGIN,
+        "doc_id": os.environ.get("OMNI_DOC_ID", DEFAULT_DOC_ID),
+        "authuser": os.environ.get("OMNI_AUTHUSER", "0"),
+        "sapisid": sapisid or "",
+        "server_token": os.environ.get("OMNI_SERVER_TOKEN", DEFAULT_SERVER_TOKEN),
+        "cookie": "; ".join(cookie_parts),
+    }
+    os.makedirs(os.path.dirname(DEFAULT_SESSION_PATH), exist_ok=True)
+    with open(DEFAULT_SESSION_PATH, "w", encoding="utf-8") as f:
+        json.dump(sess, f, indent=2)
+    log(f"[Server Bootstrap] Initialized vids_session.json from OMNI_COOKIE env (doc_id={sess['doc_id']}, authuser={sess['authuser']})")
+
+
+def rotate_google_cookies_headless(session_path: str = DEFAULT_SESSION_PATH) -> dict:
+    """
+    Headless Pure-Python Cookie Rotator for Linux/Cloud Servers:
+    1. First checks if local Chrome CDP (port 9222) is running; if so, pulls live rotated cookies.
+    2. Otherwise, calls Google's `https://accounts.google.com/RotateCookies` endpoint directly over HTTPS
+       using the current cookie jar (`SID`, `HSID`, `SSID`, `SAPISID`, `__Secure-1PSID`, `__Secure-1PSIDRTS`)
+       and updates `__Secure-1PSIDTS`, `__Secure-3PSIDTS`, `SIDCC`, `__Secure-1PSIDCC`, `__Secure-3PSIDCC`
+       in `vids_session.json` so the session stays alive on headless servers!
+    """
+    # Try CDP first (non-launching on headless Linux)
+    try:
+        urllib.request.urlopen("http://127.0.0.1:9222/json/version", timeout=1.0).read()
+        cdp_sess = refresh_session_from_cdp(session_path=session_path, auto_launch=False)
+        if cdp_sess:
+            SESSION_META["last_rotated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            SESSION_META["last_rotate_status"] = "ok_cdp"
+            SESSION_META["rotate_count"] += 1
+            return {"status": "ok", "method": "cdp", "authuser": cdp_sess.get("authuser"), "doc_id": cdp_sess.get("doc_id")}
+    except Exception:
+        pass
+
+    if not os.path.exists(session_path):
+        return {"status": "error", "message": "vids_session.json not found"}
+
+    with open(session_path, "r", encoding="utf-8") as f:
+        sess = json.load(f)
+
+    cookie_str = sess.get("cookie", "")
+    if not cookie_str:
+        return {"status": "error", "message": "Empty cookie in vids_session.json"}
+
+    cookie_map = {}
+    for item in cookie_str.split(";"):
+        item = item.strip()
+        if "=" in item:
+            k, v = item.split("=", 1)
+            cookie_map[k.strip()] = v.strip()
+
+    sapisid = sess.get("sapisid") or cookie_map.get("SAPISID") or cookie_map.get("__Secure-1PAPISID") or ""
+    origin = "https://accounts.google.com"
+    now_ts = int(time.time())
+    sapisid_hash = hashlib.sha1(f"{now_ts} {sapisid} {origin}".encode("utf-8")).hexdigest()
+
+    # Google RotateCookies payload: [658, "<random_or_timestamp>"]
+    payload = json.dumps([658, f"-{now_ts}000"]).encode("utf-8")
+    req = urllib.request.Request(
+        "https://accounts.google.com/RotateCookies",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Cookie": cookie_str,
+            "Origin": origin,
+            "Referer": "https://accounts.google.com/",
+            "Authorization": f"SAPISIDHASH {now_ts}_{sapisid_hash}",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        },
+        method="POST",
+    )
+
+    ctx = ssl._create_unverified_context()
+    updated_keys = []
+    try:
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+            set_cookies = resp.headers.get_all("Set-Cookie") or []
+            for sc_header in set_cookies:
+                first_pair = sc_header.split(";", 1)[0].strip()
+                if "=" in first_pair:
+                    k, v = first_pair.split("=", 1)
+                    k, v = k.strip(), v.strip()
+                    if k not in ("OSID", "__Secure-OSID") and v:
+                        cookie_map[k] = v
+                        updated_keys.append(k)
+    except urllib.error.HTTPError as he:
+        set_cookies = he.headers.get_all("Set-Cookie") if he.headers else []
+        for sc_header in set_cookies or []:
+            first_pair = sc_header.split(";", 1)[0].strip()
+            if "=" in first_pair:
+                k, v = first_pair.split("=", 1)
+                k, v = k.strip(), v.strip()
+                if k not in ("OSID", "__Secure-OSID") and v:
+                    cookie_map[k] = v
+                    updated_keys.append(k)
+
+    # Also ping docs.google.com/videos/d/<doc_id>/edit to pick up fresh COMPASS / SIDCC cookies
+    doc_id = sess.get("doc_id", DEFAULT_DOC_ID)
+    authuser = sess.get("authuser", "0")
+    try:
+        ping_req = urllib.request.Request(
+            f"https://docs.google.com/videos/u/{authuser}/d/{doc_id}/edit?authuser={authuser}",
+            headers={
+                "Cookie": "; ".join(f"{k}={v}" for k, v in cookie_map.items()),
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            },
+            method="GET",
+        )
+        with urllib.request.urlopen(ping_req, timeout=15, context=ctx) as resp:
+            for sc_header in resp.headers.get_all("Set-Cookie") or []:
+                first_pair = sc_header.split(";", 1)[0].strip()
+                if "=" in first_pair:
+                    k, v = first_pair.split("=", 1)
+                    k, v = k.strip(), v.strip()
+                    if k not in ("OSID", "__Secure-OSID") and v:
+                        cookie_map[k] = v
+                        updated_keys.append(k)
+    except Exception:
+        pass
+
+    sess["cookie"] = "; ".join(f"{k}={v}" for k, v in cookie_map.items())
+    with open(session_path, "w", encoding="utf-8") as f:
+        json.dump(sess, f, indent=2)
+
+    SESSION_META["last_rotated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    SESSION_META["last_rotate_status"] = f"ok_http (updated: {','.join(updated_keys) or 'keepalive'})"
+    SESSION_META["rotate_count"] += 1
+    return {
+        "status": "ok",
+        "method": "http_rotate",
+        "updated_cookies": updated_keys,
+        "last_rotated_at": SESSION_META["last_rotated_at"],
+    }
+
+
+def start_cookie_keepalive_daemon(interval_sec: int = 480):
+    def _loop():
+        while True:
+            try:
+                if os.path.exists(DEFAULT_SESSION_PATH):
+                    res = rotate_google_cookies_headless(DEFAULT_SESSION_PATH)
+                    log(f"[Cookie KeepAlive] {res}")
+            except Exception as e:
+                log(f"[Cookie KeepAlive Warning] {e}")
+            time.sleep(interval_sec)
+
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+
+
+def update_session_payload(body: dict) -> dict:
+    """
+    Updates vids_session.json and/or GEMINI_API_KEY from a JSON request body.
+    Supports:
+      - {"curl": "curl 'https://appsgenaiserver...' ..."}
+      - {"cookie": "SID=...; __Secure-1PSIDTS=...", "doc_id": "...", "authuser": "0"}
+      - {"vids_session": {...}}
+      - {"gemini_api_key": "AIzaSy..."}
+    """
+    if body.get("gemini_api_key"):
+        os.environ["GEMINI_API_KEY"] = body["gemini_api_key"].strip()
+        env_file = os.path.join(REPO_ROOT, ".env")
+        with open(env_file, "w", encoding="utf-8") as f:
+            f.write(f'GEMINI_API_KEY="{os.environ["GEMINI_API_KEY"]}"\n')
+
+    if body.get("curl"):
+        sess = update_session_from_curl(body["curl"], DEFAULT_SESSION_PATH)
+        return {"status": "ok", "source": "curl", "doc_id": sess.get("doc_id"), "authuser": sess.get("authuser")}
+
+    if body.get("vids_session") and isinstance(body["vids_session"], dict):
+        sess = body["vids_session"]
+        os.makedirs(os.path.dirname(DEFAULT_SESSION_PATH), exist_ok=True)
+        with open(DEFAULT_SESSION_PATH, "w", encoding="utf-8") as f:
+            json.dump(sess, f, indent=2)
+        return {"status": "ok", "source": "vids_session", "doc_id": sess.get("doc_id"), "authuser": sess.get("authuser")}
+
+    if body.get("cookie"):
+        existing = {}
+        if os.path.exists(DEFAULT_SESSION_PATH):
+            try:
+                with open(DEFAULT_SESSION_PATH, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            except Exception:
+                pass
+        raw_cookie = body["cookie"].strip()
+        parts = []
+        sapisid = existing.get("sapisid", "")
+        for p in raw_cookie.split(";"):
+            p = p.strip()
+            if "=" in p:
+                k, v = p.split("=", 1)
+                k, v = k.strip(), v.strip()
+                if k in ("OSID", "__Secure-OSID"):
+                    continue
+                parts.append(f"{k}={v}")
+                if k in ("SAPISID", "__Secure-1PAPISID") and v:
+                    sapisid = v
+
+        sess = {
+            "api_url": body.get("api_url") or existing.get("api_url", DEFAULT_API_URL),
+            "origin": DEFAULT_ORIGIN,
+            "doc_id": body.get("doc_id") or existing.get("doc_id", DEFAULT_DOC_ID),
+            "authuser": str(body.get("authuser", existing.get("authuser", "0"))),
+            "sapisid": sapisid,
+            "server_token": body.get("server_token") or existing.get("server_token", DEFAULT_SERVER_TOKEN),
+            "cookie": "; ".join(parts),
+        }
+        os.makedirs(os.path.dirname(DEFAULT_SESSION_PATH), exist_ok=True)
+        with open(DEFAULT_SESSION_PATH, "w", encoding="utf-8") as f:
+            json.dump(sess, f, indent=2)
+        return {"status": "ok", "source": "cookie", "doc_id": sess.get("doc_id"), "authuser": sess.get("authuser")}
+
+    return {"status": "ok", "message": "Updated API key only"}
+
+
+def get_session_status() -> dict:
+    has_file = os.path.exists(DEFAULT_SESSION_PATH)
+    sess = {}
+    if has_file:
+        try:
+            with open(DEFAULT_SESSION_PATH, "r", encoding="utf-8") as f:
+                sess = json.load(f)
+        except Exception:
+            pass
+    cookie_str = sess.get("cookie", "")
+    has_1psidts = "__Secure-1PSIDTS=" in cookie_str
+    has_sapisid = bool(sess.get("sapisid")) or ("SAPISID=" in cookie_str)
+    gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+    return {
+        "session_ready": bool(has_file and has_1psidts and has_sapisid),
+        "doc_id": sess.get("doc_id"),
+        "authuser": sess.get("authuser", "0"),
+        "has_1psidts": has_1psidts,
+        "has_sapisid": has_sapisid,
+        "cookie_length": len(cookie_str),
+        "gemini_api_key_configured": bool(gemini_key),
+        "last_rotated_at": SESSION_META["last_rotated_at"],
+        "last_rotate_status": SESSION_META["last_rotate_status"],
+        "rotate_count": SESSION_META["rotate_count"],
+    }
+
+
+def save_base64_image_if_needed(img_spec: str, job_dir: str, idx: int) -> str:
+    """Accepts a local file path, relative repo path, or base64 data URL / raw base64 string."""
+    if not img_spec:
+        return ""
+    if os.path.exists(img_spec):
+        return os.path.abspath(img_spec)
+    rel_candidate = os.path.join(REPO_ROOT, img_spec)
+    if os.path.exists(rel_candidate):
+        return os.path.abspath(rel_candidate)
+    if img_spec.startswith("data:image/"):
+        _, b64_data = img_spec.split(",", 1)
+    else:
+        b64_data = img_spec
+    raw = base64.b64decode(b64_data)
+    out_p = os.path.join(job_dir, f"ingredient_{idx}.png")
+    with open(out_p, "wb") as f:
+        f.write(raw)
+    return out_p
+
+
+def run_job_generate_scene(job_id: str, payload: dict):
+    job_dir = os.path.join(JOBS_DIR, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    try:
+        with JOBS_LOCK:
+            JOBS[job_id]["status"] = "running"
+            JOBS[job_id]["logs"].append("Starting Omni 1.1 Flash scene generation...")
+
+        prompt = payload.get("prompt", "")
+        duration = int(payload.get("duration", 10))
+        upscale_1080p = bool(payload.get("upscale_1080p", True))
+        out_name = payload.get("output_filename") or f"omni_scene_{job_id}.mp4"
+        out_path = os.path.join(OUTPUTS_DIR, os.path.basename(out_name))
+        node_path = os.path.join(OUTPUTS_DIR, os.path.splitext(os.path.basename(out_name))[0] + "_node.json")
+
+        image_files = []
+        if payload.get("image"):
+            image_files.append(save_base64_image_if_needed(payload["image"], job_dir, 1))
+        for i, img in enumerate(payload.get("images") or []):
+            image_files.append(save_base64_image_if_needed(img, job_dir, i + 1))
+        image_files = [p for p in image_files if p]
+
+        prior_nodes = []
+        for pn in payload.get("prior_node_files") or []:
+            if os.path.exists(pn):
+                prior_nodes.append(pn)
+            elif os.path.exists(os.path.join(OUTPUTS_DIR, pn)):
+                prior_nodes.append(os.path.join(OUTPUTS_DIR, pn))
+
+        res = run_vids_rpc_edit_or_generate(
+            prompt_text=prompt,
+            output_path=out_path,
+            prior_node_files=prior_nodes,
+            image_files=image_files,
+            duration_sec=duration,
+            save_response_json=node_path,
+            upscale_1080p=upscale_1080p,
+        )
+        final_file = os.path.basename(res["output_path"])
+        with JOBS_LOCK:
+            JOBS[job_id]["status"] = "completed"
+            JOBS[job_id]["output_file"] = final_file
+            JOBS[job_id]["download_url"] = f"/outputs/{final_file}"
+            JOBS[job_id]["node_json_url"] = f"/outputs/{os.path.basename(node_path)}"
+            JOBS[job_id]["logs"].append(f"Completed: /outputs/{final_file}")
+    except Exception as e:
+        with JOBS_LOCK:
+            JOBS[job_id]["status"] = "failed"
+            JOBS[job_id]["error"] = str(e)
+            JOBS[job_id]["logs"].append(traceback.format_exc())
+
+
+def run_job_produce_commercial(job_id: str, payload: dict):
+    """
+    End-to-End Multi-Scene Commercial Job:
+    - Generates N scenes (10s each) via Gemini Omni 1.1 Flash with Scene 1 Anchor Chaining + StructuredImage ingredients
+    - Synthesizes 1-Take Emotional Vietnamese Voiceover via flagship `gemini-3.8-flash-tts` (C2PA stripped, 1.00x speed)
+    - Generates or reuses Google Lyria RealTime BGM (48kHz Stereo)
+    - Masters 1080p Full HD MP4 with Spectral Carve + Sidechain Auto-Ducking + ASS Subtitles
+    """
+    from make_emotional_1take_vo import EMOTIONAL_DIRECTOR_STYLE, build_1take_master
+    from produce_commercial import generate_bgm_track
+
+    job_dir = os.path.join(JOBS_DIR, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    ffmpeg_exe = get_ffmpeg_exe()
+    try:
+        with JOBS_LOCK:
+            JOBS[job_id]["status"] = "running"
+            JOBS[job_id]["logs"].append("Starting multi-scene 1080p commercial pipeline...")
+
+        scenes_in = payload.get("scenes") or []
+        if not scenes_in:
+            raise ValueError("payload.scenes array is required")
+
+        scene_mp4s = []
+        node_jsons = []
+        formatted_scenes = []
+
+        for i, sc in enumerate(scenes_in):
+            idx = i + 1
+            with JOBS_LOCK:
+                JOBS[job_id]["logs"].append(f"[Scene {idx}/{len(scenes_in)}] Generating Omni 1.1 Flash clip...")
+
+            raw_mp4 = os.path.join(job_dir, f"s{idx}_raw720p.mp4")
+            node_json = os.path.join(job_dir, f"s{idx}_node.json")
+            img_files = []
+            if sc.get("image"):
+                img_files.append(save_base64_image_if_needed(sc["image"], job_dir, idx))
+            prior_files = [node_jsons[0]] if len(node_jsons) >= 1 else []
+
+            res = run_vids_rpc_edit_or_generate(
+                prompt_text=sc["prompt"],
+                output_path=raw_mp4,
+                prior_node_files=prior_files,
+                image_files=[p for p in img_files if p],
+                duration_sec=10,
+                save_response_json=node_json,
+                upscale_1080p=False,
+            )
+            scene_mp4s.append(res["output_path"])
+            node_jsons.append(res["node_json_path"])
+
+            vo_text = sc.get("vo", "")
+            formatted_scenes.append(
+                {
+                    "idx": idx,
+                    "badge": sc.get("badge", f"0{idx} // OMNI 1.1 FLASH"),
+                    "vo": vo_text,
+                    "sub_1": sc.get("sub_1") or vo_text[: len(vo_text) // 2],
+                    "sub_2": sc.get("sub_2") or vo_text[len(vo_text) // 2 :],
+                }
+            )
+
+        total_dur = len(scenes_in) * 10
+        bgm_wav = os.path.join(job_dir, "bgm.wav")
+        with JOBS_LOCK:
+            JOBS[job_id]["logs"].append(f"Generating {total_dur}s soundtrack via Google Lyria RealTime...")
+        generate_bgm_track(
+            output_wav=bgm_wav,
+            duration_sec=total_dur,
+            bgm_prompt=payload.get("bgm_prompt", "Cinematic modern corporate electronic commercial music"),
+            bpm=int(payload.get("bpm", 116)),
+            scale=payload.get("scale", "MINOR"),
+        )
+
+        out_name = payload.get("output_filename") or f"commercial_{job_id}_1080p.mp4"
+        out_mp4 = os.path.join(OUTPUTS_DIR, os.path.basename(out_name))
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+
+        with JOBS_LOCK:
+            JOBS[job_id]["logs"].append("Synthesizing 1-Take Emotional Voiceover (gemini-3.8-flash-tts) & Mastering 1080p...")
+        build_1take_master(
+            scenes=formatted_scenes,
+            scene_mp4s=scene_mp4s,
+            bgm_wav=bgm_wav,
+            work_dir=job_dir,
+            output_mp4=out_mp4,
+            api_key=api_key,
+            ffmpeg_exe=ffmpeg_exe,
+            tag_label=f"JOB-{job_id[:6]}",
+        )
+
+        final_file = os.path.basename(out_mp4)
+        with JOBS_LOCK:
+            JOBS[job_id]["status"] = "completed"
+            JOBS[job_id]["output_file"] = final_file
+            JOBS[job_id]["download_url"] = f"/outputs/{final_file}"
+            JOBS[job_id]["logs"].append(f"Master 1080p saved: /outputs/{final_file}")
+    except Exception as e:
+        with JOBS_LOCK:
+            JOBS[job_id]["status"] = "failed"
+            JOBS[job_id]["error"] = str(e)
+            JOBS[job_id]["logs"].append(traceback.format_exc())
+
+
+DASHBOARD_HTML = """<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Omni 1.1 Flash Video Studio — Cloud Server</title>
+  <style>
+    :root { --bg: #07130e; --card: #0d2118; --accent: #10b981; --lime: #dfff62; --text: #ecfdf5; --muted: #6ee7b7; }
+    * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { margin: 0; padding: 28px; background: var(--bg); color: var(--text); }
+    .container { max-width: 1120px; margin: 0 auto; }
+    h1 { margin: 0 0 6px; font-size: 26px; color: var(--lime); }
+    .sub { color: var(--muted); margin-bottom: 22px; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .card { background: var(--card); border: 1px solid #1a3a2a; border-radius: 12px; padding: 20px; }
+    h2 { margin-top: 0; font-size: 18px; color: var(--lime); }
+    label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+    input, textarea { width: 100%; background: #06100b; border: 1px solid #1f4432; color: #fff; padding: 10px; border-radius: 8px; font-size: 13px; }
+    textarea { min-height: 84px; resize: vertical; }
+    button { background: var(--accent); color: #04130c; font-weight: 700; border: none; padding: 10px 18px; border-radius: 8px; cursor: pointer; margin-top: 12px; }
+    button.secondary { background: #1e3a2f; color: var(--text); margin-left: 8px; }
+    pre { background: #040b08; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 12px; color: #a7f3d0; max-height: 280px; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 700; background: #064e3b; color: var(--lime); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎬 OMNI 1.1 FLASH VIDEO STUDIO — CLOUD SERVER</h1>
+    <div class="sub">Server-Ready REST API & Web Dashboard • Native StructuredImage (Node[11]) • 24/7 Headless Cookie Auto-Rotator • 1-Take Gemini 3.8 TTS</div>
+    <div class="grid">
+      <div class="card">
+        <h2>🔐 1. Trạng Thái Phiên & Cập Nhật Cookie (`vids.new`)</h2>
+        <div id="statusBox"><span class="badge">Đang kiểm tra...</span></div>
+        <label>Chuỗi Cookie (`SID=...; __Secure-1PSIDTS=...`) hoặc lệnh cURL:</label>
+        <textarea id="cookieInput" placeholder="Dán chuỗi Cookie hoặc cURL từ vids.new vào đây..."></textarea>
+        <div style="display:flex; gap:10px;">
+          <div style="flex:2"><label>Google Vids `doc_id`:</label><input id="docIdInput" placeholder="1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc" /></div>
+          <div style="flex:1"><label>`authuser`:</label><input id="authuserInput" value="0" /></div>
+        </div>
+        <label>`GEMINI_API_KEY` (cho Gemini 3.8 Flash TTS & Lyria RealTime):</label>
+        <input id="apiKeyInput" placeholder="AIzaSy..." />
+        <button onclick="saveSession()">💾 Lưu Cookie & Khóa Bảo Mật</button>
+        <button class="secondary" onclick="rotateNow()">🔄 Xoay vòng Cookie (`RotateCookies`)</button>
+      </div>
+
+      <div class="card">
+        <h2>🎥 2. Tạo Nhanh Cảnh Video Omni 1.1 Flash (`10s`)</h2>
+        <label>Prompt Mô Tả Cảnh (Tiếng Anh):</label>
+        <textarea id="promptInput">Continuous unbroken cinematic shot in a sleek dark-emerald executive glass office. A charismatic 32-year-old Vietnamese founder gestures toward a frameless ultrawide glass monitor displaying the exact CRM interface from the reference image. No spoken dialogue.</textarea>
+        <label>Đường dẫn ảnh Thành phần (`StructuredImage` — tùy chọn):</label>
+        <input id="imageInput" value="assets_1080p/asset_01_kenh_ket_noi_1080p.png" />
+        <label>Tên file xuất (`outputs/`):</label>
+        <input id="outNameInput" value="server_scene_1080p.mp4" />
+        <button onclick="generateScene()">🚀 Bắt Đầu Tạo Video (Async Job)</button>
+        <pre id="jobLog">Chưa có tiến trình nào.</pre>
+      </div>
+    </div>
+  </div>
+  <script>
+    async function loadStatus() {
+      const r = await fetch('/api/session/status');
+      const d = await r.json();
+      document.getElementById('statusBox').innerHTML =
+        `<span class="badge">${d.session_ready ? '✅ SESSION READY' : '⚠️ THIẾU COOKIE'}</span> ` +
+        `doc_id: <code>${d.doc_id || 'N/A'}</code> | authuser: <code>${d.authuser}</code> | ` +
+        `1PSIDTS: <b>${d.has_1psidts}</b> | Rotate: <b>${d.rotate_count}</b> (${d.last_rotated_at || 'chưa xoay'})`;
+      if (d.doc_id) document.getElementById('docIdInput').value = d.doc_id;
+      document.getElementById('authuserInput').value = d.authuser || '0';
+    }
+    async function saveSession() {
+      const val = document.getElementById('cookieInput').value.trim();
+      const payload = {
+        doc_id: document.getElementById('docIdInput').value.trim(),
+        authuser: document.getElementById('authuserInput').value.trim(),
+        gemini_api_key: document.getElementById('apiKeyInput').value.trim()
+      };
+      if (val.startsWith('curl ')) payload.curl = val;
+      else if (val) payload.cookie = val;
+      const r = await fetch('/api/session', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      alert(JSON.stringify(await r.json()));
+      loadStatus();
+    }
+    async function rotateNow() {
+      const r = await fetch('/api/session/rotate', { method: 'POST' });
+      alert(JSON.stringify(await r.json()));
+      loadStatus();
+    }
+    async function generateScene() {
+      const payload = {
+        prompt: document.getElementById('promptInput').value.trim(),
+        image: document.getElementById('imageInput').value.trim(),
+        output_filename: document.getElementById('outNameInput').value.trim(),
+        upscale_1080p: true
+      };
+      const r = await fetch('/api/generate-scene', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      const d = await r.json();
+      pollJob(d.job_id);
+    }
+    async function pollJob(jobId) {
+      const box = document.getElementById('jobLog');
+      const timer = setInterval(async () => {
+        const r = await fetch('/api/jobs/' + jobId);
+        const d = await r.json();
+        box.textContent = JSON.stringify(d, null, 2);
+        if (d.status === 'completed' || d.status === 'failed') clearInterval(timer);
+      }, 2500);
+    }
+    loadStatus();
+  </script>
+</body>
+</html>
+"""
+
+
+class OmniStudioHandler(BaseHTTPRequestHandler):
+    def _send_json(self, data: dict, status: int = 200):
+        raw = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def do_OPTIONS(self):
+        self._send_json({"ok": True})
+
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        if path in ("/", "/index.html"):
+            raw = DASHBOARD_HTML.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
+
+        if path == "/api/health":
+            self._send_json({"status": "ok", "service": "omni-1.1-flash-video-studio", "session": get_session_status()})
+            return
+
+        if path == "/api/session/status":
+            self._send_json(get_session_status())
+            return
+
+        if path == "/api/jobs":
+            with JOBS_LOCK:
+                self._send_json({"jobs": list(JOBS.values())})
+            return
+
+        if path.startswith("/api/jobs/"):
+            job_id = path.split("/api/jobs/", 1)[1].strip("/")
+            with JOBS_LOCK:
+                job = JOBS.get(job_id)
+            if not job:
+                self._send_json({"error": "Job not found"}, 404)
+            else:
+                self._send_json(job)
+            return
+
+        if path.startswith("/outputs/"):
+            rel_name = os.path.basename(urllib.parse.unquote(path.split("/outputs/", 1)[1]))
+            file_p = os.path.join(OUTPUTS_DIR, rel_name)
+            if not os.path.exists(file_p) or not os.path.isfile(file_p):
+                self._send_json({"error": "File not found"}, 404)
+                return
+            mime, _ = mimetypes.guess_type(file_p)
+            mime = mime or "application/octet-stream"
+            size = os.path.getsize(file_p)
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(size))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            with open(file_p, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
+            return
+
+        self._send_json({"error": f"Unknown endpoint: {path}"}, 404)
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        length = int(self.headers.get("Content-Length", "0"))
+        raw_body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+        try:
+            body = json.loads(raw_body) if raw_body.strip() else {}
+        except Exception as e:
+            self._send_json({"error": f"Invalid JSON: {e}"}, 400)
+            return
+
+        if path == "/api/session":
+            res = update_session_payload(body)
+            self._send_json(res)
+            return
+
+        if path == "/api/session/rotate":
+            res = rotate_google_cookies_headless(DEFAULT_SESSION_PATH)
+            self._send_json(res)
+            return
+
+        if path == "/api/generate-scene":
+            job_id = uuid.uuid4().hex[:10]
+            job_obj = {
+                "job_id": job_id,
+                "type": "generate-scene",
+                "status": "queued",
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "logs": [],
+            }
+            with JOBS_LOCK:
+                JOBS[job_id] = job_obj
+            t = threading.Thread(target=run_job_generate_scene, args=(job_id, body), daemon=True)
+            t.start()
+            self._send_json({"status": "queued", "job_id": job_id, "poll_url": f"/api/jobs/{job_id}"}, 202)
+            return
+
+        if path == "/api/produce-commercial":
+            job_id = uuid.uuid4().hex[:10]
+            job_obj = {
+                "job_id": job_id,
+                "type": "produce-commercial",
+                "status": "queued",
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "logs": [],
+            }
+            with JOBS_LOCK:
+                JOBS[job_id] = job_obj
+            t = threading.Thread(target=run_job_produce_commercial, args=(job_id, body), daemon=True)
+            t.start()
+            self._send_json({"status": "queued", "job_id": job_id, "poll_url": f"/api/jobs/{job_id}"}, 202)
+            return
+
+        self._send_json({"error": f"Unknown POST endpoint: {path}"}, 404)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Omni 1.1 Flash Video Studio — Cloud Server & REST API")
+    parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"), help="Bind host (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")), help="Bind port (default: 8080)")
+    parser.add_argument("--rotate-interval", type=int, default=480, help="Cookie keep-alive rotation interval in seconds (default: 480)")
+    args = parser.parse_args()
+
+    bootstrap_session_from_env()
+    start_cookie_keepalive_daemon(interval_sec=args.rotate_interval)
+
+    server = ThreadingHTTPServer((args.host, args.port), OmniStudioHandler)
+    log(f"==================================================================")
+    log(f"OMNI 1.1 FLASH VIDEO STUDIO SERVER RUNNING ON http://{args.host}:{args.port}")
+    log(f"  • Web Studio UI    : http://localhost:{args.port}/")
+    log(f"  • Session Status   : http://localhost:{args.port}/api/session/status")
+    log(f"  • Update Cookie    : POST http://localhost:{args.port}/api/session")
+    log(f"  • Generate 10s Clip: POST http://localhost:{args.port}/api/generate-scene")
+    log(f"  • Produce 30s/60s  : POST http://localhost:{args.port}/api/produce-commercial")
+    log(f"==================================================================")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        log("Shutting down server...")
+
+
+if __name__ == "__main__":
+    main()

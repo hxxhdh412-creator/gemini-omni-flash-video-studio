@@ -1,0 +1,15 @@
+services:
+  omni-video-studio:
+    build: .
+    container_name: omni-video-studio
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OMNI_COOKIE=${OMNI_COOKIE:-}
+      - OMNI_DOC_ID=${OMNI_DOC_ID:-1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc}
+      - OMNI_AUTHUSER=${OMNI_AUTHUSER:-0}
+    volumes:
+      - ./outputs:/app/outputs
+    restart: unless-stopped

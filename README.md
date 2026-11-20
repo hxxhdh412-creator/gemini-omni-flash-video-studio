@@ -15,31 +15,64 @@ Bộ mã nguồn tinh gọn và **Agent Skill (`gemini-omni-flash-api`)** chuyê
 
 ```text
 gemini-omni-flash-video-studio/
+├── omni_server.py                                # 🌐 HTTP Cloud Server + REST API + Web UI + 24/7 Headless Cookie Auto-Rotator
+├── omni_cli.py                                   # 💻 Cross-Platform Server CLI (status, set-cookie, rotate-cookie, scene, server)
+├── Dockerfile                                    # 🐳 Docker Image chuẩn cho Linux Cloud Server (Python 3.12 + FFmpeg)
+├── docker-compose.yml                            # 🐳 Chạy 1-Click trên VPS / Cloud Server với Auto-Restart
+├── start-server.sh                               # 🚀 Script khởi chạy trực tiếp trên Ubuntu / Debian VPS
 ├── README.md                                     # Tài liệu kiến trúc & hướng dẫn sử dụng
-├── produce.ps1                                   # CLI vận hành nhanh (switch-account, refresh, commercial, edit)
+├── produce.ps1                                   # CLI vận hành nhanh trên Windows
 ├── install-skill.ps1                             # Cài đặt 1-Click skill vào ~/.gemini/config/skills/
 ├── requirements.txt                              # Các thư viện Python cần thiết
 ├── assets_1080p/                                 # 6 ảnh giao diện CRM 1920x1080 mẫu (đã làm sạch & nâng cấp Full HD)
 ├── examples/
 │   ├── produce_omni_ingredients_master.py        # Pipeline mẫu 60s: Nạp 6 ảnh 1080p vào Thành phần tạo (StructuredImage)
-│   └── sync_vo_and_remaster_ingredients.py       # Pipeline mẫu 60s: Đồng bộ giọng đọc Single-Model + Clause Sync + Remaster
+│   ├── sync_vo_and_remaster_ingredients.py       # Pipeline mẫu 60s: Đồng bộ giọng đọc Single-Model + Clause Sync
+│   └── make_emotional_1take_vo.py                # Pipeline mẫu 30s/60s: Lồng tiếng 1-Take giàu cảm xúc (gemini-3.8-flash-tts)
 └── skills/
     └── gemini-omni-flash-api/                    # Trọn bộ Skill chuẩn Antigravity / Claude Code / Gemini CLI
-        ├── SKILL.md                              # Định nghĩa Skill & hướng dẫn điều phối cho AI Agent
-        ├── references/
-        │   └── omni_1_1_complete_guide.md        # Cẩm nang kỹ thuật đầy đủ (SDK + Vids RPC 374 + StructuredImage + VO Sync)
-        └── scripts/
-            ├── upload_file.py                    # Công cụ tải file lên Gemini Files API
-            ├── audio/
-            │   └── lyria-recipe.py               # Engine tạo nhạc nền Google Lyria RealTime (48kHz Stereo WAV)
-            └── video/
-                ├── edit_video.py                 # Core Engine: SDK + Vids RPC (374) + StructuredImage (Node[11]) + Auto-CDP
-                ├── generate_video.py             # Trình tạo video qua Official Google GenAI SDK
-                ├── inspect_video.py              # Kiểm tra thông số kỹ thuật video qua ffprobe
-                ├── prep_video.py                 # Chuẩn hóa & cắt video đầu vào (10s, 720p/1080p, 24fps)
-                ├── produce_commercial.py         # Orchestrator sản xuất TVC trọn gói 1-Click
-                └── vids_session.example.json     # Mẫu cấu hình phiên Google Vids (không chứa cookie thật)
 ```
+
+---
+
+## 🌐 Triển Khai Lên Máy Chủ Cloud / VPS (`omni_server.py` & Docker)
+
+### Cách 1: Chạy trực tiếp trên máy chủ Linux / Ubuntu / Claude Code Cloud
+```bash
+git clone https://github.com/hxxhdh412-creator/gemini-omni-flash-video-studio.git
+cd gemini-omni-flash-video-studio
+
+# Cài đặt Cookie & GEMINI_API_KEY ngay bằng CLI:
+python3 omni_cli.py set-cookie \
+  --cookie "SID=...; HSID=...; SSID=...; SAPISID=...; __Secure-1PSID=...; __Secure-1PSIDTS=..." \
+  --doc-id "1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc" \
+  --authuser 0 \
+  --api-key "AIzaSy..."
+
+# Kiểm tra trạng thái & Xoay vòng Cookie tự động (không cần cài Chrome):
+python3 omni_cli.py status
+python3 omni_cli.py rotate-cookie
+
+# Khởi chạy Web Dashboard & REST API Server trên cổng 8080:
+./start-server.sh
+```
+
+### Cách 2: Chạy bằng Docker Compose (`docker compose up -d`)
+```bash
+export GEMINI_API_KEY="AIzaSy..."
+export OMNI_COOKIE="SID=...; __Secure-1PSIDTS=..."
+export OMNI_DOC_ID="1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc"
+docker compose up -d --build
+```
+
+### 🔌 Các Cổng REST API Cho AI Agent / Webhooks (`http://<server-ip>:8080`)
+- **`GET  /`**: Giao diện Web Studio quản lý Cookie và tạo video trực quan trên trình duyệt.
+- **`GET  /api/session/status`**: Kiểm tra tình trạng Cookie và số lần tự động xoay vòng (`RotateCookies`).
+- **`POST /api/session`**: Cập nhật nóng chuỗi `cookie`, lệnh `curl`, `doc_id` hoặc `gemini_api_key` từ xa mà không cần khởi động lại server.
+- **`POST /api/session/rotate`**: Kích hoạt xoay vòng Cookie tức thì qua HTTPS (`RotateCookies`).
+- **`POST /api/generate-scene`**: Tạo 1 cảnh video `10s` (hỗ trợ truyền đường dẫn hoặc Base64 ảnh vào `image` để đưa vào khe **Thành phần tạo / `StructuredImage`**).
+- **`POST /api/produce-commercial`**: Sản xuất trọn gói TVC đa cảnh `30s / 60s` (`1080p Full HD`) kèm giọng đọc **1-Take `gemini-3.8-flash-tts`** và nhạc nền **Google Lyria RealTime**.
+- **`GET  /api/jobs/<job_id>`**: Theo dõi tiến độ render và lấy link tải file `/outputs/<filename>.mp4`.
 
 ---
 
