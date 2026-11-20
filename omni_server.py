@@ -1172,6 +1172,9 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/mcp" or path.startswith("/mcp/"):
+            import importlib
+            import omni_mcp_server
+            importlib.reload(omni_mcp_server)
             from omni_mcp_server import handle_mcp_jsonrpc
 
             if isinstance(body, list):

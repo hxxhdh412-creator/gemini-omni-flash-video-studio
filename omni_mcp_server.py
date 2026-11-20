@@ -214,7 +214,7 @@ MCP_TOOLS_SCHEMA = [
                 },
                 "wait": {
                     "type": "boolean",
-                    "description": "If true (default), waits ~25s and returns the completed video path & `download_url`. If false, queues an async job and returns `job_id` in <10ms.",
+                    "description": "If false (default), returns immediately in <10ms with `job_id` so reverse proxies/Cloudflare never time out with HTTP 502/504, and you can poll `omni_job_status` with `wait_seconds=20`. Set true only for direct localhost stdio calls.",
                 },
             },
             "required": ["prompt"],
@@ -429,14 +429,18 @@ MCP_TOOLS_SCHEMA = [
     },
     {
         "name": "omni_job_status",
-        "description": "Check the real-time status (`queued`, `running`, `completed`, `failed`), logs, instant 720p `preview_url`, and `/outputs/<filename>.mp4` `download_url` of a pipeline job.",
+        "description": "Check the real-time status (`queued`, `running`, `completed`, `failed`), logs, instant 720p `preview_url`, and `/outputs/<filename>.mp4` `download_url` of a pipeline job. Supports short long-polling (`wait_seconds` up to 25s) so you get the completed video without proxy timeouts.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "job_id": {
                     "type": "string",
                     "description": "Job ID returned by `omni_generate_scene` or `omni_produce_commercial`. Omit to list all recent jobs.",
-                }
+                },
+                "wait_seconds": {
+                    "type": "integer",
+                    "description": "Optional seconds (0 to 25, default 18 when `job_id` is provided) to wait for the job to complete before returning.",
+                },
             },
         },
     },
@@ -540,7 +544,9 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
     if tool_name == "omni_generate_scene":
         # Default upscale_1080p to False for instant native vids.new 720p generation speed (~25s)
         args.setdefault("upscale_1080p", False)
-        wait = bool(args.get("wait", True))
+        # Wait up to 18s inline so fast generations return immediately, while returning job_id BEFORE any 30s/60s Cloudflare/proxy 502 timeout!
+        wait = bool(args.get("wait", False))
+        max_wait_sec = 18.0 if wait else 2.0
         job_id = uuid.uuid4().hex[:10]
         job_obj = {
             "job_id": job_id,
@@ -551,19 +557,28 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         }
         with srv.JOBS_LOCK:
             srv.JOBS[job_id] = job_obj
-        if wait:
-            srv.run_job_generate_scene(job_id, args)
-            with srv.JOBS_LOCK:
-                return srv.JOBS[job_id]
-        else:
-            t = threading.Thread(target=srv.run_job_generate_scene, args=(job_id, args), daemon=True)
-            t.start()
-            return {
-                "status": "queued",
-                "job_id": job_id,
-                "poll_tool": "omni_job_status",
-                "poll_url": f"/api/jobs/{job_id}",
-            }
+        t = threading.Thread(target=srv.run_job_generate_scene, args=(job_id, args), daemon=True)
+        t.start()
+        if max_wait_sec > 0:
+            t_deadline = time.time() + max_wait_sec
+            while time.time() < t_deadline:
+                with srv.JOBS_LOCK:
+                    cur = dict(srv.JOBS.get(job_id) or {})
+                if cur.get("status") in ("completed", "failed"):
+                    host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
+                    if cur.get("download_url") and cur["download_url"].startswith("/"):
+                        cur["public_download_url"] = f"{host_url}{cur['download_url']}"
+                    return cur
+                time.sleep(1.0)
+        with srv.JOBS_LOCK:
+            cur = dict(srv.JOBS.get(job_id) or {})
+        cur["poll_tool"] = "omni_job_status"
+        cur["poll_url"] = f"/api/jobs/{job_id}"
+        cur["message"] = (
+            f"Job '{job_id}' is actively rendering in background (HTTP 200 OK — NOT an error). "
+            f"Immediately call `omni_job_status(job_id='{job_id}', wait_seconds=18)` until `status` is `'completed'` to get `public_download_url`."
+        )
+        return cur
 
     if tool_name == "omni_generate_image":
         prompt = (args.get("prompt") or "").strip()
@@ -681,6 +696,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
 
     if tool_name == "omni_produce_commercial":
         wait = bool(args.get("wait", False))
+        max_wait_sec = 22.0 if wait else 0.0
         job_id = uuid.uuid4().hex[:10]
         job_obj = {
             "job_id": job_id,
@@ -691,29 +707,48 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         }
         with srv.JOBS_LOCK:
             srv.JOBS[job_id] = job_obj
-        if wait:
-            srv.run_job_produce_commercial(job_id, args)
-            with srv.JOBS_LOCK:
-                return srv.JOBS[job_id]
-        else:
-            t = threading.Thread(target=srv.run_job_produce_commercial, args=(job_id, args), daemon=True)
-            t.start()
-            return {
-                "status": "queued",
-                "job_id": job_id,
-                "scene_count": len(args.get("scenes") or []),
-                "poll_tool": "omni_job_status",
-                "poll_url": f"/api/jobs/{job_id}",
-            }
+        t = threading.Thread(target=srv.run_job_produce_commercial, args=(job_id, args), daemon=True)
+        t.start()
+        if max_wait_sec > 0:
+            t_deadline = time.time() + max_wait_sec
+            while time.time() < t_deadline:
+                with srv.JOBS_LOCK:
+                    cur = dict(srv.JOBS.get(job_id) or {})
+                if cur.get("status") in ("completed", "failed"):
+                    return cur
+                time.sleep(1.0)
+        return {
+            "status": "running",
+            "job_id": job_id,
+            "scene_count": len(args.get("scenes") or []),
+            "poll_tool": "omni_job_status",
+            "poll_url": f"/api/jobs/{job_id}",
+            "message": f"Commercial job '{job_id}' started. Call `omni_job_status(job_id='{job_id}')` to poll progress and get `download_url`.",
+        }
 
     if tool_name == "omni_job_status":
         job_id = args.get("job_id")
-        with srv.JOBS_LOCK:
-            if job_id:
-                return srv.JOBS.get(job_id) or {"error": f"Job '{job_id}' not found"}
-            return {"jobs": list(srv.JOBS.values())}
+        if not job_id:
+            with srv.JOBS_LOCK:
+                return {"jobs": list(srv.JOBS.values())}
+        wait_sec = min(22, max(0, int(args.get("wait_seconds", 18))))
+        t_deadline = time.time() + wait_sec
+        while True:
+            with srv.JOBS_LOCK:
+                job = dict(srv.JOBS.get(job_id) or {})
+            if not job:
+                return {"error": f"Job '{job_id}' not found"}
+            if job.get("status") in ("completed", "failed") or time.time() >= t_deadline:
+                host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
+                if job.get("download_url") and job["download_url"].startswith("/"):
+                    job["public_download_url"] = f"{host_url}{job['download_url']}"
+                if job.get("preview_url") and job["preview_url"].startswith("/"):
+                    job["public_preview_url"] = f"{host_url}{job['preview_url']}"
+                return job
+            time.sleep(1.0)
 
     if tool_name == "omni_list_outputs":
+        host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
         items = []
         if os.path.exists(OUTPUTS_DIR):
             for fn in sorted(os.listdir(OUTPUTS_DIR), reverse=True):
@@ -726,6 +761,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                             "relative_path": f"outputs/{fn}",
                             "size_mb": round(os.path.getsize(fp) / (1024 * 1024), 2),
                             "download_url": f"/outputs/{fn}",
+                            "public_download_url": f"{host_url}/outputs/{fn}",
                         }
                     )
         return {"count": len(items), "files": items}
