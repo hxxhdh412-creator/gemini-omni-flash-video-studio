@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HEBUM × Omni 1.1 Flash Video Studio — Cloud Server</title>
+  <style>
+    :root {
+      --bg: #050e0a;
+      --bg-panel: #0b1c14;
+      --bg-card: #10271d;
+      --bg-input: #07140e;
+      --border: #1d4633;
+      --border-focus: #10b981;
+      --accent: #10b981;
+      --accent-hover: #059669;
+      --lime: #dfff62;
+      --cyan: #38bdf8;
+      --text: #ecfdf5;
+      --muted: #86efac;
+      --dim: #649b7e;
+      --danger: #f43f5e;
+    }
+    * { box-sizing: border-box; font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top right, #0e291d 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    /* Top Navbar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 32px;
+      background: rgba(11, 28, 20, 0.88);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--lime), var(--accent));
+      color: #04130c;
+      font-weight: 900;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 18px rgba(223, 255, 98, 0.28);
+    }
+    .brand-title {
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      color: var(--lime);
+    }
+    .brand-sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .status-pills {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #092218;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .pill.ok { border-color: var(--accent); color: var(--lime); background: rgba(16, 185, 129, 0.14); }
+    .pill.warn { border-color: #f59e0b; color: #fde68a; background: rgba(245, 158, 11, 0.15); }
+
+    /* Main Container & Tabs */
+    .container {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 24px 32px 60px;
+    }
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      background: var(--bg-panel);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tab-btn:hover { border-color: var(--accent); color: #fff; }
+    .tab-btn.active {
+      background: linear-gradient(135deg, rgba(223, 255, 98, 0.18), rgba(16, 185, 129, 0.25));
+      border-color: var(--lime);
+      color: var(--lime);
+      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.18);
+    }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* Layout Grids & Cards */
+    .grid-2 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 22px; }
+    .grid-equal { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+    @media (max-width: 1024px) {
+      .grid-2, .grid-equal { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: rgba(16, 39, 29, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(29, 70, 51, 0.65);
+    }
+    .card-title {
+      margin: 0;
+      font-size: 16.5px;
+      font-weight: 800;
+      color: var(--lime);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--muted);
+      margin: 12px 0 5px;
+    }
+    input, select, textarea {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 9px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--lime);
+    }
+    textarea { min-height: 76px; resize: vertical; line-height: 1.45; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: linear-gradient(135deg, var(--lime), #34d399);
+      color: #04130c;
+      font-weight: 800;
+      font-size: 13.5px;
+      border: none;
+      padding: 11px 20px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform 0.12s, box-shadow 0.15s;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(223, 255, 98, 0.25); }
+    .btn-secondary {
+      background: #143325;
+      color: var(--text);
+      border: 1px solid var(--border);
+      font-weight: 700;
+    }
+    .btn-secondary:hover { border-color: var(--lime); color: var(--lime); box-shadow: none; }
+    .btn-danger {
+      background: rgba(244, 63, 94, 0.16);
+      color: #fda4af;
+      border: 1px solid rgba(244, 63, 94, 0.4);
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .btn-sm { padding: 7px 13px; font-size: 12px; border-radius: 8px; }
+
+    /* Scene Cards in Storyboard Builder */
+    .scene-list { display: flex; flex-direction: column; gap: 16px; }
+    .scene-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      position: relative;
+    }
+    .scene-box-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .scene-num {
+      font-size: 13px;
+      font-weight: 800;
+      color: #04130c;
+      background: var(--lime);
+      padding: 3px 10px;
+      border-radius: 6px;
+    }
+    .ing-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .ing-preview {
+      width: 96px;
+      height: 54px;
+      border-radius: 7px;
+      background: #040a07;
+      border: 1px dashed var(--border);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    /* Output Player & Console */
+    .video-stage {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #030906;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+    .video-stage video { width: 100%; height: 100%; object-fit: contain; }
+    pre.console {
+      background: #030906;
+      border: 1px solid #143325;
+      padding: 14px;
+      border-radius: 10px;
+      font-family: 'Consolas', 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #a7f3d0;
+      max-height: 310px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      margin: 12px 0 0;
+    }
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 16px;
+      margin-top: 14px;
+    }
+    .gallery-item {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 12px;
+    }
+    .gallery-item video, .gallery-item audio {
+      width: 100%;
+      border-radius: 8px;
+      background: #000;
+      margin-bottom: 8px;
+    }
+    .gallery-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    a.dl-link {
+      color: var(--lime);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    a.dl-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo">⚡</div>
+      <div>
+        <div class="brand-title">HEBUM × OMNI 1.1 FLASH VIDEO STUDIO</div>
+        <div class="brand-sub">Production Cloud Server • Native StructuredImage (Node[11]) • 1-Take Gemini 3.8 TTS • Lyria RealTime 48kHz</div>
+      </div>
+    </div>
+    <div class="status-pills" id="topStatusPills">
+      <span class="pill">Đang tải trạng thái máy chủ...</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Navigation Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('tab-commercial', this)">🎬 1. Sản Xuất TVC Đa Cảnh (30s / 60s)</button>
+      <button class="tab-btn" onclick="switchTab('tab-scene', this)">⚡ 2. Tạo Nhanh Cảnh 10s + Ảnh Thành Phần</button>
+      <button class="tab-btn" onclick="switchTab('tab-audio', this)">🎙️ 3. Phòng Thu Giọng Đọc 1-Take & Nhạc Lyria</button>
+      <button class="tab-btn" onclick="switchTab('tab-gallery', this); loadGallery();">📂 4. Kho Video Đã Xuất (`/outputs`)</button>
+      <button class="tab-btn" onclick="switchTab('tab-session', this)">🔐 5. Cấu Hình Cookie `vids.new` & API Docs</button>
+    </div>
+
+    <!-- TAB 1: MULTI-SCENE COMMERCIAL BUILDER (30s / 60s) -->
+    <section id="tab-commercial" class="tab-pane active">
+      <div class="grid-2">
+        <!-- Left: Storyboard Scene List -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🎞️ Kịch Bản Phân Cảnh (`StructuredImage` + `1-Take Gemini 3.8 TTS`)</h2>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-secondary btn-sm" onclick="loadPresetStoryboard(3)">⚡ Nạp Mẫu 30s (3 Cảnh)</button>
+              <button class="btn btn-secondary btn-sm" onclick="loadPresetStoryboard(6)">🌟 Nạp Mẫu 60s (6 Cảnh CRM)</button>
+              <button class="btn btn-sm" onclick="addSceneBox()">+ Thêm Cảnh 10s</button>
+            </div>
+          </div>
+
+          <div id="storyboardList" class="scene-list"></div>
+        </div>
+
+        <!-- Right: Audio Mastering Config + Live Preview & Job Monitor -->
+        <div style="display:flex; flex-direction:column; gap:20px;">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">🎚️ Cấu Hình Giọng Đọc 1-Take & Nhạc Nền Lyria</h2>
+            </div>
+            <div class="grid-equal" style="gap:12px;">
+              <div>
+                <label>Giọng Đọc (`gemini-3.8-flash-tts`):</label>
+                <select id="tvcVoice">
+                  <option value="Puck" selected>Puck (Nam — Founder Đĩnh Đạc, Truyền Lửa)</option>
+                  <option value="Aoede">Aoede (Nữ — Truyền Cảm, Sang Trọng)</option>
+                  <option value="Charon">Charon (Nam Trầm — Điện Ảnh, Quyền Lực)</option>
+                  <option value="Kore">Kore (Nữ — Trẻ Trung, Năng Động)</option>
+                  <option value="Fenrir">Fenrir (Nam — Mạnh Mẽ, Quyết Đoán)</option>
+                </select>
+              </div>
+              <div>
+                <label>Nhịp Độ Nhạc Nền Lyria (`BPM` & `Scale`):</label>
+                <div style="display:flex; gap:8px;">
+                  <input id="tvcBpm" type="number" value="116" style="width:90px;" />
+                  <select id="tvcScale">
+                    <option value="MINOR" selected>MINOR (Hiện Đại, Chiều Sâu)</option>
+                    <option value="MAJOR">MAJOR (Tươi Sáng, Hào Hứng)</option>
+                    <option value="PENTATONIC">PENTATONIC (Á Đông, Tinh Tế)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <label>Prompt Nhạc Nền (`Google Lyria RealTime 48kHz Stereo`):</label>
+            <input id="tvcBgmPrompt" value="Cinematic modern corporate electronic commercial music, driving synth pulse and warm deep bass" />
+            <label>Tên File Master Xuất Ra (`1920x1080 Full HD`):</label>
+            <input id="tvcOutputName" value="hebum_commercial_master_1080p.mp4" />
+
+            <div style="margin-top:16px; display:flex; gap:10px;">
+              <button class="btn" style="width:100%;" onclick="submitCommercialJob()">🚀 Bắt Đầu Sản Xuất TVC 1080p Full HD</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">📺 Màn Hình Preview & Nhật Ký Tiến Trình</h2>
+              <span id="tvcJobBadge" class="pill">Sẵn sàng</span>
+            </div>
+            <div class="video-stage" id="tvcVideoStage">
+              <span style="color:var(--dim); font-size:13px;">Video 1080p sau khi render sẽ phát trực tiếp tại đây</span>
+            </div>
+            <div id="tvcDownloadBar" style="display:none; margin-bottom:10px; text-align:right;">
+              <a id="tvcDownloadLink" class="btn btn-sm" href="#" download>⬇️ Tải Video MP4 (1080p Full HD)</a>
+            </div>
+            <pre class="console" id="tvcConsole">Sẵn sàng nhận lệnh sản xuất...</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: QUICK 10S SCENE GENERATOR WITH STRUCTUREDIMAGE -->
+    <section id="tab-scene" class="tab-pane">
+      <div class="grid-equal">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">⚡ Tạo Nhanh Cảnh 10 Giây (`Omni 1.1 Flash` + `StructuredImage`)</h2>
+          </div>
+          <label>Prompt Mô Tả Cảnh (Tiếng Anh):</label>
+          <textarea id="scPrompt" style="min-height:110px;">Continuous unbroken cinematic shot in a sleek dark-emerald executive glass office. A charismatic 32-year-old Vietnamese male business founder in a tailored charcoal-black blazer stands on the left and gestures proudly toward a large frameless ultrawide glass monitor on the right that displays the exact HEBUM CRM interface from the reference image. Smooth camera push-in toward the glowing CRM monitor. No spoken dialogue.</textarea>
+
+          <label>Chọn Ảnh Thành Phần Có Sẵn (`assets_1080p/`) Hoặc Tải Ảnh Lên (`StructuredImage Node[11]`):</label>
+          <div style="display:flex; gap:10px;">
+            <select id="scPresetImage" onchange="document.getElementById('scImagePath').value = this.value">
+              <option value="assets_1080p/asset_01_kenh_ket_noi_1080p.png">Ảnh #1 — Kênh kết nối đa nền tảng (1080p)</option>
+              <option value="assets_1080p/asset_02_hop_thu_da_kenh_1080p.png">Ảnh #2 — Hộp thư đa kênh Live Chat (1080p)</option>
+              <option value="assets_1080p/asset_03_ho_so_khach_hang_cong_no_1080p.png">Ảnh #3 — Hồ sơ Khách hàng 360° & Công nợ (1080p)</option>
+              <option value="assets_1080p/asset_04_pipeline_kinh_doanh_1080p.png">Ảnh #4 — Pipeline kinh doanh Kanban (1080p)</option>
+              <option value="assets_1080p/asset_05_luong_tu_dong_hoa_1080p.png">Ảnh #5 — Thiết lập luồng Tự động hóa VIP (1080p)</option>
+              <option value="assets_1080p/asset_06_bao_cao_dashboard_1080p.png">Ảnh #6 — Báo cáo Dashboard Real-Time (1080p)</option>
+              <option value="">-- Không dùng ảnh thành phần --</option>
+            </select>
+            <input type="file" accept="image/*" style="max-width:220px;" onchange="encodeFileToInput(this, 'scImagePath')" />
+          </div>
+          <label>Đường dẫn hoặc Base64 Ảnh Thành Phần:</label>
+          <input id="scImagePath" value="assets_1080p/asset_01_kenh_ket_noi_1080p.png" />
+
+          <label>Nối chuỗi từ Node Cảnh Trước (`prior_node_files` — tùy chọn để khóa nhân vật 100%):</label>
+          <input id="scPriorNode" placeholder="Ví dụ: omni_scene_s1_node.json (để trống nếu là Cảnh 1)" />
+
+          <label>Tên File Video Xuất Ra:</label>
+          <input id="scOutName" value="omni_quick_scene_1080p.mp4" />
+
+          <button class="btn" style="margin-top:16px; width:100%;" onclick="submitQuickScene()">🚀 Tạo Cảnh Video 1080p</button>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🎬 Kết Quả Cảnh 10 Giây</h2>
+            <span id="scJobBadge" class="pill">Chờ lệnh</span>
+          </div>
+          <div class="video-stage" id="scVideoStage">
+            <span style="color:var(--dim); font-size:13px;">Video cảnh 10s sẽ hiển thị tại đây</span>
+          </div>
+          <pre class="console" id="scConsole">Chưa có tiến trình nào.</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: STANDALONE 1-TAKE VOICEOVER & LYRIA MUSIC STUDIO -->
+    <section id="tab-audio" class="tab-pane">
+      <div class="grid-equal">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🎙️ Tổng Hợp Giọng Đọc `Single-Pass 1-Take` (`gemini-3.8-flash-tts`)</h2>
+          </div>
+          <label>Lời Thoại Tiếng Việt (Ngăn cách mỗi phân cảnh bằng 1 dòng trống `\n\n`):</label>
+          <textarea id="voTextInput" style="min-height:150px;">Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập... Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!
+
+Đó là lúc Hebum xuất hiện! Gom trọn mọi hội thoại về một màn hình Live Chat, phản hồi khách tức thì!
+
+Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng ký ngay tại wscrm chấm hebum chấm com chấm vn, chỉ sáu trăm chín mươi nghìn đồng!</textarea>
+          <div class="grid-equal" style="gap:10px;">
+            <div>
+              <label>Giọng Đọc:</label>
+              <select id="voVoiceSelect">
+                <option value="Puck" selected>Puck (Nam — Truyền Lửa)</option>
+                <option value="Aoede">Aoede (Nữ — Truyền Cảm)</option>
+                <option value="Charon">Charon (Nam Trầm)</option>
+                <option value="Kore">Kore (Nữ Trẻ Trung)</option>
+              </select>
+            </div>
+            <div>
+              <label>Tên File WAV Xuất Ra:</label>
+              <input id="voOutName" value="vo_1take_emotional.wav" />
+            </div>
+          </div>
+          <label>Chỉ Dẫn Cảm Xúc (`speech_metadata style`):</label>
+          <input id="voStyleInput" value="Expressive, deeply emotional, charismatic Vietnamese commercial storyteller and startup founder. Start with empathetic concern, shift into warm excitement, and finish with an inspiring call to action." />
+          <button class="btn" style="margin-top:16px; width:100%;" onclick="generateStandaloneVO()">🎙️ Tạo File Giọng Đọc 1-Take (`24kHz WAV` Đã Lọc C2PA)</button>
+          <div id="voAudioResult" style="margin-top:14px;"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🎵 Sáng Tác Nhạc Nền AI (`Google Lyria RealTime 48kHz Stereo`)</h2>
+          </div>
+          <label>Mô Tả Phong Cách Nhạc Nền:</label>
+          <textarea id="bgmPromptInput" style="min-height:100px;">Cinematic futuristic corporate synthwave electronic commercial music, deep driving bassline, inspiring warm pads</textarea>
+          <div class="grid-equal" style="gap:10px;">
+            <div>
+              <label>Thời Lượng (Giây):</label>
+              <input id="bgmDurInput" type="number" value="30" />
+            </div>
+            <div>
+              <label>Nhịp BPM:</label>
+              <input id="bgmBpmInput" type="number" value="116" />
+            </div>
+          </div>
+          <label>Tên File Nhạc WAV Xuất Ra:</label>
+          <input id="bgmOutName" value="lyria_bgm_stereo_48khz.wav" />
+          <button class="btn" style="margin-top:16px; width:100%;" onclick="generateStandaloneBGM()">🎵 Sáng Tác Nhạc Nền Lyria (`48kHz WAV`)</button>
+          <div id="bgmAudioResult" style="margin-top:14px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: OUTPUTS GALLERY -->
+    <section id="tab-gallery" class="tab-pane">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">📂 Kho Video & Âm Thanh Đã Xuất Trên Máy Chủ (`/outputs`)</h2>
+          <button class="btn btn-secondary btn-sm" onclick="loadGallery()">🔄 Làm Mới Danh Sách</button>
+        </div>
+        <div id="galleryContainer" class="gallery-grid"></div>
+      </div>
+    </section>
+
+    <!-- TAB 5: SESSION & COOKIE MANAGER + API DOCS -->
+    <section id="tab-session" class="tab-pane">
+      <div class="grid-equal">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🔐 Quản Lý Phiên `vids.new` & Tự Động Xoay Vòng Cookie 24/7</h2>
+          </div>
+          <div id="sessionDetailBox" style="margin-bottom:12px;"></div>
+          <label>Dán Chuỗi Cookie (`SID=...; __Secure-1PSIDTS=...`) Hoặc Lệnh `curl` Từ Trình Duyệt:</label>
+          <textarea id="sessCookieInput" style="min-height:120px;" placeholder="Dán toàn bộ chuỗi Cookie hoặc lệnh cURL copy từ DevTools (F12 -> Network -> generate) vào đây..."></textarea>
+          <div class="grid-equal" style="gap:10px;">
+            <div>
+              <label>Google Vids `doc_id`:</label>
+              <input id="sessDocId" placeholder="1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc" />
+            </div>
+            <div>
+              <label>Tài Khoản `authuser` (`0`, `1`, `2`...):</label>
+              <input id="sessAuthuser" value="0" />
+            </div>
+          </div>
+          <label>`GEMINI_API_KEY` (Dùng cho Gemini 3.8 TTS & Google Lyria RealTime):</label>
+          <input id="sessApiKey" placeholder="AIzaSy..." />
+          <div style="display:flex; gap:10px; margin-top:16px;">
+            <button class="btn" onclick="saveSessionConfig()">💾 Lưu Cấu Hình Lên Máy Chủ</button>
+            <button class="btn btn-secondary" onclick="triggerCookieRotate()">🔄 Xoay Vòng Cookie Ngay (`RotateCookies`)</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🔌 Tài Liệu Kết Nối REST API Cho Agent Khác</h2>
+          </div>
+          <p style="font-size:13px; color:var(--muted); margin-top:0;">
+            Các AI Agent khác (Claude Code, n8n, Make, Backend App) có thể gọi trực tiếp vào máy chủ này qua chuẩn REST JSON:
+          </p>
+          <pre class="console" style="max-height:420px;"># 1. Kiểm tra trạng thái Cookie & Server
+GET /api/session/status
+
+# 2. Cập nhật Cookie từ xa
+POST /api/session
+Content-Type: application/json
+{
+  "cookie": "SID=...; __Secure-1PSIDTS=...",
+  "doc_id": "1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc",
+  "authuser": "0",
+  "gemini_api_key": "AIzaSy..."
+}
+
+# 3. Tạo 1 cảnh video 10s kèm ảnh Thành phần (StructuredImage)
+POST /api/generate-scene
+Content-Type: application/json
+{
+  "prompt": "Continuous unbroken cinematic shot...",
+  "image": "assets_1080p/asset_01_kenh_ket_noi_1080p.png",
+  "output_filename": "scene1_1080p.mp4",
+  "upscale_1080p": true
+}
+
+# 4. Sản xuất trọn gói TVC 30s/60s (Multi-Scene + 1-Take Gemini 3.8 TTS + Lyria BGM)
+POST /api/produce-commercial
+Content-Type: application/json
+{
+  "output_filename": "tvc_master_1080p.mp4",
+  "bpm": 116,
+  "scale": "MINOR",
+  "scenes": [
+    {
+      "badge": "01 // KẾT NỐI ĐA KÊNH",
+      "image": "assets_1080p/asset_01_kenh_ket_noi_1080p.png",
+      "prompt": "Continuous unbroken cinematic shot...",
+      "vo": "Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập...",
+      "sub_1": "Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập...",
+      "sub_2": "Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!"
+    }
+  ]
+}</pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const PRESET_60S = [
+      {
+        badge: "01 // NỖI ĐAU DỮ LIỆU RỜI RẠC",
+        image: "assets_1080p/asset_01_kenh_ket_noi_1080p.png",
+        prompt: "Continuous unbroken cinematic shot in a sleek dark-emerald executive glass office. A charismatic 32-year-old Vietnamese male business founder in a tailored charcoal-black blazer stands on the left and gestures proudly toward a large frameless ultrawide glass monitor on the right that displays the exact HEBUM CRM multi-channel connection hub interface from the reference image. Smooth camera push-in toward the glowing CRM monitor. No spoken dialogue.",
+        vo: "Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập... Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!",
+        sub_1: "Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập...",
+        sub_2: "Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!"
+      },
+      {
+        badge: "02 // BÙNG NỔ HỘP THƯ LIVE CHAT ĐA KÊNH",
+        image: "assets_1080p/asset_02_hop_thu_da_kenh_1080p.png",
+        prompt: "Continuous unbroken cinematic shot in the same sleek dark-emerald executive glass office. The same 32-year-old Vietnamese male founder in the charcoal-black blazer stands on the left side of the frame gesturing toward a large frameless ultrawide monitor on the right that displays the exact HEBUM CRM multi-channel Live Chat inbox interface from the reference image. Smooth camera tracking movement. No spoken dialogue.",
+        vo: "Đó là lúc Hebum xuất hiện! Gom trọn mọi hội thoại về một màn hình Live Chat, phản hồi khách tức thì!",
+        sub_1: "Đó là lúc Hebum xuất hiện! Gom trọn mọi hội thoại...",
+        sub_2: "...về một màn hình Live Chat, phản hồi khách tức thì!"
+      },
+      {
+        badge: "03 // HỒ SƠ KHÁCH HÀNG 360° & CÔNG NỢ",
+        image: "assets_1080p/asset_03_ho_so_khach_hang_cong_no_1080p.png",
+        prompt: "Continuous unbroken cinematic shot in the same sleek dark-emerald executive glass office. The same 32-year-old Vietnamese male founder in the charcoal-black blazer stands on the left, nodding with satisfaction as he points toward a large frameless ultrawide glass monitor on the right that displays the exact HEBUM CRM 360-degree customer profile and credit limit dashboard from the reference image. No spoken dialogue.",
+        vo: "Mở ngay hồ sơ khách hàng ba trăm sáu mươi độ... Từ lịch sử đơn hàng đến hạn mức công nợ, tất cả minh bạch trong tầm tay!",
+        sub_1: "Mở ngay hồ sơ khách hàng 360 độ...",
+        sub_2: "Từ lịch sử đơn hàng đến hạn mức công nợ, minh bạch trong tầm tay!"
+      },
+      {
+        badge: "04 // LÀM CHỦ PIPELINE BÁN HÀNG KANBAN",
+        image: "assets_1080p/asset_04_pipeline_kinh_doanh_1080p.png",
+        prompt: "Continuous unbroken cinematic shot in the same sleek dark-emerald executive glass office. The same 32-year-old Vietnamese male founder in the charcoal-black blazer leads a focused strategy briefing on the left while gesturing toward a large frameless ultrawide glass display on the right that displays the exact HEBUM CRM 4-column Kanban sales pipeline interface from the reference image. No spoken dialogue.",
+        vo: "Kiểm soát toàn bộ phễu bán hàng với bảng Pipeline bốn bước trực quan — nắm chắc từng cơ hội chốt đơn lớn!",
+        sub_1: "Kiểm soát toàn bộ phễu bán hàng với Pipeline 4 bước trực quan —",
+        sub_2: "nắm chắc từng cơ hội chốt đơn lớn!"
+      },
+      {
+        badge: "05 // TỰ ĐỘNG HÓA CHĂM SÓC VIP 24/7",
+        image: "assets_1080p/asset_05_luong_tu_dong_hoa_1080p.png",
+        prompt: "Continuous unbroken cinematic shot in the same sleek dark-emerald executive glass office. The same 32-year-old Vietnamese male founder in the charcoal-black blazer stands on the left beside his desk and gestures toward a large frameless ultrawide glass monitor on the right that displays the exact HEBUM CRM automated VIP workflow builder interface from the reference image. No spoken dialogue.",
+        vo: "Tự động phân loại khách VIP, nhắc lịch và cảnh báo quá hạn... Giải phóng đến tám mươi phần trăm việc tay chân!",
+        sub_1: "Tự động phân loại khách VIP, nhắc lịch và cảnh báo quá hạn...",
+        sub_2: "Giải phóng đến 80% việc tay chân!"
+      },
+      {
+        badge: "06 // WORKSHOP VIBE CODING CRM — 690.000Đ",
+        image: "assets_1080p/asset_06_bao_cao_dashboard_1080p.png",
+        prompt: "Continuous unbroken cinematic finale shot in the same sleek dark-emerald executive glass office. The same 32-year-old Vietnamese male founder in the charcoal-black blazer smiles confidently on the left and gestures warmly toward a large frameless ultrawide glass command-center monitor on the right that displays the exact HEBUM CRM real-time business revenue dashboard from the reference image. No spoken dialogue.",
+        vo: "Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng ký ngay tại wscrm chấm hebum chấm com chấm vn, chỉ sáu trăm chín mươi nghìn đồng!",
+        sub_1: "3 giờ thực hành Vibe Coding để tự xây hệ thống CRM riêng!",
+        sub_2: "Đăng ký ngay: wscrm.hebum.com.vn — chỉ 690.000đ/người!"
+      }
+    ];
+
+    let storyboardScenes = [];
+
+    function switchTab(tabId, btn) {
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      if (btn) btn.classList.add('active');
+    }
+
+    function renderStoryboard() {
+      const container = document.getElementById('storyboardList');
+      container.innerHTML = '';
+      storyboardScenes.forEach((sc, i) => {
+        const div = document.createElement('div');
+        div.className = 'scene-box';
+        div.innerHTML = `
+          <div class="scene-box-head">
+            <span class="scene-num">CẢNH ${i + 1} (${i * 10}s – ${(i + 1) * 10}s)</span>
+            <button class="btn btn-danger" onclick="removeScene(${i})">✕ Xóa Cảnh</button>
+          </div>
+          <div class="grid-equal" style="gap:10px;">
+            <div>
+              <label>Tiêu đề Badge HUD góc trên:</label>
+              <input value="${sc.badge}" onchange="storyboardScenes[${i}].badge = this.value" />
+            </div>
+            <div>
+              <label>Ảnh Thành Phần (` + '`StructuredImage`' + `):</label>
+              <div style="display:flex; gap:6px;">
+                <input id="scImg_${i}" value="${sc.image}" onchange="storyboardScenes[${i}].image = this.value" />
+                <input type="file" accept="image/*" style="max-width:135px;" onchange="uploadSceneImg(this, ${i})" />
+              </div>
+            </div>
+          </div>
+          <label>Visual Prompt (` + '`gemini-omni-1.1-flash`' + `):</label>
+          <textarea onchange="storyboardScenes[${i}].prompt = this.value">${sc.prompt}</textarea>
+          <label>Lời Thoại Giọng Đọc Cảm Xúc (` + '`1-Take Gemini 3.8 Flash TTS`' + `):</label>
+          <input value="${sc.vo}" onchange="storyboardScenes[${i}].vo = this.value" />
+          <div class="grid-equal" style="gap:10px;">
+            <div>
+              <label>Phụ đề Vế 1 (` + '`sub_1`' + `):</label>
+              <input value="${sc.sub_1}" onchange="storyboardScenes[${i}].sub_1 = this.value" />
+            </div>
+            <div>
+              <label>Phụ đề Vế 2 (` + '`sub_2`' + `):</label>
+              <input value="${sc.sub_2}" onchange="storyboardScenes[${i}].sub_2 = this.value" />
+            </div>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function loadPresetStoryboard(count) {
+      if (count === 3) {
+        storyboardScenes = [
+          JSON.parse(JSON.stringify(PRESET_60S[0])),
+          JSON.parse(JSON.stringify(PRESET_60S[1])),
+          JSON.parse(JSON.stringify(PRESET_60S[5]))
+        ];
+        document.getElementById('tvcOutputName').value = 'hebum_tvc_30s_1080p.mp4';
+      } else {
+        storyboardScenes = JSON.parse(JSON.stringify(PRESET_60S));
+        document.getElementById('tvcOutputName').value = 'hebum_tvc_60s_1080p.mp4';
+      }
+      renderStoryboard();
+    }
+
+    function addSceneBox() {
+      const idx = storyboardScenes.length + 1;
+      storyboardScenes.push({
+        badge: `0${idx} // PHÂN CẢNH MỚI`,
+        image: "assets_1080p/asset_01_kenh_ket_noi_1080p.png",
+        prompt: "Continuous unbroken cinematic shot in a sleek dark-emerald executive glass office. The founder gestures toward the frameless ultrawide glass monitor displaying the reference image. No spoken dialogue.",
+        vo: "Nhập lời thoại tiếng Việt truyền cảm cho phân cảnh này...",
+        sub_1: "Phụ đề vế thứ nhất...",
+        sub_2: "...phụ đề vế thứ hai!"
+      });
+      renderStoryboard();
+    }
+
+    function removeScene(idx) {
+      storyboardScenes.splice(idx, 1);
+      renderStoryboard();
+    }
+
+    function uploadSceneImg(input, idx) {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        storyboardScenes[idx].image = reader.result;
+        document.getElementById('scImg_' + idx).value = reader.result.slice(0, 48) + '...';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function encodeFileToInput(input, targetId) {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        document.getElementById(targetId).value = reader.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function refreshStatus() {
+      try {
+        const r = await fetch('/api/session/status');
+        const d = await r.json();
+        const pills = document.getElementById('topStatusPills');
+        pills.innerHTML = `
+          <span class="pill ${d.session_ready ? 'ok' : 'warn'}">
+            ${d.session_ready ? '● VIDS.NEW COOKIE READY' : '⚠️ CHƯA CÓ COOKIE'}
+          </span>
+          <span class="pill ${d.gemini_api_key_configured ? 'ok' : 'warn'}">
+            ${d.gemini_api_key_configured ? '● GEMINI 3.8 TTS & LYRIA READY' : '⚠️ THIẾU GEMINI_API_KEY'}
+          </span>
+          <span class="pill">authuser: <b>${d.authuser}</b></span>
+          <span class="pill">Auto-Rotate: <b>${d.rotate_count}</b> lần</span>
+        `;
+        const detail = document.getElementById('sessionDetailBox');
+        if (detail) {
+          detail.innerHTML = `<pre class="console" style="margin:0;">${JSON.stringify(d, null, 2)}</pre>`;
+        }
+        if (d.doc_id && !document.getElementById('sessDocId').value) {
+          document.getElementById('sessDocId').value = d.doc_id;
+        }
+        document.getElementById('sessAuthuser').value = d.authuser || '0';
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function saveSessionConfig() {
+      const raw = document.getElementById('sessCookieInput').value.trim();
+      const payload = {
+        doc_id: document.getElementById('sessDocId').value.trim(),
+        authuser: document.getElementById('sessAuthuser').value.trim(),
+        gemini_api_key: document.getElementById('sessApiKey').value.trim()
+      };
+      if (raw.startsWith('curl ')) payload.curl = raw;
+      else if (raw.startsWith('{')) payload.vids_session = JSON.parse(raw);
+      else if (raw) payload.cookie = raw;
+
+      const r = await fetch('/api/session', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json();
+      alert('Đã lưu cấu hình: ' + JSON.stringify(d));
+      refreshStatus();
+    }
+
+    async function triggerCookieRotate() {
+      const r = await fetch('/api/session/rotate', { method: 'POST' });
+      const d = await r.json();
+      alert('Kết quả xoay vòng Cookie: ' + JSON.stringify(d));
+      refreshStatus();
+    }
+
+    async function submitCommercialJob() {
+      const payload = {
+        scenes: storyboardScenes,
+        voice: document.getElementById('tvcVoice').value,
+        bpm: parseInt(document.getElementById('tvcBpm').value || '116', 10),
+        scale: document.getElementById('tvcScale').value,
+        bgm_prompt: document.getElementById('tvcBgmPrompt').value.trim(),
+        output_filename: document.getElementById('tvcOutputName').value.trim()
+      };
+      const r = await fetch('/api/produce-commercial', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json();
+      monitorJob(d.job_id, 'tvcConsole', 'tvcJobBadge', 'tvcVideoStage', 'tvcDownloadBar', 'tvcDownloadLink');
+    }
+
+    async function submitQuickScene() {
+      const priors = document.getElementById('scPriorNode').value.trim();
+      const payload = {
+        prompt: document.getElementById('scPrompt').value.trim(),
+        image: document.getElementById('scImagePath').value.trim(),
+        prior_node_files: priors ? [priors] : [],
+        output_filename: document.getElementById('scOutName').value.trim(),
+        upscale_1080p: true
+      };
+      const r = await fetch('/api/generate-scene', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json();
+      monitorJob(d.job_id, 'scConsole', 'scJobBadge', 'scVideoStage', null, null);
+    }
+
+    function monitorJob(jobId, consoleId, badgeId, stageId, dlBarId, dlLinkId) {
+      const con = document.getElementById(consoleId);
+      const badge = document.getElementById(badgeId);
+      badge.className = 'pill warn';
+      badge.textContent = '⏳ Đang xử lý Job #' + jobId;
+      const timer = setInterval(async () => {
+        const r = await fetch('/api/jobs/' + jobId);
+        const d = await r.json();
+        con.textContent = (d.logs || []).join('\n') + (d.error ? '\nERROR: ' + d.error : '');
+        con.scrollTop = con.scrollHeight;
+        if (d.status === 'completed') {
+          clearInterval(timer);
+          badge.className = 'pill ok';
+          badge.textContent = '✅ Hoàn tất!';
+          const stage = document.getElementById(stageId);
+          stage.innerHTML = `<video src="${d.download_url}?t=${Date.now()}" controls autoplay></video>`;
+          if (dlBarId && dlLinkId) {
+            document.getElementById(dlBarId).style.display = 'block';
+            document.getElementById(dlLinkId).href = d.download_url;
+          }
+        } else if (d.status === 'failed') {
+          clearInterval(timer);
+          badge.className = 'pill warn';
+          badge.textContent = '❌ Lỗi tiến trình';
+        }
+      }, 2200);
+    }
+
+    async function generateStandaloneVO() {
+      const box = document.getElementById('voAudioResult');
+      box.innerHTML = '<span class="pill warn">⏳ Đang thu âm 1-Take qua gemini-3.8-flash-tts...</span>';
+      const payload = {
+        text: document.getElementById('voTextInput').value.trim(),
+        voice: document.getElementById('voVoiceSelect').value,
+        style: document.getElementById('voStyleInput').value.trim(),
+        output_filename: document.getElementById('voOutName').value.trim()
+      };
+      const r = await fetch('/api/tts-preview', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json();
+      if (d.download_url) {
+        box.innerHTML = `
+          <audio src="${d.download_url}?t=${Date.now()}" controls autoplay style="width:100%;"></audio>
+          <div style="margin-top:6px; font-size:12px;"><a class="dl-link" href="${d.download_url}" download>⬇️ Tải file WAV (${d.duration_sec}s)</a></div>
+        `;
+      } else {
+        box.innerHTML = `<pre class="console">${JSON.stringify(d, null, 2)}</pre>`;
+      }
+    }
+
+    async function generateStandaloneBGM() {
+      const box = document.getElementById('bgmAudioResult');
+      box.innerHTML = '<span class="pill warn">⏳ Đang sáng tác nhạc nền qua Google Lyria RealTime...</span>';
+      const payload = {
+        prompt: document.getElementById('bgmPromptInput').value.trim(),
+        duration: parseInt(document.getElementById('bgmDurInput').value || '30', 10),
+        bpm: parseInt(document.getElementById('bgmBpmInput').value || '116', 10),
+        output_filename: document.getElementById('bgmOutName').value.trim()
+      };
+      const r = await fetch('/api/bgm-preview', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json();
+      if (d.download_url) {
+        box.innerHTML = `
+          <audio src="${d.download_url}?t=${Date.now()}" controls autoplay style="width:100%;"></audio>
+          <div style="margin-top:6px; font-size:12px;"><a class="dl-link" href="${d.download_url}" download>⬇️ Tải file Nhạc Nền 48kHz Stereo WAV</a></div>
+        `;
+      } else {
+        box.innerHTML = `<pre class="console">${JSON.stringify(d, null, 2)}</pre>`;
+      }
+    }
+
+    async function loadGallery() {
+      const r = await fetch('/api/outputs');
+      const d = await r.json();
+      const grid = document.getElementById('galleryContainer');
+      if (!d.files || d.files.length === 0) {
+        grid.innerHTML = '<div style="color:var(--dim);">Chưa có file nào trong thư mục /outputs.</div>';
+        return;
+      }
+      grid.innerHTML = d.files.map(f => {
+        const isVideo = f.name.endsWith('.mp4');
+        const isAudio = f.name.endsWith('.wav');
+        const mediaTag = isVideo
+          ? `<video src="${f.url}" controls preload="metadata"></video>`
+          : (isAudio ? `<audio src="${f.url}" controls></audio>` : '');
+        return `
+          <div class="gallery-item">
+            ${mediaTag}
+            <div style="font-weight:700; font-size:13px; margin-bottom:4px; word-break:break-all;">${f.name}</div>
+            <div class="gallery-meta">
+              <span>${f.size_mb} MB</span>
+              <a class="dl-link" href="${f.url}" download>⬇️ Tải xuống</a>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    loadPresetStoryboard(6);
+    refreshStatus();
+    setInterval(refreshStatus, 15000);
+  </script>
+</body>
+</html>

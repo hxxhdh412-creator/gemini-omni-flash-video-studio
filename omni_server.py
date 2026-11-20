@@ -683,12 +683,34 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
         path = parsed.path
 
         if path in ("/", "/index.html"):
-            raw = DASHBOARD_HTML.encode("utf-8")
+            web_index = os.path.join(REPO_ROOT, "web", "index.html")
+            if os.path.exists(web_index):
+                with open(web_index, "rb") as f:
+                    raw = f.read()
+            else:
+                raw = DASHBOARD_HTML.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(raw)))
             self.end_headers()
             self.wfile.write(raw)
+            return
+
+        if path == "/api/outputs":
+            items = []
+            if os.path.exists(OUTPUTS_DIR):
+                for fn in sorted(os.listdir(OUTPUTS_DIR), reverse=True):
+                    fp = os.path.join(OUTPUTS_DIR, fn)
+                    if os.path.isfile(fp) and fn.endswith((".mp4", ".wav", ".json")):
+                        items.append(
+                            {
+                                "name": fn,
+                                "size_bytes": os.path.getsize(fp),
+                                "size_mb": round(os.path.getsize(fp) / (1024 * 1024), 2),
+                                "url": f"/outputs/{urllib.parse.quote(fn)}",
+                            }
+                        )
+            self._send_json({"files": items})
             return
 
         if path == "/api/health":
@@ -753,6 +775,47 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
         if path == "/api/session/rotate":
             res = rotate_google_cookies_headless(DEFAULT_SESSION_PATH)
             self._send_json(res)
+            return
+
+        if path == "/api/tts-preview":
+            try:
+                import wave
+                from make_emotional_1take_vo import EMOTIONAL_DIRECTOR_STYLE, call_gemini_38_flash_tts_1take
+
+                api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+                if not api_key:
+                    self._send_json({"error": "GEMINI_API_KEY not configured"}, 400)
+                    return
+                text = body.get("text", "").strip()
+                voice = body.get("voice", "Puck")
+                style = body.get("style") or EMOTIONAL_DIRECTOR_STYLE
+                out_name = os.path.basename(body.get("output_filename") or f"vo_1take_{uuid.uuid4().hex[:6]}.wav")
+                out_wav = os.path.join(OUTPUTS_DIR, out_name)
+                pcm_bytes, sr = call_gemini_38_flash_tts_1take(full_text=text, style=style, api_key=api_key, voice=voice)
+                with wave.open(out_wav, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(sr)
+                    wf.writeframes(pcm_bytes)
+                dur = round((len(pcm_bytes) / 2.0) / sr, 2)
+                self._send_json({"status": "ok", "download_url": f"/outputs/{out_name}", "duration_sec": dur})
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+            return
+
+        if path == "/api/bgm-preview":
+            try:
+                from produce_commercial import generate_bgm_track
+
+                prompt = body.get("prompt", "Cinematic modern corporate electronic commercial music")
+                dur = int(body.get("duration", 30))
+                bpm = int(body.get("bpm", 116))
+                out_name = os.path.basename(body.get("output_filename") or f"lyria_bgm_{uuid.uuid4().hex[:6]}.wav")
+                out_wav = os.path.join(OUTPUTS_DIR, out_name)
+                generate_bgm_track(output_wav=out_wav, duration_sec=dur, bgm_prompt=prompt, bpm=bpm)
+                self._send_json({"status": "ok", "download_url": f"/outputs/{out_name}", "duration_sec": dur})
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
             return
 
         if path == "/api/generate-scene":
