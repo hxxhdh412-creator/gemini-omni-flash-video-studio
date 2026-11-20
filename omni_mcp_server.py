@@ -42,8 +42,19 @@ sys.path.insert(0, EXAMPLES_DIR)
 
 MCP_SERVER_INFO = {
     "name": "omni-flash-video-studio-mcp",
-    "version": "2.0.0",
+    "version": "2.2.0",
 }
+
+MCP_INSTRUCTIONS = (
+    "Omni Studio Pro — Hệ thống sản xuất Video AI, TVC 30s/60s, Giọng đọc 1-Take & Tạo ảnh qua Cookie bằng Gemini Omni 1.1 Flash (vids.new). "
+    "Quy trình chuẩn cho AI Agent: "
+    "(1) Gọi omni_session_status trước để kiểm tra kết nối Cookie vids.new (session_ready=true) và GEMINI_API_KEY. "
+    "(2) Nếu cần tạo ảnh tham chiếu/thành phần (giao diện phần mềm, sản phẩm, bối cảnh) mà chưa có ảnh sẵn, gọi omni_generate_image (tạo ảnh trực tiếp qua Cookie vids.new UseCase 141, hỗ trợ 16:9, 1:1, 9:16 và 9 phong cách, không tốn API key). "
+    "(3) Để tạo nhanh 1 cảnh video (3s–15s, mặc định 15s, hỗ trợ 16:9 hoặc 9:16) ở tốc độ gốc vids.new (~22s), gọi omni_generate_scene (truyền ảnh vào tham số image để nạp vào khe StructuredImage Node[11]; truyền prior_node_files=['..._node.json'] nếu muốn khóa nhân vật và bối cảnh nối tiếp từ Cảnh 1). "
+    "(4) Để sản xuất trọn gói TVC đa cảnh 30s (2x15s) hoặc 60s (4x15s / 6x10s) tốc độ cao, gọi omni_produce_commercial: hệ thống tự động chạy SONG SONG 3 luồng (Video đa cảnh + Giọng đọc Single-Pass 1-Take gemini-3.8-flash-tts đã lọc bỏ 6KB C2PA ở tốc độ tự nhiên 1.00x + Nhạc nền Google Lyria RealTime 48kHz Stereo + Mastering Clean Audio Bus, Spectral Carve 1000Hz/1650Hz, Sidechain Auto-Ducking 6:1 và phụ đề HUD đồng bộ nhịp thở). "
+    "(5) Khi chạy tác vụ bất đồng bộ (wait=false), dùng omni_job_status để lấy preview_url (xem ngay luồng 720p gốc) và download_url (/outputs/<file>.mp4). "
+    "(6) Kho Skill Video AI (omni_skill_packs): khi người dùng yêu cầu cài bộ skill tạo video lên máy/nền tảng của họ hoặc muốn đọc toàn văn SKILL.md, hãy gọi omni_skill_packs (action='install_pack' hoặc action='get_skill')."
+)
 
 MCP_TOOLS_SCHEMA = [
     {
@@ -328,10 +339,33 @@ MCP_TOOLS_SCHEMA = [
     },
     {
         "name": "omni_list_outputs",
-        "description": "List all generated `.mp4` videos, `.wav` voiceovers/music tracks, and `_node.json` anchor files available in `/outputs`.",
+        "description": "List all generated `.mp4` videos, `.png` images, `.wav` voiceovers/music tracks, and `_node.json` anchor files available in `/outputs`.",
         "inputSchema": {
             "type": "object",
             "properties": {},
+        },
+    },
+    {
+        "name": "omni_skill_packs",
+        "description": (
+            "Dùng khi người dùng hoặc AI Agent yêu cầu: (1) xem danh sách bộ skill sản xuất Video AI & TVC Gemini Omni 1.1 Flash, "
+            "(2) lấy lệnh cài đặt tự động 1 dòng (PowerShell/Bash) hoặc cấu hình 1-Link MCP (`serverUrl`) cho Antigravity, Claude Code, Cursor, Windsurf, "
+            "hoặc (3) đọc trực tiếp toàn văn quy trình `SKILL.md` chuẩn (`gemini-omni-flash-api`) để áp dụng ngay."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list_packs", "get_skill", "install_pack"],
+                    "default": "install_pack",
+                    "description": "install_pack (mặc định): lấy link kết nối MCP 1 dòng và lệnh cài skill; list_packs: liệt kê các gói skill; get_skill: đọc toàn văn SKILL.md & hướng dẫn kỹ thuật.",
+                },
+                "skill_slug": {
+                    "type": "string",
+                    "description": "Tên skill cần đọc (`gemini-omni-flash-api` hoặc `omni-1-1-complete-guide`).",
+                },
+            },
         },
     },
 ]
@@ -516,6 +550,48 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                     )
         return {"count": len(items), "files": items}
 
+    if tool_name == "omni_skill_packs":
+        action = args.get("action", "install_pack")
+        slug = args.get("skill_slug", "gemini-omni-flash-api")
+        skill_md_path = os.path.join(REPO_ROOT, "skills", "gemini-omni-flash-api", "SKILL.md")
+        guide_md_path = os.path.join(REPO_ROOT, "skills", "gemini-omni-flash-api", "references", "omni_1_1_complete_guide.md")
+        host_url = os.environ.get("OMNI_PUBLIC_URL", "http://localhost:8765").rstrip("/")
+        mcp_link = f"{host_url}/mcp"
+
+        if action == "list_packs":
+            return {
+                "mcp_server_url": mcp_link,
+                "packs": [
+                    {
+                        "pack_id": "omni-video-studio",
+                        "skills": ["gemini-omni-flash-api", "omni-1-1-complete-guide"],
+                        "description": "Trọn bộ Skill sản xuất Video 15s, TVC đa cảnh 30s/60s, Tạo ảnh qua Cookie & Giọng đọc 1-Take Gemini 3.8 TTS.",
+                    }
+                ],
+            }
+        if action == "get_skill":
+            target_p = guide_md_path if "guide" in slug else skill_md_path
+            content = ""
+            if os.path.exists(target_p):
+                with open(target_p, "r", encoding="utf-8") as f:
+                    content = f.read()
+            return {"skill_slug": slug, "mcp_server_url": mcp_link, "content": content}
+
+        return {
+            "status": "ok",
+            "mcp_server_url": mcp_link,
+            "antigravity_mcp_config": {
+                "mcpServers": {
+                    "omni-flash-video-studio": {
+                        "serverUrl": mcp_link,
+                    }
+                }
+            },
+            "claude_code_one_liner": f"claude mcp add --transport http omni-flash-video-studio {mcp_link}",
+            "skill_download_url": f"{host_url}/api/skill/SKILL.md",
+            "instructions": MCP_INSTRUCTIONS,
+        }
+
     raise ValueError(f"Unknown MCP tool: {tool_name}")
 
 
@@ -544,6 +620,7 @@ def handle_mcp_jsonrpc(req: dict) -> dict | None:
                     "prompts": {"listChanged": False},
                 },
                 "serverInfo": MCP_SERVER_INFO,
+                "instructions": MCP_INSTRUCTIONS,
             },
         }
 

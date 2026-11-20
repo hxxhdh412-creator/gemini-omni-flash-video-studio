@@ -808,15 +808,57 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "ok", "service": "omni-1.1-flash-video-studio", "session": get_session_status()})
             return
 
-        if path in ("/mcp", "/api/mcp/tools"):
-            from omni_mcp_server import MCP_SERVER_INFO, MCP_TOOLS_SCHEMA
+        if path == "/api/skill/SKILL.md":
+            sk_path = os.path.join(REPO_ROOT, "skills", "gemini-omni-flash-api", "SKILL.md")
+            txt = ""
+            if os.path.exists(sk_path):
+                with open(sk_path, "r", encoding="utf-8") as f:
+                    txt = f.read()
+            raw = txt.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/markdown; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(raw)
+            return
+
+        if path in ("/mcp", "/api/mcp/tools") or path.startswith("/mcp/"):
+            from omni_mcp_server import MCP_INSTRUCTIONS, MCP_SERVER_INFO, MCP_TOOLS_SCHEMA
+
+            host_hdr = self.headers.get("Host") or "localhost:8765"
+            scheme = "https" if self.headers.get("X-Forwarded-Proto") == "https" else "http"
+            mcp_url = f"{scheme}://{host_hdr}{path if path.startswith('/mcp') else '/mcp'}"
+
+            # Support SSE handshake if client requests text/event-stream
+            accept_hdr = self.headers.get("Accept", "")
+            if "text/event-stream" in accept_hdr and path.startswith("/mcp"):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "keep-alive")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                evt = f"event: endpoint\ndata: {path}\n\n"
+                self.wfile.write(evt.encode("utf-8"))
+                self.wfile.flush()
+                return
 
             self._send_json(
                 {
                     "server": MCP_SERVER_INFO,
+                    "mcp_url": mcp_url,
+                    "instructions": MCP_INSTRUCTIONS,
+                    "antigravity_config": {
+                        "mcpServers": {
+                            "omni-flash-video-studio": {
+                                "serverUrl": mcp_url,
+                            }
+                        }
+                    },
                     "transports": {
+                        "serverUrl": mcp_url,
                         "streamable_http": "/mcp",
-                        "stdio_command": f"python {os.path.join(REPO_ROOT, 'omni_mcp_server.py')}",
                     },
                     "tools_count": len(MCP_TOOLS_SCHEMA),
                     "tools": MCP_TOOLS_SCHEMA,
@@ -874,7 +916,7 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             self._send_json({"error": f"Invalid JSON: {e}"}, 400)
             return
 
-        if path == "/mcp":
+        if path == "/mcp" or path.startswith("/mcp/"):
             from omni_mcp_server import handle_mcp_jsonrpc
 
             if isinstance(body, list):

@@ -853,9 +853,16 @@ POST /api/produce-commercial
         <div class="panel">
           <div class="panel-header"><h2 class="panel-title">Danh mục công cụ</h2><span class="chip" id="mcpToolCount">Đang tải…</span></div>
           <div class="mcp-catalog" id="mcpToolsCatalog" onclick="selectMcpTool(event)"></div>
-          <details class="utility-details"><summary>Kết nối từ Claude Code</summary><pre class="apple-console">claude mcp add --transport http omni-flash-studio http://localhost:8765/mcp
-# Hoặc chế độ stdio:
-claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></details>
+          <details class="utility-details" open><summary>Kết nối 1-Link (`serverUrl` như `ads-mcp-da-kenh`)</summary><pre class="apple-console">{
+  "mcpServers": {
+    "omni-flash-video-studio": {
+      "serverUrl": "http://localhost:8765/mcp"
+    }
+  }
+}
+
+# Hoặc gắn 1 dòng qua Claude Code CLI:
+claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mcp</pre></details>
         </div>
         <div class="panel">
           <div class="panel-header"><h2 class="panel-title">Chạy thử công cụ</h2><span class="chip">POST /mcp</span></div>
@@ -1802,7 +1809,10 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></det
         ]
       },
       omni_job_status: {},
-      omni_list_outputs: {}
+      omni_list_outputs: {},
+      omni_skill_packs: {
+        action: "install_pack"
+      }
     };
 
     async function loadMcpTools() {

@@ -1,17 +1,7 @@
 {
   "mcpServers": {
     "omni-flash-video-studio": {
-      "command": "python3",
-      "args": [
-        "omni_mcp_server.py"
-      ],
-      "env": {
-        "GEMINI_API_KEY": "${GEMINI_API_KEY}"
-      }
-    },
-    "omni-flash-video-studio-http": {
-      "type": "http",
-      "url": "http://localhost:8765/mcp"
+      "serverUrl": "http://localhost:8765/mcp"
     }
   }
 }
