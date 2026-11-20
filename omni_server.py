@@ -382,13 +382,20 @@ def get_session_status() -> dict:
 
 def save_base64_image_if_needed(img_spec: str, job_dir: str, idx: int) -> str:
     """
-    Accepts a local file path, relative repo path, or base64 data URL / raw base64 string.
+    Accepts a local file path, file:/// URI, relative repo path, HTTP/HTTPS image URL,
+    or base64 data URL / raw base64 string.
     Inspects binary magic bytes to save with matching .jpg or .png extension (and converts WebP to PNG)
-    so Google Vids RPC StructuredImage (Node[11]) receives exact MIME and dimensions.
+    so Google Vids RPC StructuredImage (Node[11]) and Reference-to-Video (UseCase 376) receive exact MIME and dimensions.
     """
     if not img_spec:
         return ""
-    clean_spec = img_spec.strip()
+    clean_spec = str(img_spec).strip()
+    if clean_spec.lower().startswith("file:///"):
+        clean_spec = urllib.parse.unquote(clean_spec[8:])
+        if os.name == "nt" and clean_spec.startswith("/") and len(clean_spec) > 2 and clean_spec[2] == ":":
+            clean_spec = clean_spec[1:]
+    elif clean_spec.lower().startswith("file://"):
+        clean_spec = urllib.parse.unquote(clean_spec[7:])
     if clean_spec.startswith("/outputs/"):
         clean_spec = clean_spec.lstrip("/")
     if os.path.exists(clean_spec):
@@ -397,6 +404,17 @@ def save_base64_image_if_needed(img_spec: str, job_dir: str, idx: int) -> str:
     rel_candidate = os.path.join(REPO_ROOT, clean_spec)
     if os.path.exists(rel_candidate):
         norm_p, _, _, _, _ = ensure_png_or_jpeg_image_file(os.path.abspath(rel_candidate))
+        return norm_p
+    if clean_spec.lower().startswith(("http://", "https://")):
+        req = urllib.request.Request(clean_spec, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read()
+        mime, _, _ = detect_image_mime_and_dimensions(raw)
+        ext = ".jpg" if mime == "image/jpeg" else ".webp" if mime == "image/webp" else ".png"
+        out_p = os.path.join(job_dir, f"ingredient_{idx}{ext}")
+        with open(out_p, "wb") as f:
+            f.write(raw)
+        norm_p, _, _, _, _ = ensure_png_or_jpeg_image_file(out_p)
         return norm_p
     if clean_spec.startswith("data:image/"):
         _, b64_data = clean_spec.split(",", 1)
@@ -428,7 +446,7 @@ def run_job_generate_scene(job_id: str, payload: dict):
         prompt = payload.get("prompt", "")
         duration = max(3, min(15, int(payload.get("duration", 15))))
         aspect_ratio = str(payload.get("aspect_ratio") or "16:9").strip()
-        upscale_1080p = bool(payload.get("upscale_1080p", True))
+        upscale_1080p = bool(payload.get("upscale_1080p", False))
         extend_mode = str(payload.get("extend_mode") or "none").strip()
         out_name = payload.get("output_filename") or f"omni_scene_{job_id}.mp4"
         out_path = os.path.join(OUTPUTS_DIR, os.path.basename(out_name))
@@ -658,27 +676,31 @@ def run_job_produce_commercial(job_id: str, payload: dict):
         def _bg_bgm():
             with JOBS_LOCK:
                 JOBS[job_id]["logs"].append(f"🎵 [Parallel Audio] Composing {total_dur}s Lyria RealTime 48kHz soundtrack...")
+            inst_raw = payload.get("instrumental")
+            inst_val = bool(inst_raw) if isinstance(inst_raw, bool) else None
             generate_bgm_track(
                 output_wav=bgm_wav,
                 duration_sec=total_dur,
                 bgm_prompt=payload.get("bgm_prompt", "Cinematic modern corporate electronic commercial music"),
                 bpm=int(payload.get("bpm", 116)),
                 scale=payload.get("scale", "MINOR"),
+                instrumental=inst_val,
             )
             with JOBS_LOCK:
                 JOBS[job_id]["logs"].append(f"✅ [Parallel Audio] Lyria RealTime 48kHz BGM ready.")
 
         def _bg_tts():
+            vo_style = payload.get("vo_style") or payload.get("style") or EMOTIONAL_DIRECTOR_STYLE
             with JOBS_LOCK:
-                JOBS[job_id]["logs"].append(f"🎙️ [Parallel Audio] Recording Single-Pass 1-Take voiceover ({voice_name}, gemini-3.8-flash-tts)...")
+                JOBS[job_id]["logs"].append(f"🎙️ [Parallel Audio] Recording Single-Pass 1-Take voiceover ({voice_name}, vids.new UC=254 / gemini-3.8-flash-tts)...")
             res_tts = call_gemini_38_flash_tts_1take(
                 full_text=full_1take_text,
-                style=EMOTIONAL_DIRECTOR_STYLE,
+                style=vo_style,
                 api_key=api_key,
                 voice=voice_name,
             )
             with JOBS_LOCK:
-                JOBS[job_id]["logs"].append(f"✅ [Parallel Audio] 1-Take Gemini 3.8 TTS voiceover ready.")
+                JOBS[job_id]["logs"].append(f"✅ [Parallel Audio] 1-Take Voiceover ready.")
             return res_tts
 
         audio_pool = ThreadPoolExecutor(max_workers=2)
