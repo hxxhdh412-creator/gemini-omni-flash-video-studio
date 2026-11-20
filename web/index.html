@@ -4,31 +4,34 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Omni Studio Pro — Apple Media Engine</title>
+  <link rel="preconnect" href="https://fonts.cdnfonts.com" crossorigin />
+  <link href="https://fonts.cdnfonts.com/css/sf-pro-display" rel="stylesheet" />
+  <link href="https://fonts.cdnfonts.com/css/sf-mono" rel="stylesheet" />
   <style>
     :root {
-      --bg-base: #000000;
-      --bg-elevated: rgba(28, 28, 30, 0.76);
-      --bg-grouped: rgba(44, 44, 46, 0.52);
-      --bg-input: rgba(18, 18, 20, 0.85);
-      --border-hairline: rgba(255, 255, 255, 0.11);
-      --border-strong: rgba(255, 255, 255, 0.22);
-      --apple-blue: #0a84ff;
-      --apple-blue-hover: #409cff;
-      --apple-green: #30d158;
-      --apple-orange: #ff9f0a;
-      --apple-red: #ff453a;
-      --apple-purple: #bf5af2;
-      --text-primary: #f5f5f7;
-      --text-secondary: #a1a1a6;
-      --text-tertiary: #6e6e73;
-      --radius-lg: 14px;
-      --radius-md: 10px;
+      --bg-base: #f5f5f7;
+      --bg-elevated: rgba(255, 255, 255, 0.92);
+      --bg-grouped: #fafafc;
+      --bg-input: #ffffff;
+      --border-hairline: rgba(0, 0, 0, 0.08);
+      --border-strong: rgba(0, 0, 0, 0.16);
+      --apple-blue: #0071e3;
+      --apple-blue-hover: #0077ed;
+      --apple-green: #28cd41;
+      --apple-orange: #ff9500;
+      --apple-red: #ff3b30;
+      --apple-purple: #af52de;
+      --text-primary: #1d1d1f;
+      --text-secondary: #515154;
+      --text-tertiary: #86868b;
+      --radius-lg: 16px;
+      --radius-md: 11px;
       --radius-sm: 8px;
     }
 
     * {
       box-sizing: border-box;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
@@ -36,13 +39,13 @@
     body {
       margin: 0;
       background:
-        radial-gradient(900px 420px at 18% -10%, rgba(10, 132, 255, 0.14), transparent 70%),
-        radial-gradient(800px 400px at 85% -15%, rgba(191, 90, 242, 0.11), transparent 70%),
+        radial-gradient(1000px 460px at 15% -10%, rgba(0, 113, 227, 0.06), transparent 70%),
+        radial-gradient(900px 420px at 85% -15%, rgba(175, 82, 222, 0.05), transparent 70%),
         var(--bg-base);
       color: var(--text-primary);
       min-height: 100vh;
       font-size: 13px;
-      letter-spacing: -0.011em;
+      letter-spacing: -0.012em;
     }
 
     svg.sf-icon {
@@ -55,19 +58,20 @@
     svg.sf-icon-lg {
       width: 17px;
       height: 17px;
+      color: var(--apple-blue);
     }
 
-    /* macOS Window Toolbar / Header */
+    /* macOS Sequoia Light Window Toolbar / Header */
     .topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 52px;
+      height: 54px;
       padding: 0 24px;
-      background: rgba(22, 22, 24, 0.78);
+      background: rgba(255, 255, 255, 0.78);
       backdrop-filter: saturate(180%) blur(24px);
       -webkit-backdrop-filter: saturate(180%) blur(24px);
-      border-bottom: 0.5px solid var(--border-hairline);
+      border-bottom: 0.5px solid rgba(0, 0, 0, 0.1);
       position: sticky;
       top: 0;
       z-index: 100;
@@ -83,7 +87,7 @@
       gap: 7px;
       margin-right: 8px;
     }
-    .tl { width: 11px; height: 11px; border-radius: 50%; }
+    .tl { width: 11px; height: 11px; border-radius: 50%; border: 0.5px solid rgba(0,0,0,0.12); }
     .tl.red { background: #ff5f57; }
     .tl.yellow { background: #febc2e; }
     .tl.green { background: #28c840; }
@@ -92,46 +96,44 @@
       width: 28px;
       height: 28px;
       border-radius: 7px;
-      background: linear-gradient(180deg, #2c2c2e 0%, #1c1c1e 100%);
-      border: 0.5px solid rgba(255,255,255,0.18);
+      background: linear-gradient(180deg, #1d1d1f 0%, #000000 100%);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--text-primary);
-      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      color: #ffffff;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.15);
     }
     .brand-title {
-      font-size: 14px;
+      font-size: 14.5px;
       font-weight: 600;
       color: var(--text-primary);
-      letter-spacing: -0.02em;
+      letter-spacing: -0.022em;
     }
     .brand-badge {
       font-size: 11px;
       font-weight: 500;
-      color: var(--text-secondary);
-      background: rgba(255,255,255,0.07);
+      color: var(--apple-blue);
+      background: rgba(0, 113, 227, 0.08);
       padding: 2px 8px;
-      border-radius: 5px;
-      border: 0.5px solid var(--border-hairline);
+      border-radius: 6px;
+      border: 0.5px solid rgba(0, 113, 227, 0.18);
     }
 
-    /* Segmented Control (Center of Topbar) */
+    /* Segmented Control (Apple Light Mode) */
     .segmented-nav {
       display: inline-flex;
-      background: rgba(118, 118, 128, 0.22);
+      background: rgba(118, 118, 128, 0.12);
       padding: 3px;
-      border-radius: 9px;
-      border: 0.5px solid rgba(255, 255, 255, 0.07);
+      border-radius: 10px;
       gap: 2px;
     }
     .seg-btn {
       background: transparent;
       color: var(--text-secondary);
       border: none;
-      padding: 5px 12px;
-      border-radius: 7px;
-      font-size: 12px;
+      padding: 5.5px 13px;
+      border-radius: 7.5px;
+      font-size: 12.5px;
       font-weight: 500;
       cursor: pointer;
       display: inline-flex;
@@ -142,9 +144,13 @@
     }
     .seg-btn:hover { color: var(--text-primary); }
     .seg-btn.active {
-      background: rgba(99, 99, 102, 0.65);
-      color: #ffffff;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.38), inset 0 0.5px 0 rgba(255, 255, 255, 0.16);
+      background: #ffffff;
+      color: var(--text-primary);
+      font-weight: 600;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1), 0 0.5px 1px rgba(0, 0, 0, 0.06);
+    }
+    .seg-btn.active svg.sf-icon {
+      color: var(--apple-blue);
     }
 
     /* Status Indicators */
@@ -161,7 +167,7 @@
       border-radius: 999px;
       font-size: 11.5px;
       font-weight: 500;
-      background: rgba(255, 255, 255, 0.06);
+      background: rgba(0, 0, 0, 0.04);
       border: 0.5px solid var(--border-hairline);
       color: var(--text-secondary);
     }
@@ -171,16 +177,16 @@
       border-radius: 50%;
       background: var(--text-tertiary);
     }
-    .chip.ok .dot { background: var(--apple-green); box-shadow: 0 0 6px var(--apple-green); }
-    .chip.ok { color: var(--text-primary); }
-    .chip.warn .dot { background: var(--apple-orange); box-shadow: 0 0 6px var(--apple-orange); }
-    .chip.warn { color: #ffd60a; }
+    .chip.ok .dot { background: var(--apple-green); box-shadow: 0 0 5px rgba(40, 205, 65, 0.55); }
+    .chip.ok { color: #166534; background: rgba(40, 205, 65, 0.1); border-color: rgba(40, 205, 65, 0.25); }
+    .chip.warn .dot { background: var(--apple-orange); }
+    .chip.warn { color: #b45309; background: rgba(255, 149, 0, 0.12); border-color: rgba(255, 149, 0, 0.28); }
 
     /* Main Workspace Layout */
     .workspace {
       max-width: 1320px;
       margin: 0 auto;
-      padding: 20px 24px 48px;
+      padding: 22px 24px 48px;
     }
     .tab-pane { display: none; }
     .tab-pane.active { display: block; animation: fadeIn 0.18s ease-out; }
@@ -189,13 +195,13 @@
     .layout-split {
       display: grid;
       grid-template-columns: 1.25fr 0.95fr;
-      gap: 16px;
+      gap: 18px;
       align-items: start;
     }
     .layout-2col {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 16px;
+      gap: 18px;
       align-items: start;
     }
     @media (max-width: 1024px) {
@@ -204,31 +210,32 @@
       .segmented-nav { overflow-x: auto; width: 100%; }
     }
 
-    /* Apple Glass Panels */
+    /* Apple Light Cards & Panels */
     .panel {
       background: var(--bg-elevated);
       backdrop-filter: saturate(180%) blur(20px);
       -webkit-backdrop-filter: saturate(180%) blur(20px);
       border: 0.5px solid var(--border-hairline);
       border-radius: var(--radius-lg);
-      padding: 16px;
-      box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.1), 0 10px 28px rgba(0, 0, 0, 0.38);
+      padding: 18px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
     }
     .panel-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       margin-bottom: 14px;
-      padding-bottom: 10px;
+      padding-bottom: 11px;
       border-bottom: 0.5px solid var(--border-hairline);
       gap: 10px;
       flex-wrap: wrap;
     }
     .panel-title {
       margin: 0;
-      font-size: 13.5px;
+      font-size: 14px;
       font-weight: 600;
       color: var(--text-primary);
+      letter-spacing: -0.018em;
       display: flex;
       align-items: center;
       gap: 7px;
@@ -250,9 +257,9 @@
     input, select, textarea {
       width: 100%;
       background: var(--bg-input);
-      border: 0.5px solid rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(0, 0, 0, 0.13);
       color: var(--text-primary);
-      padding: 7px 10px;
+      padding: 7.5px 10px;
       border-radius: var(--radius-sm);
       font-size: 12.5px;
       outline: none;
@@ -260,9 +267,9 @@
     }
     input:focus, select:focus, textarea:focus {
       border-color: var(--apple-blue);
-      box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.22);
+      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.18);
     }
-    textarea { min-height: 62px; resize: vertical; line-height: 1.42; }
+    textarea { min-height: 62px; resize: vertical; line-height: 1.44; }
 
     /* Apple Buttons */
     .btn {
@@ -275,48 +282,48 @@
       font-weight: 500;
       font-size: 12.5px;
       border: none;
-      padding: 8px 14px;
+      padding: 8.5px 15px;
       border-radius: var(--radius-sm);
       cursor: pointer;
-      box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.25), 0 1px 3px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 1px 2px rgba(0, 113, 227, 0.25);
       transition: background 0.14s, transform 0.08s;
     }
     .btn:hover { background: var(--apple-blue-hover); }
     .btn:active { transform: scale(0.985); }
     .btn-ghost {
-      background: rgba(118, 118, 128, 0.24);
+      background: rgba(118, 118, 128, 0.12);
       color: var(--text-primary);
-      border: 0.5px solid rgba(255, 255, 255, 0.1);
+      border: 0.5px solid rgba(0, 0, 0, 0.06);
       box-shadow: none;
     }
-    .btn-ghost:hover { background: rgba(118, 118, 128, 0.36); }
+    .btn-ghost:hover { background: rgba(118, 118, 128, 0.2); }
     .btn-danger {
-      background: rgba(255, 69, 58, 0.15);
+      background: rgba(255, 59, 48, 0.1);
       color: var(--apple-red);
-      border: 0.5px solid rgba(255, 69, 58, 0.3);
+      border: 0.5px solid rgba(255, 59, 48, 0.22);
       box-shadow: none;
       padding: 4px 9px;
       font-size: 11.5px;
     }
-    .btn-danger:hover { background: rgba(255, 69, 58, 0.25); }
-    .btn-xs { padding: 5px 10px; font-size: 11.5px; border-radius: 7px; }
+    .btn-danger:hover { background: rgba(255, 59, 48, 0.18); }
+    .btn-xs { padding: 5.5px 10px; font-size: 11.5px; border-radius: 7px; }
 
-    /* Compact Final Cut Pro Timeline Scene Cards */
+    /* Compact Final Cut / Apple Light Timeline Scene Cards */
     .scene-stack { display: flex; flex-direction: column; gap: 10px; }
     .scene-card {
-      background: var(--bg-grouped);
-      border: 0.5px solid var(--border-hairline);
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.09);
       border-radius: var(--radius-md);
       overflow: hidden;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
-    .scene-card:hover { border-color: var(--border-strong); }
+    .scene-card:hover { border-color: rgba(0, 113, 227, 0.35); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03); }
     .scene-bar {
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 9px 12px;
-      background: rgba(255, 255, 255, 0.03);
+      background: #f5f5f7;
       cursor: pointer;
       user-select: none;
     }
@@ -327,9 +334,9 @@
       min-width: 0;
     }
     .scene-pill {
-      background: rgba(10, 132, 255, 0.18);
-      color: #64d2ff;
-      border: 0.5px solid rgba(10, 132, 255, 0.4);
+      background: rgba(0, 113, 227, 0.1);
+      color: var(--apple-blue);
+      border: 0.5px solid rgba(0, 113, 227, 0.22);
       font-size: 11px;
       font-weight: 600;
       padding: 2px 8px;
@@ -337,8 +344,8 @@
       white-space: nowrap;
     }
     .scene-summary {
-      font-size: 12px;
-      font-weight: 500;
+      font-size: 12.5px;
+      font-weight: 600;
       color: var(--text-primary);
       white-space: nowrap;
       overflow: hidden;
@@ -348,6 +355,7 @@
     .scene-body {
       padding: 10px 12px 12px;
       border-top: 0.5px solid var(--border-hairline);
+      background: #ffffff;
       display: block;
     }
     .scene-card.collapsed .scene-body { display: none; }
@@ -356,26 +364,26 @@
     .monitor-frame {
       width: 100%;
       aspect-ratio: 16 / 9;
-      background: #050507;
-      border: 0.5px solid var(--border-hairline);
+      background: #1d1d1f;
+      border: 1px solid rgba(0, 0, 0, 0.1);
       border-radius: var(--radius-md);
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
       margin-bottom: 10px;
-      box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.8);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
     }
     .monitor-frame video { width: 100%; height: 100%; object-fit: contain; }
     pre.apple-console {
-      background: rgba(10, 10, 12, 0.92);
-      border: 0.5px solid var(--border-hairline);
+      background: #f5f5f7;
+      border: 1px solid rgba(0, 0, 0, 0.08);
       padding: 11px 12px;
       border-radius: var(--radius-sm);
       font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
       font-size: 11.5px;
       line-height: 1.45;
-      color: #d1d1d6;
+      color: #1d1d1f;
       max-height: 220px;
       overflow-y: auto;
       white-space: pre-wrap;
@@ -389,15 +397,16 @@
       gap: 12px;
     }
     .media-tile {
-      background: var(--bg-grouped);
-      border: 0.5px solid var(--border-hairline);
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
       border-radius: var(--radius-md);
       padding: 10px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
     }
     .media-tile video, .media-tile audio {
       width: 100%;
       border-radius: 7px;
-      background: #000;
+      background: #1d1d1f;
       margin-bottom: 7px;
     }
     .media-meta {
@@ -836,23 +845,23 @@ POST /api/produce-commercial
           <span class="chip ok"><span class="dot"></span> 8 MCP Tools Active (`stdio` & `HTTP /mcp`)</span>
         </div>
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px;">
-          <div style="background:var(--bg-grouped); border:0.5px solid var(--border-hairline); border-radius:10px; padding:12px;">
-            <div style="color:#64d2ff; font-weight:600; font-size:12px;">LUỒNG 1 • PHIÊN & KEEP-ALIVE</div>
+          <div style="background:var(--bg-grouped); border:1px solid var(--border-hairline); border-radius:10px; padding:12px;">
+            <div style="color:var(--apple-blue); font-weight:600; font-size:12px;">LUỒNG 1 • PHIÊN & KEEP-ALIVE</div>
             <div style="font-size:11.5px; color:var(--text-primary); margin-top:4px;"><code>omni_session_status</code> · <code>omni_session_update</code></div>
             <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Xoay vòng <code>__Secure-1PSIDTS</code> 24/7 qua <code>RotateCookies</code>.</div>
           </div>
-          <div style="background:var(--bg-grouped); border:0.5px solid var(--border-hairline); border-radius:10px; padding:12px;">
-            <div style="color:#64d2ff; font-weight:600; font-size:12px;">LUỒNG 2 • VIDEO 15S & THÀNH PHẦN</div>
+          <div style="background:var(--bg-grouped); border:1px solid var(--border-hairline); border-radius:10px; padding:12px;">
+            <div style="color:var(--apple-blue); font-weight:600; font-size:12px;">LUỒNG 2 • VIDEO 15S & THÀNH PHẦN</div>
             <div style="font-size:11.5px; color:var(--text-primary); margin-top:4px;"><code>omni_generate_scene</code></div>
             <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Sinh clip <code>15s</code>/<code>10s</code> + nạp ảnh <code>StructuredImage (Node[11])</code>.</div>
           </div>
-          <div style="background:var(--bg-grouped); border:0.5px solid var(--border-hairline); border-radius:10px; padding:12px;">
-            <div style="color:#64d2ff; font-weight:600; font-size:12px;">LUỒNG 3 • GIỌNG 1-TAKE & NHẠC</div>
+          <div style="background:var(--bg-grouped); border:1px solid var(--border-hairline); border-radius:10px; padding:12px;">
+            <div style="color:var(--apple-blue); font-weight:600; font-size:12px;">LUỒNG 3 • GIỌNG 1-TAKE & NHẠC</div>
             <div style="font-size:11.5px; color:var(--text-primary); margin-top:4px;"><code>omni_synthesize_1take_vo</code> · <code>omni_generate_lyria_bgm</code></div>
             <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Thu âm 1-Take <code>gemini-3.8-flash-tts</code> (`1.00x`) + nhạc <code>Lyria 48kHz</code>.</div>
           </div>
-          <div style="background:var(--bg-grouped); border:0.5px solid var(--border-hairline); border-radius:10px; padding:12px;">
-            <div style="color:#64d2ff; font-weight:600; font-size:12px;">LUỒNG 4 • MASTERING TVC 1080P</div>
+          <div style="background:var(--bg-grouped); border:1px solid var(--border-hairline); border-radius:10px; padding:12px;">
+            <div style="color:var(--apple-blue); font-weight:600; font-size:12px;">LUỒNG 4 • MASTERING TVC 1080P</div>
             <div style="font-size:11.5px; color:var(--text-primary); margin-top:4px;"><code>omni_produce_commercial</code> · <code>omni_job_status</code></div>
             <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Clean Audio Bus + Spectral Carve + Sidechain 6:1 + ASS HUD.</div>
           </div>
@@ -1334,8 +1343,8 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
       sel.innerHTML = mcpToolsList.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
       const cat = document.getElementById('mcpToolsCatalog');
       cat.innerHTML = mcpToolsList.map(t => `
-        <div style="background:var(--bg-grouped); border:0.5px solid var(--border-hairline); border-radius:8px; padding:9px 11px; margin-bottom:7px;">
-          <div style="color:#64d2ff; font-weight:600; font-size:12px;"><code>${t.name}</code></div>
+        <div style="background:var(--bg-grouped); border:1px solid var(--border-hairline); border-radius:8px; padding:9px 11px; margin-bottom:7px;">
+          <div style="color:var(--apple-blue); font-weight:600; font-size:12px;"><code>${t.name}</code></div>
           <div style="font-size:11.5px; color:var(--text-secondary); margin-top:3px;">${t.description}</div>
         </div>
       `).join('');
