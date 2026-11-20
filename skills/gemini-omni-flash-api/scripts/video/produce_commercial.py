@@ -34,11 +34,14 @@ sys.path.insert(0, SCRIPT_DIR)
 
 from edit_video import (
     DEFAULT_SESSION_PATH,
+    apply_vo_style_mastering,
     format_editing_prompt,
     get_ffmpeg_exe,
     log,
     refresh_session_from_cdp,
     run_vids_rpc_edit_or_generate,
+    run_vids_rpc_lyria_music,
+    run_vids_rpc_tts_voiceover,
     verify_product_and_subject_consistency,
 )
 
@@ -177,13 +180,22 @@ def synthesize_vietnamese_tts_fallback(text: str, voice: str = "Puck") -> tuple[
     if not paragraphs:
         paragraphs = ["Xin chào, đây là bản thu thử giọng đọc tiếng Việt."]
 
-    is_male = str(voice or "Puck").strip() in ("Puck", "Charon", "Fenrir", "Orus")
-    # Broadcast vocal warmth & subtle pitch shift for male vs female voices
-    af_filter = (
-        "asetrate=24000*0.92,aresample=24000,atempo=1.12,highpass=f=75,equalizer=f=180:t=q:w=1.1:g=2.5,equalizer=f=3200:t=q:w=1.2:g=1.8"
-        if is_male
-        else "aresample=24000,atempo=1.05,highpass=f=85,equalizer=f=240:t=q:w=1.2:g=-1.0,equalizer=f=3400:t=q:w=1.1:g=2.2"
-    )
+    v_key = str(voice or "Puck").strip()
+    voice_profiles = {
+        "Puck": "asetrate=24000*0.92,aresample=24000,atempo=1.14,highpass=f=75,equalizer=f=180:t=q:w=1.1:g=2.5,equalizer=f=3200:t=q:w=1.2:g=2.2",
+        "Charon": "asetrate=24000*0.85,aresample=24000,atempo=1.16,highpass=f=65,equalizer=f=135:t=q:w=1.0:g=4.0,equalizer=f=2800:t=q:w=1.2:g=1.4",
+        "Fenrir": "asetrate=24000*0.89,aresample=24000,atempo=1.24,highpass=f=75,equalizer=f=170:t=q:w=1.1:g=2.8,equalizer=f=3400:t=q:w=1.1:g=2.6",
+        "Orus": "asetrate=24000*0.88,aresample=24000,atempo=1.08,highpass=f=70,equalizer=f=160:t=q:w=1.1:g=3.4,equalizer=f=2600:t=q:w=1.2:g=1.2",
+        "Aoede": "aresample=24000,atempo=1.05,highpass=f=85,equalizer=f=220:t=q:w=1.2:g=1.5,equalizer=f=3400:t=q:w=1.1:g=2.2",
+        "Achernar": "asetrate=24000*0.97,aresample=24000,atempo=1.08,highpass=f=80,equalizer=f=210:t=q:w=1.2:g=1.8,equalizer=f=3200:t=q:w=1.1:g=2.0",
+        "Kore": "asetrate=24000*1.06,aresample=24000,atempo=1.02,highpass=f=90,equalizer=f=250:t=q:w=1.2:g=-1.2,equalizer=f=3800:t=q:w=1.1:g=2.8",
+        "Zephyr": "asetrate=24000*1.03,aresample=24000,atempo=1.08,highpass=f=88,equalizer=f=240:t=q:w=1.2:g=-0.8,equalizer=f=4200:t=q:w=1.1:g=2.6",
+        "vi-vn-concierge-2": "asetrate=24000*0.91,aresample=24000,atempo=1.13,highpass=f=75,equalizer=f=175:t=q:w=1.1:g=2.8,equalizer=f=3200:t=q:w=1.1:g=2.0",
+        "vi-vn-csagent-1": "asetrate=24000*1.02,aresample=24000,atempo=1.04,highpass=f=85,equalizer=f=220:t=q:w=1.2:g=1.4,equalizer=f=3500:t=q:w=1.1:g=2.4",
+        "vi-vn-training-1": "asetrate=24000*0.94,aresample=24000,atempo=1.12,highpass=f=78,equalizer=f=190:t=q:w=1.1:g=2.4,equalizer=f=3100:t=q:w=1.1:g=2.2",
+        "vi-vn-tutor-1": "asetrate=24000*0.98,aresample=24000,atempo=1.03,highpass=f=82,equalizer=f=210:t=q:w=1.1:g=2.0,equalizer=f=3300:t=q:w=1.1:g=1.8",
+    }
+    af_filter = voice_profiles.get(v_key, voice_profiles["Puck"])
 
     all_pcm = bytearray()
     silence_550ms = b"\x00\x00" * int(24000 * 0.55)
@@ -266,11 +278,21 @@ def synthesize_gemini_38_tts(
     preferred_model: str = "gemini-3.8-flash-tts",
 ) -> tuple[bytes, str]:
     """
-    Synthesizes speech via Gemini 3.8 Flash TTS (/v1beta/interactions) with C2PA tail stripping.
-    If the preferred model hits its daily RPD quota (HTTP 429 per day) or the API key is offline/invalid,
-    automatically falls back so multi-scene 1-Take synthesis never fails.
+    1. Primary: Synthesizes speech via Google Vids (`vids.new`) Native Cookie Voiceover RPC (`UseCase 254` ->
+       `/flix/generate_text_to_speech/v1`), stripping any trailing C2PA tail and applying prompt-driven style mastering.
+    2. Secondary: Calls Gemini 3.8 Flash TTS (/v1beta/interactions) if `api_key` is active.
+    3. Tertiary: Falls back to local multi-profile Vietnamese Neural 1-Take TTS.
     """
-    if api_key:
+    try:
+        raw_vids_wav = run_vids_rpc_tts_voiceover(full_text=text, voice=voice, language="vi")
+        if raw_vids_wav and len(raw_vids_wav) > 100:
+            pcm_bytes, sr = extract_clean_pcm(raw_vids_wav)
+            pcm_bytes, sr = apply_vo_style_mastering(pcm_bytes, sr, style=style, voice=voice)
+            return pcm_to_wav(pcm_bytes, sample_rate=sr), f"vids-cookie-uc254-{voice}"
+    except Exception as e_vids:
+        log(f"  [Vids Cookie Voiceover UC=254 Warning]: {e_vids}")
+
+    if api_key and not api_key.startswith("AIzaSyDW-lir"):
         model_chain = []
         for m in (preferred_model, "gemini-3.8-flash-lite-tts", "gemini-2.5-flash-preview-tts"):
             if m not in model_chain:
@@ -324,13 +346,17 @@ def synthesize_gemini_38_tts(
                             .get("inlineData", {})
                         )
                         if inline.get("data"):
-                            return ensure_wav_bytes(base64.b64decode(inline["data"])), model
+                            pcm_b, sr = extract_clean_pcm(base64.b64decode(inline["data"]))
+                            pcm_b, sr = apply_vo_style_mastering(pcm_b, sr, style=style, voice=voice)
+                            return pcm_to_wav(pcm_b, sample_rate=sr), model
                     else:
                         for step in reversed(data.get("steps", [])):
                             if step.get("type") == "model_output":
                                 for item in step.get("content", []):
                                     if item.get("type") == "audio" and item.get("data"):
-                                        return ensure_wav_bytes(base64.b64decode(item["data"])), model
+                                        pcm_b, sr = extract_clean_pcm(base64.b64decode(item["data"]))
+                                        pcm_b, sr = apply_vo_style_mastering(pcm_b, sr, style=style, voice=voice)
+                                        return pcm_to_wav(pcm_b, sample_rate=sr), model
             except urllib.error.HTTPError as e:
                 err_body = e.read().decode("utf-8", errors="replace")
                 log(f"  [TTS {model} HTTP {e.code}]: {err_body[:180]}")
@@ -344,6 +370,7 @@ def synthesize_gemini_38_tts(
 
     log(f"  [TTS Fallback] Synthesizing 1-Take Vietnamese Neural voiceover (voice={voice})...")
     pcm_bytes, sr = synthesize_vietnamese_tts_fallback(text=text, voice=voice)
+    pcm_bytes, sr = apply_vo_style_mastering(pcm_bytes, sr, style=style, voice=voice)
     return pcm_to_wav(pcm_bytes, sample_rate=sr), "vi-neural-1take-fallback"
 
 
@@ -527,23 +554,133 @@ def synthesize_single_pass_1take_vo(
 
 def select_bgm_preset_from_prompt(bgm_prompt: str, scale: str = "MINOR") -> str:
     lower = (bgm_prompt or "").lower()
-    if any(k in lower for k in ("acoustic", "guitar", "fingerpick", "intimate", "mộc", "ấm", "lofi", "lo-fi", "chill")):
+    if any(k in lower for k in ("lofi", "lo-fi", "chill", "cafe", "jazz")):
         return "lofi"
-    if any(k in lower for k in ("ambient", "calm", "soft", "gentle", "nhẹ", "thư giãn")):
+    if any(k in lower for k in ("ambient", "thiền", "spa", "không trống", "no drum", "no percussion", "meditation")):
         return "ambient"
-    if any(k in lower for k in ("synthwave", "retro", "cyberpunk", "neon")):
+    if any(k in lower for k in ("acoustic", "guitar", "fingerpick", "intimate", "mộc", "nhẹ nhàng", "dịu dàng", "calm", "soft", "gentle", "thư giãn")):
+        return "lofi"
+    if any(k in lower for k in ("synthwave", "retro", "cyberpunk", "neon", "80s", "futuristic")):
         return "synthwave"
-    if any(k in lower for k in ("energetic", "upbeat", "fast", "sôi động", "bùng nổ", "exciting")):
+    if any(k in lower for k in ("energetic", "upbeat", "fast", "sôi động", "bùng nổ", "exciting", "edm", "dance", "club", "dồn dập", "mạnh mẽ")):
         return "energetic"
-    if any(k in lower for k in ("playful", "vui", "bright", "happy")):
+    if any(k in lower for k in ("playful", "vui", "vui tươi", "tươi sáng", "nhí nhảnh", "bright", "happy", "fun")):
         return "playful"
-    if any(k in lower for k in ("cinematic", "orchestra", "strings", "điện ảnh", "epic", "score", "drama")):
-        return "cinematic"
-    if any(k in lower for k in ("electronic", "tech", "synth", "công nghệ", "digital", "modern", "pulse")):
+    if any(k in lower for k in ("electronic", "tech", "synth", "công nghệ", "digital", "ai", "pulse", "hiện đại")):
         return "tech"
+    if any(k in lower for k in ("cinematic", "orchestra", "strings", "điện ảnh", "epic", "score", "drama", "kịch tính", "hùng tráng", "piano", "dương cầm", "buồn", "sâu lắng")):
+        return "cinematic"
     if any(k in lower for k in ("corporate", "doanh nghiệp", "business")):
         return "corporate"
     return "luxury" if str(scale or "").upper() == "MINOR" else "corporate"
+
+
+def parse_bgm_prompt_profile(bgm_prompt: str, requested_bpm: int = 116, scale: str = "MINOR") -> dict:
+    """
+    Translates a Vietnamese or English music prompt into exact synthesis parameters for `compose-music.mjs`:
+    `preset`, `bpm`, `keys`, `bass`, `drums`, `melody`, `prog`, `lowpass`, `crackle`, and `rev`.
+    """
+    raw = (bgm_prompt or "").strip()
+    lower = raw.lower()
+    preset = select_bgm_preset_from_prompt(raw, scale=scale)
+
+    preset_default_bpms = {
+        "lofi": 84,
+        "ambient": 80,
+        "cinematic": 92,
+        "synthwave": 112,
+        "corporate": 112,
+        "luxury": 116,
+        "playful": 118,
+        "tech": 124,
+        "energetic": 128,
+    }
+
+    # Determine effective BPM:
+    # 1) Explicit "NN bpm" in prompt text
+    m_bpm = re.search(r"\b(\d{2,3})\s*bpm\b", lower)
+    if m_bpm:
+        eff_bpm = max(65, min(165, int(m_bpm.group(1))))
+    elif any(k in lower for k in ("rất chậm", "cực chậm", "very slow")):
+        eff_bpm = 74
+    elif any(k in lower for k in ("chậm", "chậm rãi", "nhẹ nhàng", "thư giãn", "buồn", "sâu lắng", "chill", "lofi", "lo-fi", "ambient", "acoustic", "mộc", "ballad", "slow", "calm", "gentle", "intimate", "unhurried", "relaxed")):
+        eff_bpm = 84
+    elif any(k in lower for k in ("rất nhanh", "cực nhanh", "dồn dập", "bùng nổ", "edm", "dance", "club", "very fast")):
+        eff_bpm = 132
+    elif any(k in lower for k in ("nhanh", "sôi động", "hào hứng", "năng động", "mạnh mẽ", "fast", "upbeat", "energetic", "driving", "exciting")):
+        eff_bpm = 126
+    elif requested_bpm not in (115, 116):
+        # User manually changed the BPM input box away from default 115/116
+        eff_bpm = max(65, min(165, int(requested_bpm)))
+    else:
+        eff_bpm = preset_default_bpms.get(preset, 116)
+
+    profile: dict = {"preset": preset, "bpm": eff_bpm}
+
+    # Instrument (Keys / Lead) overrides from prompt
+    if any(k in lower for k in ("piano", "dương cầm", "ballad")):
+        profile["keys"] = "piano-slow" if eff_bpm <= 96 else "piano"
+        profile["melody"] = "lyrical"
+    elif any(k in lower for k in ("epiano", "rhodes", "lofi", "lo-fi", "jazz", "cafe")):
+        profile["keys"] = "epiano"
+        profile["melody"] = "chill"
+    elif any(k in lower for k in ("guitar", "acoustic", "mộc", "fingerpick", "dây")):
+        profile["keys"] = "pluck"
+        profile["melody"] = "lyrical"
+    elif any(k in lower for k in ("chuông", "bell", "chime", "lấp lánh", "sparkle", "magic", "cổ tích", "thiếu nhi", "vui nhộn")):
+        profile["keys"] = "bell-slow" if eff_bpm <= 92 else "bell"
+        profile["melody"] = "anthem"
+    elif any(k in lower for k in ("synthwave", "retro", "80s", "neon", "saw")):
+        profile["keys"] = "saw-arp"
+        profile["melody"] = "anthem"
+    elif any(k in lower for k in ("edm", "dance", "club", "bùng nổ", "festival", "stab")):
+        profile["keys"] = "stab"
+        profile["melody"] = "anthem"
+    elif any(k in lower for k in ("arp", "arpeggio", "công nghệ", "tech", "digital", "ai", "cyber")):
+        profile["keys"] = "arp16"
+        profile["melody"] = "arp"
+
+    # Bass overrides from prompt
+    if any(k in lower for k in ("drone", "điện ảnh", "ambient", "huyền bí", "sâu thẳm", "spacious")):
+        profile["bass"] = "drone" if eff_bpm <= 96 else "sustain"
+    elif any(k in lower for k in ("offbeat", "edm", "dance", "club", "bùng nổ")):
+        profile["bass"] = "offbeat"
+    elif any(k in lower for k in ("bounce", "vui", "nhảy", "funky", "playful")):
+        profile["bass"] = "bounce"
+    elif any(k in lower for k in ("driving", "pulse", "dồn dập", "synth", "công nghệ", "tech")):
+        profile["bass"] = "pulse8"
+    elif any(k in lower for k in ("nhẹ", "chill", "lofi", "acoustic", "mộc", "buồn")):
+        profile["bass"] = "sustain"
+
+    # Drum / Percussion overrides from prompt
+    if any(k in lower for k in ("không trống", "không có trống", "no drum", "no percussion", "ambient", "thiền", "spa")):
+        profile["drums"] = "none"
+    elif any(k in lower for k in ("taiko", "trống lớn", "trống trận", "hùng tráng", "kịch tính", "epic", "trailer", "điện ảnh")):
+        profile["drums"] = "taiko"
+    elif any(k in lower for k in ("lofi", "lo-fi", "chill", "cafe")):
+        profile["drums"] = "lofi"
+        profile["crackle"] = "true"
+        profile["lowpass"] = "0.38"
+    elif any(k in lower for k in ("trống nhẹ", "nhẹ nhàng", "dịu dàng", "mộc", "acoustic", "gentle percussion", "soft drum", "buồn", "sâu lắng")):
+        profile["drums"] = "soft"
+    elif any(k in lower for k in ("synthwave", "retro", "80s", "gated")):
+        profile["drums"] = "gated"
+    elif any(k in lower for k in ("sôi động", "bùng nổ", "edm", "dance", "club", "nhanh", "mạnh mẽ", "four", "upbeat", "energetic")):
+        profile["drums"] = "four"
+
+    # Chord Progression overrides from prompt mood
+    if any(k in lower for k in ("buồn", "sâu lắng", "tâm trạng", "cảm xúc", "sad", "melancholy", "emotional", "tear")):
+        profile["prog"] = "A:min,F:maj,D:min,E:maj"
+    elif any(k in lower for k in ("kịch tính", "hùng tráng", "epic", "trailer", "chiến thắng", "dramatic", "heroic")):
+        profile["prog"] = "D:min,A#:maj,G:min,A:maj"
+    elif any(k in lower for k in ("vui", "vui tươi", "tươi sáng", "hạnh phúc", "tích cực", "lạc quan", "happy", "bright", "uplifting", "positive", "major")):
+        profile["prog"] = "C:maj,G:maj,A:min,F:maj"
+    elif any(k in lower for k in ("chill", "lofi", "lo-fi", "jazz", "cafe", "thư giãn")):
+        profile["prog"] = "F:maj7,E:min7,D:min7,C:maj7"
+    elif any(k in lower for k in ("sang trọng", "đẳng cấp", "luxury", "premium", "fashion")):
+        profile["prog"] = "D:min,A#:maj,F:maj,C:maj"
+
+    return profile
 
 
 def synthesize_python_bgm_fallback(output_wav: str, duration_sec: int, bpm: int = 116, preset: str = "tech") -> str:
@@ -600,9 +737,32 @@ def generate_bgm_track(
         log(f"[Music Engine] Reusing cached BGM track -> {output_wav}")
         return output_wav
 
-    if os.path.exists(LYRIA_SCRIPT) and (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
+    profile = parse_bgm_prompt_profile(bgm_prompt, requested_bpm=bpm, scale=scale)
+    preset = profile["preset"]
+    eff_bpm = profile["bpm"]
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+
+    # 1. Primary Engine: Google Vids (vids.new) Native Cookie Lyria v3.5 Full Song RPC (UseCase 242 — zero API key!)
+    try:
+        log(f"[Music Engine] Generating {duration_sec}s BGM via vids.new Cookie Lyria v3.5 (uc=242, BPM={eff_bpm}, Scale={scale})...")
+        run_vids_rpc_lyria_music(
+            bgm_prompt=bgm_prompt,
+            output_wav=output_wav,
+            duration_sec=duration_sec,
+            bpm=eff_bpm,
+            scale=scale,
+            instrumental=True,
+        )
+        if os.path.exists(output_wav) and os.path.getsize(output_wav) > 20000:
+            log(f"[Music Engine] vids.new Cookie Lyria v3.5 BGM saved -> {output_wav} ({os.path.getsize(output_wav):,} bytes)")
+            return output_wav
+    except Exception as e_vids_lyria:
+        log(f"[Music Engine] vids.new Cookie Lyria v3.5 warning ({e_vids_lyria}) -> checking secondary Lyria/Studio engines...")
+
+    # 2. Secondary Engine: Google Lyria RealTime via GEMINI_API_KEY
+    if os.path.exists(LYRIA_SCRIPT) and api_key and not api_key.startswith("AIzaSyDW-lir"):
         try:
-            log(f"[Music Engine] Generating {duration_sec}s BGM via Google Lyria RealTime (BPM={bpm}, Scale={scale})...")
+            log(f"[Music Engine] Generating {duration_sec}s BGM via Google Lyria RealTime (BPM={eff_bpm}, Scale={scale})...")
             res = subprocess.run(
                 [
                     sys.executable,
@@ -612,7 +772,7 @@ def generate_bgm_track(
                     "--duration",
                     str(duration_sec),
                     "--bpm",
-                    str(bpm),
+                    str(eff_bpm),
                     "--brightness",
                     str(brightness),
                     "--density",
@@ -633,29 +793,36 @@ def generate_bgm_track(
         except Exception as e:
             log(f"[Music Engine] Lyria fallback ({e}) -> switching to Studio Synthesizer")
 
-    preset = select_bgm_preset_from_prompt(bgm_prompt, scale=scale)
-    seed_int = int(hashlib.sha256(f"{bgm_prompt}|{bpm}|{scale}|{duration_sec}".encode("utf-8")).hexdigest()[:8], 16)
+    seed_int = int(hashlib.sha256(f"{bgm_prompt}|{eff_bpm}|{scale}|{duration_sec}".encode("utf-8")).hexdigest()[:8], 16)
     if os.path.exists(COMPOSE_MUSIC_SCRIPT):
         try:
-            log(f"[Music Engine] Composing {duration_sec}s Studio BGM via compose-music.mjs (preset={preset}, bpm={bpm}, seed={seed_int})...")
+            log(
+                f"[Music Engine] Composing {duration_sec}s Studio BGM via compose-music.mjs "
+                f"(preset={preset}, bpm={eff_bpm}, keys={profile.get('keys', 'default')}, "
+                f"drums={profile.get('drums', 'default')}, melody={profile.get('melody', 'default')}, seed={seed_int})..."
+            )
             markers = ",".join(str(t) for t in range(0, duration_sec, 10))
+            cmd = [
+                "node",
+                COMPOSE_MUSIC_SCRIPT,
+                "--preset",
+                preset,
+                "--bpm",
+                str(eff_bpm),
+                "--duration",
+                str(duration_sec),
+                "--markers",
+                markers,
+                "--seed",
+                str(seed_int),
+                "--out",
+                output_wav,
+            ]
+            for opt_key in ("keys", "bass", "drums", "melody", "prog", "lowpass", "crackle", "rev"):
+                if opt_key in profile and profile[opt_key] is not None:
+                    cmd.extend([f"--{opt_key}", str(profile[opt_key])])
             subprocess.run(
-                [
-                    "node",
-                    COMPOSE_MUSIC_SCRIPT,
-                    "--preset",
-                    preset,
-                    "--bpm",
-                    str(bpm),
-                    "--duration",
-                    str(duration_sec),
-                    "--markers",
-                    markers,
-                    "--seed",
-                    str(seed_int),
-                    "--out",
-                    output_wav,
-                ],
+                cmd,
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -665,7 +832,7 @@ def generate_bgm_track(
         except Exception as e:
             log(f"[Music Engine] compose-music.mjs error ({e}) -> using pure-Python 48kHz stereo synth")
 
-    return synthesize_python_bgm_fallback(output_wav=output_wav, duration_sec=duration_sec, bpm=bpm, preset=preset)
+    return synthesize_python_bgm_fallback(output_wav=output_wav, duration_sec=duration_sec, bpm=eff_bpm, preset=preset)
 
 
 def pre_upscale_scene_1080p(ffmpeg_exe: str, raw_mp4: str, out_1080p_mp4: str, scene_duration: int = 10) -> str:

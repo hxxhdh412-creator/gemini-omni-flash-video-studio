@@ -735,8 +735,15 @@ Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng k�
               <input id="voOutName" value="vo_1take_emotional.wav" />
             </div>
           </div>
-          <label>Phong cách & cảm xúc</label>
+          <label>Phong cách & cảm xúc (hỗ trợ tiếng Việt: nhanh, chậm, trầm ấm, quyền lực, sôi động, nhẹ nhàng, vang điện ảnh...)</label>
           <textarea id="voStyleInput">Expressive, deeply emotional, charismatic Vietnamese commercial storyteller and startup founder. Start with empathetic concern, shift into warm excitement, and finish with an inspiring call to action.</textarea>
+          <div class="audio-presets" aria-label="Mẫu phong cách giọng đọc">
+            <button type="button" class="btn btn-ghost btn-xs" onclick="applyVoiceStylePreset('energetic')">Truyền lửa & Sôi động</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="applyVoiceStylePreset('deep')">Trầm ấm & Quyền lực</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="applyVoiceStylePreset('gentle')">Nhẹ nhàng & Sâu lắng</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="applyVoiceStylePreset('fast')">Đọc nhanh 1.15x</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="applyVoiceStylePreset('cinematic')">Vang điện ảnh</button>
+          </div>
           <button class="btn" onclick="generateStandaloneVO(this)">
             <svg class="sf-icon"><use href="#sf-waveform"/></svg> Tạo giọng đọc 1-Take
           </button>
@@ -749,12 +756,15 @@ Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng k�
               Nhạc nền Lyria
             </h2><span class="chip">Stereo · WAV 48 kHz</span>
           </div>
-          <label>Mô tả phong cách nhạc nền</label>
+          <label>Mô tả phong cách nhạc nền (hỗ trợ tiếng Việt: piano, guitar, lofi chill, điện ảnh, EDM sôi động, không trống...)</label>
           <textarea id="bgmPromptInput">Cinematic futuristic corporate synthwave electronic commercial music, deep driving bassline, inspiring warm pads</textarea>
           <div class="audio-presets" aria-label="Mẫu phong cách nhạc nền">
             <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('cinematic')">Điện ảnh</button>
             <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('technology')">Công nghệ</button>
             <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('acoustic')">Acoustic</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('piano_ballad')">Piano sâu lắng</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('lofi_chill')">Lo-Fi Chill</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('edm_upbeat')">EDM Sôi động</button>
           </div>
           <div class="field-grid">
             <div>
@@ -1553,15 +1563,56 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
       }, 2200);
     }
 
+    const VOICE_STYLE_PRESETS = {
+      energetic: 'Giọng đọc truyền lửa, sôi động, hào hứng, mạnh mẽ và dứt khoát cho quảng cáo bùng nổ doanh số.',
+      deep: 'Giọng đọc trầm ấm, quyền lực, dày và uy lực như chuyên gia dẫn chuyện thương hiệu cao cấp.',
+      gentle: 'Giọng đọc nhẹ nhàng, sâu lắng, chậm rãi và giàu tình cảm, truyền tải sự thấu hiểu.',
+      fast: 'Đọc nhanh 1.15x, nhịp độ khẩn trương, tươi sáng, trẻ trung và cuốn hút.',
+      cinematic: 'Giọng đọc trầm hùng, kịch tính, vang điện ảnh như trailer phim bom tấn.'
+    };
+
+    function applyVoiceStylePreset(key) {
+      const el = document.getElementById('voStyleInput');
+      if (VOICE_STYLE_PRESETS[key]) {
+        el.value = VOICE_STYLE_PRESETS[key];
+        el.focus();
+      }
+    }
+
     const MUSIC_PRESETS = {
-      cinematic: 'Cinematic instrumental score with spacious strings, warm low synths and a gradual emotional build. Leave room for voiceover. No vocals.',
-      technology: 'Modern electronic instrumental with restrained synth pulses, warm bass and clean percussion. Confident and precise, with room for voiceover. No vocals.',
-      acoustic: 'Warm acoustic instrumental with fingerpicked guitar, soft piano and gentle percussion. Light, intimate and unhurried. No vocals.'
+      cinematic: {
+        prompt: 'Nhạc nền điện ảnh hùng tráng, piano chậm kết hợp dàn dây sâu lắng và trống taiko kịch tính.',
+        bpm: 92
+      },
+      technology: {
+        prompt: 'Nhạc nền công nghệ hiện đại, tiếng synth arpeggio sắc nét, bass pulse nhịp nhàng và trống điện tử sạch sẽ.',
+        bpm: 124
+      },
+      acoustic: {
+        prompt: 'Nhạc nền guitar acoustic mộc mạc, ấm áp, nhẹ nhàng thư giãn với tiết tấu chậm rãi.',
+        bpm: 86
+      },
+      piano_ballad: {
+        prompt: 'Nhạc piano dương cầm sâu lắng, buồn nhẹ và giàu cảm xúc, không trống, để không gian thoáng cho giọng đọc.',
+        bpm: 80
+      },
+      lofi_chill: {
+        prompt: 'Nhạc Lo-Fi Chill quán cafe thư giãn, đàn epiano jazz ấm áp và nhịp trống lofi nhẹ nhàng.',
+        bpm: 84
+      },
+      edm_upbeat: {
+        prompt: 'Nhạc quảng cáo EDM sôi động, bùng nổ năng lượng, tiết tấu nhanh mạnh mẽ và giai điệu tươi sáng.',
+        bpm: 128
+      }
     };
 
     function applyMusicPreset(preset) {
+      const cfg = MUSIC_PRESETS[preset];
+      if (!cfg) return;
       const prompt = document.getElementById('bgmPromptInput');
-      prompt.value = MUSIC_PRESETS[preset];
+      const bpmBox = document.getElementById('bgmBpmInput');
+      prompt.value = cfg.prompt;
+      if (bpmBox && cfg.bpm) bpmBox.value = cfg.bpm;
       prompt.focus();
     }
 
@@ -1664,9 +1715,18 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
         });
         const data = await response.json();
         if (!response.ok || !data.download_url) throw new Error(data.error || 'Không tạo được âm thanh. Vui lòng thử lại.');
-        const label = data.duration_sec ? 'Tải WAV · ' + data.duration_sec + ' giây' : 'Tải WAV';
+        let metaTag = '';
+        if (data.voice) {
+          metaTag = ' · Giọng ' + data.voice;
+        } else if (data.profile) {
+          const p = data.profile;
+          metaTag = ` · ${p.preset} · ${p.bpm} BPM` + (p.keys ? ` · ${p.keys}` : '');
+          const bpmBox = document.getElementById('bgmBpmInput');
+          if (bpmBox && p.bpm) bpmBox.value = p.bpm;
+        }
+        const label = (data.duration_sec ? 'Tải WAV · ' + data.duration_sec + ' giây' : 'Tải WAV') + metaTag;
         showAudioPlayer(result, data.download_url, label, payload.output_filename, true);
-        showResultActivity(resultId, 'done', 'Bản WAV đã sẵn sàng');
+        showResultActivity(resultId, 'done', 'Bản WAV đã sẵn sàng' + metaTag);
         loadSavedAudio();
       } catch (error) {
         showResultActivity(resultId, 'failed', 'Không tạo được âm thanh', error.message);

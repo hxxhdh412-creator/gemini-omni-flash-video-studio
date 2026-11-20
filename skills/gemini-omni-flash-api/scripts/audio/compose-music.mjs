@@ -32,21 +32,47 @@ const OUT = arg("out") ?? cfg.out ?? "public/music/theme.wav";
 let seed = Number(arg("seed") ?? cfg.seed ?? 1337);
 
 const PRESETS = {
-  luxury: { bpm: 120, prog: [["D", "min"], ["A#", "maj"], ["F", "maj"], ["C", "maj"]], keys: "piano", bass: "groove", drums: "soft", pad: 0.042, swing: 0, rev: 2.2 },
-  corporate: { bpm: 112, prog: [["C", "maj"], ["G", "maj"], ["A", "min"], ["F", "maj"]], keys: "pluck", bass: "pulse8", drums: "pop", pad: 0.035, swing: 0, rev: 1.6 },
-  tech: { bpm: 124, prog: [["A", "min"], ["F", "maj"], ["C", "maj"], ["G", "maj"]], keys: "arp16", bass: "pulse8", drums: "four", pad: 0.04, swing: 0, rev: 1.8 },
-  energetic: { bpm: 128, prog: [["F#", "min"], ["D", "maj"], ["A", "maj"], ["E", "maj"]], keys: "stab", bass: "offbeat", drums: "four", pad: 0.03, swing: 0, rev: 1.4 },
-  lofi: { bpm: 84, prog: [["F", "maj7"], ["E", "min7"], ["D", "min7"], ["C", "maj7"]], keys: "epiano", bass: "sustain", drums: "lofi", pad: 0.03, swing: 0.16, rev: 1.8, crackle: true, lowpass: 0.35 },
-  cinematic: { bpm: 90, prog: [["D", "min"], ["A#", "maj"], ["G", "min"], ["A", "maj"]], keys: "piano-slow", bass: "drone", drums: "taiko", pad: 0.055, swing: 0, rev: 3 },
-  playful: { bpm: 118, prog: [["C", "maj"], ["A", "min"], ["F", "maj"], ["G", "maj"]], keys: "bell", bass: "bounce", drums: "pop", pad: 0.025, swing: 0.1, rev: 1.4 },
-  synthwave: { bpm: 110, prog: [["A", "min"], ["F", "maj"], ["C", "maj"], ["G", "maj"]], keys: "saw-arp", bass: "pulse8", drums: "gated", pad: 0.045, swing: 0, rev: 2.4 },
-  ambient: { bpm: 80, prog: [["C", "maj7"], ["A", "min7"], ["F", "maj7"], ["G", "sus2"]], keys: "bell-slow", bass: "sustain", drums: "none", pad: 0.05, swing: 0, rev: 3 },
+  luxury: { bpm: 118, prog: [["D", "min"], ["A#", "maj"], ["F", "maj"], ["C", "maj"]], keys: "piano", bass: "groove", drums: "soft", pad: 0.042, swing: 0, rev: 2.2, melody: "lyrical" },
+  corporate: { bpm: 112, prog: [["C", "maj"], ["G", "maj"], ["A", "min"], ["F", "maj"]], keys: "pluck", bass: "pulse8", drums: "pop", pad: 0.035, swing: 0, rev: 1.6, melody: "arp" },
+  tech: { bpm: 124, prog: [["A", "min"], ["F", "maj"], ["C", "maj"], ["G", "maj"]], keys: "arp16", bass: "pulse8", drums: "four", pad: 0.04, swing: 0, rev: 1.8, melody: "arp" },
+  energetic: { bpm: 128, prog: [["F#", "min"], ["D", "maj"], ["A", "maj"], ["E", "maj"]], keys: "stab", bass: "offbeat", drums: "four", pad: 0.03, swing: 0, rev: 1.4, melody: "anthem" },
+  lofi: { bpm: 84, prog: [["F", "maj7"], ["E", "min7"], ["D", "min7"], ["C", "maj7"]], keys: "epiano", bass: "sustain", drums: "lofi", pad: 0.03, swing: 0.16, rev: 1.8, crackle: true, lowpass: 0.35, melody: "chill" },
+  cinematic: { bpm: 92, prog: [["D", "min"], ["A#", "maj"], ["G", "min"], ["A", "maj"]], keys: "piano-slow", bass: "drone", drums: "taiko", pad: 0.055, swing: 0, rev: 3, melody: "cinematic" },
+  playful: { bpm: 118, prog: [["C", "maj"], ["A", "min"], ["F", "maj"], ["G", "maj"]], keys: "bell", bass: "bounce", drums: "pop", pad: 0.025, swing: 0.1, rev: 1.4, melody: "anthem" },
+  synthwave: { bpm: 110, prog: [["A", "min"], ["F", "maj"], ["C", "maj"], ["G", "maj"]], keys: "saw-arp", bass: "pulse8", drums: "gated", pad: 0.045, swing: 0, rev: 2.4, melody: "anthem" },
+  ambient: { bpm: 80, prog: [["C", "maj7"], ["A", "min7"], ["F", "maj7"], ["G", "sus2"]], keys: "bell-slow", bass: "sustain", drums: "none", pad: 0.05, swing: 0, rev: 3, melody: "cinematic" },
 };
-const P = PRESETS[PRESET];
-if (!P) {
+const basePreset = PRESETS[PRESET];
+if (!basePreset) {
   console.error(`Preset không hợp lệ: ${PRESET}. Chọn: ${Object.keys(PRESETS).join(", ")}`);
   process.exit(1);
 }
+const parseProgArg = (raw) => {
+  if (!raw) return null;
+  if (Array.isArray(raw)) return raw;
+  const items = String(raw)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const [r, q] = pair.split(":");
+      return [r?.trim() || "C", q?.trim() || "maj"];
+    });
+  return items.length >= 2 ? items : null;
+};
+const P = {
+  ...basePreset,
+  ...(arg("keys") ? { keys: arg("keys") } : cfg.keys ? { keys: cfg.keys } : {}),
+  ...(arg("bass") ? { bass: arg("bass") } : cfg.bass ? { bass: cfg.bass } : {}),
+  ...(arg("drums") ? { drums: arg("drums") } : cfg.drums ? { drums: cfg.drums } : {}),
+  ...(arg("pad") !== undefined ? { pad: Number(arg("pad")) } : cfg.pad !== undefined ? { pad: Number(cfg.pad) } : {}),
+  ...(arg("swing") !== undefined ? { swing: Number(arg("swing")) } : cfg.swing !== undefined ? { swing: Number(cfg.swing) } : {}),
+  ...(arg("rev") !== undefined ? { rev: Number(arg("rev")) } : cfg.rev !== undefined ? { rev: Number(cfg.rev) } : {}),
+  ...(arg("lowpass") !== undefined ? { lowpass: Number(arg("lowpass")) } : cfg.lowpass !== undefined ? { lowpass: Number(cfg.lowpass) } : {}),
+  ...(arg("crackle") !== undefined ? { crackle: arg("crackle") === "true" } : cfg.crackle !== undefined ? { crackle: Boolean(cfg.crackle) } : {}),
+  ...(arg("melody") ? { melody: arg("melody") } : cfg.melody ? { melody: cfg.melody } : {}),
+  ...(parseProgArg(arg("prog") ?? cfg.prog) ? { prog: parseProgArg(arg("prog") ?? cfg.prog) } : {}),
+};
 const BPM = Number(arg("bpm") ?? cfg.bpm ?? P.bpm);
 const SR = 44100;
 const N = Math.floor(SR * DUR);
@@ -358,6 +384,33 @@ for (let b = 0; b < nBars; b++) {
   else if (P.keys === "stab") [0.5, 1.5, 2.5, 3.5].forEach((q) => ch.arp.slice(0, 3).forEach((m, i) => pluck(m, t0 + q * BEAT, 0.8, -0.3 + i * 0.3, 0.045, true, 0.3)));
   else if (P.keys === "bell") pat8.forEach((idx, e) => e % 2 === 0 && bell(ch.arp[idx], t0 + e * (BEAT / 2) + sw(e), vel(e), pan(idx), 0.05));
   else if (P.keys === "epiano") [0, 1.5, 2.5].forEach((q, i) => ch.pad.forEach((m, j) => epiano(m + 12, t0 + q * BEAT + j * 0.012 + sw(i), 0.55, -0.2 + j * 0.15, 0.045)));
+
+  // LEAD MELODY (thay đổi rõ rệt theo mô tả prompt & seed)
+  const melStyle = P.melody || "none";
+  if (melStyle !== "none" && sec !== "outro") {
+    const melNotes = [ch.arp[0], ch.arp[1], ch.arp[2], ch.arp[3], ch.arp[0] + 12, ch.arp[1] + 12];
+    if (melStyle === "lyrical" || melStyle === "cinematic") {
+      const steps = melStyle === "cinematic" ? [0, 1.5, 3] : [0, 1, 2.5, 3.5];
+      steps.forEach((q, idx) => {
+        const note = melNotes[(b * 3 + idx + Math.floor(rnd() * 3)) % melNotes.length];
+        const panPos = (idx % 2 === 0 ? -0.22 : 0.22);
+        if (P.keys.startsWith("bell")) bell(note, t0 + q * BEAT, 0.82, panPos, 0.058, 1.4);
+        else piano(note, t0 + q * BEAT, 0.85, panPos, 0.072, 0.45, melStyle === "cinematic" ? 1.6 : 1.15);
+      });
+    } else if (melStyle === "chill") {
+      [0.5, 2.0, 3.25].forEach((q, idx) => {
+        if (rnd() > 0.2) {
+          const note = melNotes[(b * 2 + idx + Math.floor(rnd() * 4)) % melNotes.length];
+          epiano(note, t0 + q * BEAT + sw(idx), 0.72, idx % 2 ? 0.25 : -0.25, 0.062);
+        }
+      });
+    } else if (melStyle === "anthem") {
+      [0, 0.75, 1.5, 2.5, 3.0, 3.5].forEach((q, idx) => {
+        const note = melNotes[(b + idx * 2) % melNotes.length];
+        pluck(note, t0 + q * BEAT, idx % 2 === 0 ? 0.92 : 0.75, idx % 2 ? 0.28 : -0.28, 0.064, true, 0.42);
+      });
+    }
+  }
 
   // TRỐNG
   const D = P.drums;

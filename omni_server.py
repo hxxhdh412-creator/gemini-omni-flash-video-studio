@@ -1039,14 +1039,22 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                     wf.setframerate(sr)
                     wf.writeframes(pcm_bytes)
                 dur = round((len(pcm_bytes) / 2.0) / sr, 2)
-                self._send_json({"status": "ok", "download_url": f"/outputs/{out_name}", "duration_sec": dur})
+                self._send_json(
+                    {
+                        "status": "ok",
+                        "download_url": f"/outputs/{out_name}",
+                        "duration_sec": dur,
+                        "voice": voice,
+                        "style": style,
+                    }
+                )
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
             return
 
         if path == "/api/bgm-preview":
             try:
-                from produce_commercial import generate_bgm_track
+                from produce_commercial import generate_bgm_track, parse_bgm_prompt_profile
 
                 prompt = body.get("prompt", "Cinematic modern corporate electronic commercial music")
                 dur = int(body.get("duration", 30))
@@ -1054,6 +1062,7 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                 scale = body.get("scale", "MINOR")
                 out_name = os.path.basename(body.get("output_filename") or f"lyria_bgm_{uuid.uuid4().hex[:6]}.wav")
                 out_wav = os.path.join(OUTPUTS_DIR, out_name)
+                profile = parse_bgm_prompt_profile(prompt, requested_bpm=bpm, scale=scale)
                 generate_bgm_track(
                     output_wav=out_wav,
                     duration_sec=dur,
@@ -1062,7 +1071,14 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                     scale=scale,
                     force_regenerate=True,
                 )
-                self._send_json({"status": "ok", "download_url": f"/outputs/{out_name}", "duration_sec": dur})
+                self._send_json(
+                    {
+                        "status": "ok",
+                        "download_url": f"/outputs/{out_name}",
+                        "duration_sec": dur,
+                        "profile": profile,
+                    }
+                )
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
             return

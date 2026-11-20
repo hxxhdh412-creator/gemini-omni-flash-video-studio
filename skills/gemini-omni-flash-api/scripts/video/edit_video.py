@@ -1565,6 +1565,345 @@ def run_vids_rpc_tts_voiceover(
     return wav_bytes
 
 
+def run_vids_rpc_lyria_music(
+    bgm_prompt: str,
+    output_wav: str = None,
+    duration_sec: int = 30,
+    bpm: int = None,
+    scale: str = None,
+    instrumental: bool = True,
+    session_path: str = DEFAULT_SESSION_PATH,
+) -> bytes:
+    """
+    Composes AI background music directly via Google Vids (`vids.new`) Native Cookie Lyria v3.5 RPC
+    (`UseCase 242` -> `/flix/generate_music_full_song/v0`, `vids_generate_music_config_full_song_v3p5`,
+    zero GEMINI_API_KEY required!).
+    Downloads the native `audio/wav` from `contribution-rt.usercontent.google.com/download`, and if
+    `output_wav` is given, masters it to 48kHz Stereo WAV of `duration_sec` seconds with smooth fade-in/out.
+    """
+    try:
+        refresh_session_from_cdp(session_path)
+    except Exception:
+        pass
+    session = load_vids_session(session_path)
+    authuser = str(session.get("authuser", "0"))
+    req_id = f"goog_{uuid.uuid4().int % 2000000000}"
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
+
+    clean_prompt = (bgm_prompt or "Cinematic modern corporate electronic commercial music").strip()
+    if bpm and f"{bpm}" not in clean_prompt.lower():
+        clean_prompt = f"{clean_prompt}, {bpm} BPM"
+    if scale and str(scale).lower() not in clean_prompt.lower():
+        clean_prompt = f"{clean_prompt}, {scale} key"
+    if instrumental and not clean_prompt.lower().startswith("instrumental"):
+        clean_prompt = f"Instrumental, no lyrics or vocals. {clean_prompt}"
+
+    payload = [
+        242,
+        None,
+        [
+            9,
+            None,
+            None,
+            None,
+            req_id,
+            None,
+            "0",
+            None,
+            None,
+            None,
+            None,
+            [77, 0],
+            None,
+            "vi",
+            None,
+            None,
+            None,
+            None,
+            None,
+            1,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            "Asia/Bangkok",
+            None,
+            None,
+            None,
+            None,
+            None,
+            0,
+        ],
+        [None, None, clean_prompt],
+        None,
+        [1, None, [[None, "1", 1251]]],
+        1,
+    ]
+
+    headers = {
+        "accept": "*/*",
+        "accept-language": "vi",
+        "authorization": make_sapisidhash(session["sapisid"], session["origin"]),
+        "content-type": "application/json+protobuf",
+        "cookie": session["cookie"],
+        "origin": session["origin"],
+        "priority": "u=1, i",
+        "referer": "https://docs.google.com/",
+        "user-agent": ua,
+        "x-goog-authuser": authuser,
+        "x-server-token": session["server_token"],
+    }
+
+    log(f"[Vids Lyria RPC] Composing AI music via vids.new Cookie Lyria v3.5 (uc=242, duration={duration_sec}s, authuser={authuser})...")
+    t0 = time.time()
+    req = urllib.request.Request(
+        session["api_url"],
+        data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    with _VIDS_RPC_LOCK:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            raw_bytes = resp.read()
+            if resp.headers.get("Content-Encoding") == "gzip":
+                raw_bytes = gzip.decompress(raw_bytes)
+            text = raw_bytes.decode("utf-8", errors="replace")
+            log(f"[Vids Lyria RPC] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(text):,} chars)")
+
+    clean_text = text.lstrip()
+    if clean_text.startswith(")]}'"):
+        clean_text = clean_text.split("\n", 1)[-1]
+    parsed = json.loads(clean_text)
+    all_strs = extract_strings(parsed)
+    dl_urls = [s for s in all_strs if s.startswith("https://contribution-rt.usercontent.google.com/download")]
+    if not dl_urls:
+        raise RuntimeError(f"No audio/wav download URL found in Vids Lyria RPC response: {clean_text[:300]}")
+
+    dl_url = dl_urls[0]
+    if "authuser=" not in dl_url:
+        sep = "&" if "?" in dl_url else "?"
+        dl_url = f"{dl_url}{sep}authuser={authuser}"
+    dl_cookie_parts = [
+        p.strip()
+        for p in session["cookie"].split(";")
+        if p.strip() and p.strip().split("=", 1)[0].strip() not in ("OSID", "__Secure-OSID", "COMPASS")
+    ]
+    dl_headers = {
+        "cookie": "; ".join(dl_cookie_parts),
+        "user-agent": ua,
+        "referer": "https://docs.google.com/",
+        "origin": session["origin"],
+        "x-goog-authuser": authuser,
+    }
+    with urllib.request.urlopen(urllib.request.Request(dl_url, headers=dl_headers), timeout=90) as dl_resp:
+        wav_bytes = dl_resp.read()
+    log(f"[Vids Lyria RPC] Downloaded native Lyria v3.5 audio/wav ({len(wav_bytes):,} bytes) via vids.new Cookie.")
+
+    if output_wav:
+        os.makedirs(os.path.dirname(os.path.abspath(output_wav)), exist_ok=True)
+        raw_tmp = f"{output_wav}.raw_lyria.wav"
+        with open(raw_tmp, "wb") as f:
+            f.write(wav_bytes)
+        ffmpeg_exe = get_ffmpeg_exe()
+        if ffmpeg_exe and duration_sec and duration_sec > 0:
+            fade_out_st = max(0.5, float(duration_sec) - 1.5)
+            af = f"afade=t=in:st=0:d=0.6,afade=t=out:st={fade_out_st:.2f}:d=1.5,aresample=48000"
+            proc = subprocess.run(
+                [
+                    ffmpeg_exe,
+                    "-y",
+                    "-stream_loop",
+                    "-1",
+                    "-i",
+                    raw_tmp,
+                    "-t",
+                    str(duration_sec),
+                    "-af",
+                    af,
+                    "-ar",
+                    "48000",
+                    "-ac",
+                    "2",
+                    "-c:a",
+                    "pcm_s16le",
+                    output_wav,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            try:
+                os.remove(raw_tmp)
+            except Exception:
+                pass
+            if proc.returncode == 0 and os.path.exists(output_wav) and os.path.getsize(output_wav) > 1000:
+                with open(output_wav, "rb") as f2:
+                    return f2.read()
+        with open(output_wav, "wb") as f:
+            f.write(wav_bytes)
+        try:
+            if os.path.exists(raw_tmp):
+                os.remove(raw_tmp)
+        except Exception:
+            pass
+    return wav_bytes
+
+
+def apply_vo_style_mastering(
+    pcm_bytes: bytes,
+    sample_rate: int,
+    style: str = "",
+    voice: str = "Puck",
+) -> tuple[bytes, int]:
+    """
+    Applies prompt-driven prosody (tempo/pacing, pitch/formant shift, tonal EQ, dynamic punch, or studio reverb)
+    based on the user's Vietnamese or English style description (`#voStyleInput`).
+    If `style` is empty or is the untouched default commercial script direction, preserves natural 1.00x output.
+    """
+    import tempfile
+
+    raw_style = (style or "").strip()
+    if not raw_style or not pcm_bytes:
+        return pcm_bytes, sample_rate
+
+    lower = raw_style.lower()
+    # Ignore the built-in default English boilerplate unless the user edited it or added Vietnamese/custom directives
+    is_default_boilerplate = (
+        "expressive, deeply emotional, charismatic vietnamese commercial storyteller and startup founder" in lower
+        and len(raw_style) < 230
+    )
+    if is_default_boilerplate:
+        return pcm_bytes, sample_rate
+
+    tempo = 1.0
+    pitch = 1.0
+    eq_filters = []
+    extra_filters = []
+
+    # 1. Explicit numeric speed multiplier in prompt (e.g., "1.2x", "0.9x", "tốc độ 1.15")
+    m_speed = re.search(r"\b(0\.[789]\d*|1\.[01234]\d*)\s*x?\b", lower)
+    if m_speed:
+        try:
+            tempo = max(0.75, min(1.38, float(m_speed.group(1))))
+        except Exception:
+            pass
+    else:
+        if any(k in lower for k in ("rất nhanh", "cực nhanh", "siêu nhanh", "very fast", "super fast")):
+            tempo = 1.24
+        elif any(k in lower for k in ("nhanh", "tốc độ cao", "khẩn trương", "dồn dập", "gấp", "fast", "quick", "rapid", "urgent", "hurried")):
+            tempo = 1.15
+        elif any(k in lower for k in ("rất chậm", "cực chậm", "very slow")):
+            tempo = 0.82
+        elif any(k in lower for k in ("chậm", "chậm rãi", "thong thả", "từ tốn", "thư thái", "slow", "unhurried", "deliberate", "relaxed")):
+            tempo = 0.88
+        elif any(k in lower for k in ("sôi động", "sôi nổi", "hào hứng", "năng động", "bùng nổ", "nhiệt huyết", "upbeat", "energetic", "excited", "lively")):
+            tempo = 1.09
+        elif any(k in lower for k in ("sâu lắng", "trầm lắng", "buồn", "tâm sự", "kể chuyện đêm", "calm", "melancholy", "reflective")):
+            tempo = 0.92
+
+    # 2. Pitch & Timbre (Formant/Pitch Shift + Chest/Air EQ)
+    if any(k in lower for k in ("rất trầm", "cực trầm", "deep bass", "very deep")):
+        pitch = 0.90
+        eq_filters.append("equalizer=f=125:t=q:w=1.0:g=4.2,equalizer=f=220:t=q:w=1.2:g=2.4")
+    elif any(k in lower for k in ("trầm", "giọng trầm", "dày", "nam tính", "uy lực", "quyền lực", "deep", "low pitch", "baritone", "authoritative", "gravitas")):
+        pitch = 0.94
+        eq_filters.append("equalizer=f=135:t=q:w=1.0:g=3.6,equalizer=f=230:t=q:w=1.2:g=2.0")
+    elif any(k in lower for k in ("rất cao", "cực cao", "very high")):
+        pitch = 1.10
+        eq_filters.append("equalizer=f=3600:t=q:w=1.1:g=3.2,equalizer=f=6500:t=q:w=1.2:g=2.6")
+    elif any(k in lower for k in ("cao", "giọng cao", "trẻ", "trẻ trung", "nhí nhảnh", "trong trẻo", "tươi sáng", "sáng", "high", "bright", "youthful", "crisp", "clear")):
+        pitch = 1.06
+        eq_filters.append("equalizer=f=3500:t=q:w=1.1:g=2.8,equalizer=f=6200:t=q:w=1.2:g=2.4")
+
+    if any(k in lower for k in ("ấm", "ấm áp", "trầm ấm", "warm", "rich")):
+        eq_filters.append("equalizer=f=175:t=q:w=1.1:g=2.8,equalizer=f=3400:t=q:w=1.2:g=-0.8")
+
+    # 3. Dynamics & Emotion (Powerful/Dramatic vs Soft/Intimate vs Cinematic Reverb)
+    if any(k in lower for k in ("mạnh", "mạnh mẽ", "dứt khoát", "hùng hồn", "truyền lửa", "quyết đoán", "bùng nổ", "powerful", "punchy", "bold", "dramatic", "intense")):
+        eq_filters.append("equalizer=f=2800:t=q:w=1.1:g=2.6")
+        extra_filters.append("acompressor=threshold=-20dB:ratio=3.5:attack=8:release=120:makeup=2.8dB")
+    elif any(k in lower for k in ("nhẹ", "nhẹ nhàng", "dịu dàng", "tình cảm", "thủ thỉ", "êm", "êm ái", "soft", "gentle", "intimate", "tender", "whisper")):
+        eq_filters.append("equalizer=f=3100:t=q:w=1.1:g=-2.2,equalizer=f=190:t=q:w=1.2:g=2.0,lowpass=f=9200")
+
+    if any(k in lower for k in ("vang", "điện ảnh", "sân khấu", "hội trường", "trailer", "epic", "reverb", "echo", "hall", "cinematic")):
+        extra_filters.append("aecho=0.8:0.88:32:0.18")
+
+    if abs(tempo - 1.0) < 0.01 and abs(pitch - 1.0) < 0.01 and not eq_filters and not extra_filters:
+        return pcm_bytes, sample_rate
+
+    chain = []
+    eff_tempo = tempo / pitch
+    if abs(pitch - 1.0) >= 0.01:
+        shifted_sr = int(round(sample_rate * pitch))
+        chain.append(f"asetrate={shifted_sr},aresample={sample_rate}")
+    if abs(eff_tempo - 1.0) >= 0.01:
+        # Keep within FFmpeg atempo [0.5, 2.0]
+        eff_tempo = max(0.55, min(1.85, eff_tempo))
+        chain.append(f"atempo={eff_tempo:.3f}")
+    chain.extend(eq_filters)
+    chain.extend(extra_filters)
+
+    af_str = ",".join(chain)
+    log(f"  [VO Style Mastering] Applying style='{raw_style[:75]}' -> tempo={tempo:.2f}x, pitch={pitch:.2f}x ({af_str})")
+
+    ffmpeg_exe = get_ffmpeg_exe()
+    with tempfile.NamedTemporaryFile(suffix=".pcm", delete=False) as tf_in:
+        tf_in.write(pcm_bytes)
+        in_pcm = tf_in.name
+    out_pcm = in_pcm + "_styled.pcm"
+    try:
+        subprocess.run(
+            [
+                ffmpeg_exe,
+                "-y",
+                "-f",
+                "s16le",
+                "-ar",
+                str(sample_rate),
+                "-ac",
+                "1",
+                "-i",
+                in_pcm,
+                "-af",
+                af_str,
+                "-f",
+                "s16le",
+                "-acodec",
+                "pcm_s16le",
+                "-ar",
+                str(sample_rate),
+                "-ac",
+                "1",
+                out_pcm,
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        with open(out_pcm, "rb") as f:
+            styled_bytes = f.read()
+        return (styled_bytes if len(styled_bytes) > 100 else pcm_bytes), sample_rate
+    except Exception as e:
+        log(f"  [VO Style Mastering Warning]: {e}")
+        return pcm_bytes, sample_rate
+    finally:
+        for p in (in_pcm, out_pcm):
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+
+
 def format_editing_prompt(
     prompt: str,
     mode: str = "edit",

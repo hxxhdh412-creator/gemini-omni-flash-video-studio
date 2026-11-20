@@ -30,7 +30,7 @@ if hasattr(sys.stderr, "reconfigure"):
 
 SKILL_VIDEO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "skills", "gemini-omni-flash-api", "scripts", "video"))
 sys.path.insert(0, SKILL_VIDEO_DIR)
-from edit_video import get_ffmpeg_exe, log, run_vids_rpc_tts_voiceover
+from edit_video import apply_vo_style_mastering, get_ffmpeg_exe, log, run_vids_rpc_tts_voiceover
 
 ARTIFACT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCRATCH_60S_DIR = os.path.join(ARTIFACT_DIR, "scratch", "vibe_coding_crm_omni")
@@ -139,7 +139,8 @@ def call_gemini_38_flash_tts_1take(full_text: str, style: str = "", api_key: str
     try:
         raw_wav = run_vids_rpc_tts_voiceover(full_text=full_text, voice=voice, language="vi")
         if raw_wav and len(raw_wav) > 100:
-            return parse_wav_strip_c2pa(raw_wav)
+            pcm_bytes, sr = parse_wav_strip_c2pa(raw_wav)
+            return apply_vo_style_mastering(pcm_bytes, sr, style=style, voice=voice)
     except Exception as e_vids:
         log(f"  [Vids Cookie Voiceover UC=254 Warning]: {e_vids}")
 
@@ -177,7 +178,8 @@ def call_gemini_38_flash_tts_1take(full_text: str, style: str = "", api_key: str
                             for item in step.get("content", []):
                                 if item.get("type") == "audio" and item.get("data"):
                                     raw_wav = base64.b64decode(item["data"])
-                                    return parse_wav_strip_c2pa(raw_wav)
+                                    pcm_bytes, sr = parse_wav_strip_c2pa(raw_wav)
+                                    return apply_vo_style_mastering(pcm_bytes, sr, style=style, voice=voice)
             except Exception as e:
                 log(f"  [1-Take TTS {model} Warning]: {e}")
                 if "403" in str(e) or "400" in str(e) or "401" in str(e):
@@ -186,7 +188,8 @@ def call_gemini_38_flash_tts_1take(full_text: str, style: str = "", api_key: str
     from produce_commercial import synthesize_vietnamese_tts_fallback
 
     log(f"  [1-Take TTS Fallback] Using Vietnamese Neural 1-Take voiceover engine (voice={voice})...")
-    return synthesize_vietnamese_tts_fallback(text=full_text, voice=voice)
+    pcm_bytes, sr = synthesize_vietnamese_tts_fallback(text=full_text, voice=voice)
+    return apply_vo_style_mastering(pcm_bytes, sr, style=style, voice=voice)
 
 
 def split_1take_pcm_by_silence_valleys(
