@@ -1141,12 +1141,19 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                 if not out_name.lower().endswith((".png", ".jpg", ".jpeg")):
                     out_name += ".png"
                 out_path = os.path.join(OUTPUTS_DIR, out_name)
+                ref_imgs = []
+                if body.get("image"):
+                    ref_imgs.append(save_base64_image_if_needed(body["image"], OUTPUTS_DIR, 1))
+                for i, im in enumerate(body.get("images") or []):
+                    ref_imgs.append(save_base64_image_if_needed(im, OUTPUTS_DIR, i + 1))
+                ref_imgs = [p for p in ref_imgs if p]
                 res = run_vids_rpc_generate_image(
                     prompt_text=prompt,
                     output_path=out_path,
                     aspect_ratio=aspect_ratio,
                     style=style,
                     num_images=num_images,
+                    image_files=ref_imgs,
                     save_all=(num_images > 1),
                 )
                 imgs = []

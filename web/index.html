@@ -614,8 +614,14 @@
             </h2>
             <span class="chip ok"><span class="dot"></span> Không tốn API Key</span>
           </div>
-          <label for="imgPromptInput">Mô tả hình ảnh bằng tiếng Anh</label>
+          <label for="imgPromptInput">Mô tả hình ảnh bằng tiếng Anh (hoặc tiếng Việt)</label>
           <textarea id="imgPromptInput" style="min-height:92px;">A sleek futuristic dark-emerald glass executive office with a large frameless ultrawide glass monitor displaying a modern multi-channel CRM dashboard, warm cinematic studio lighting, 4k photorealistic</textarea>
+
+          <label for="imgRefPath">Ảnh tham chiếu (Tùy chọn — giữ nhân vật, sản phẩm hoặc bối cảnh)</label>
+          <div class="quick-reference">
+            <input id="imgRefPath" placeholder="Để trống nếu tạo ảnh mới hoàn toàn, hoặc tải ảnh lên bên cạnh..." />
+            <input type="file" accept="image/*" onchange="uploadRefForImageTab(this)" />
+          </div>
 
           <div class="field-grid">
             <div>
@@ -1854,6 +1860,30 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
 
     let lastGeneratedCookieImagePath = '';
 
+    async function uploadRefForImageTab(input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const target = document.getElementById('imgRefPath');
+      const con = document.getElementById('imgConsole');
+      const prevVal = target ? target.value : '';
+      if (target) target.value = 'Đang tải & phân tích ảnh tham chiếu...';
+      try {
+        const res = await uploadImageToStudioServer(file);
+        if (target) target.value = res.relative_path || '';
+        const stage = document.getElementById('imgPreviewStage');
+        if (stage && res.download_url) {
+          stage.innerHTML = `<img src="${res.download_url}?t=${Date.now()}" alt="Ảnh tham chiếu đã tải lên" style="width:100%; height:100%; object-fit:contain; position:relative; z-index:2;" />`;
+        }
+        if (con) {
+          con.textContent = 'Đã tải ảnh tham chiếu: ' + (res.relative_path || '') +
+            (res.subject_description ? '\nNhận diện chủ thể: ' + res.subject_description : '');
+        }
+      } catch (err) {
+        if (target) target.value = prevVal;
+        alert('Lỗi tải ảnh tham chiếu: ' + err.message);
+      }
+    }
+
     async function submitCookieImageGen() {
       const btn = document.getElementById('generateImageBtn');
       const badge = document.getElementById('imgJobBadge');
@@ -1869,12 +1899,14 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
       showResultActivity('imgPreviewStage', 'working', 'Đang tạo ảnh', 'Đang chờ Google Vids trả ảnh.');
       setLocalTask('image', 'Tạo ảnh');
       try {
+        const refImgEl = document.getElementById('imgRefPath');
         const payload = {
           prompt: document.getElementById('imgPromptInput').value.trim(),
           aspect_ratio: document.getElementById('imgAspectRatio').value,
           style: document.getElementById('imgStyleSelect').value,
           num_images: parseInt(document.getElementById('imgCountSelect').value || '1', 10),
-          output_filename: document.getElementById('imgOutName').value.trim()
+          output_filename: document.getElementById('imgOutName').value.trim(),
+          image: refImgEl ? refImgEl.value.trim() : ''
         };
         const r = await fetch('/api/generate-image', {
           method: 'POST',

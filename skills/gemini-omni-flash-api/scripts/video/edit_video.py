@@ -1160,12 +1160,14 @@ def run_vids_rpc_generate_image(
     aspect_ratio: str = "16:9",
     style: str = "PHOTOGRAPHY",
     num_images: int = 1,
+    image_files: list = None,
     session_path: str = DEFAULT_SESSION_PATH,
     save_all: bool = False,
 ) -> dict:
     """
-    Generates high-resolution AI images via Google Vids Cookie RPC (/v1/genai/generate, UseCase 141 = Ndh(193)).
-    Supports aspect_ratio ('16:9', '1:1', '9:16') and style ('PHOTOGRAPHY', 'VECTOR_ART', 'ILLUSTRATION',
+    Generates high-resolution AI images via Google Vids Cookie RPC (/v1/genai/generate).
+    Supports optional reference `image_files` (StructuredImage Node[11] character/product/scene binding),
+    aspect_ratio ('16:9', '1:1', '9:16'), and style ('PHOTOGRAPHY', 'VECTOR_ART', 'ILLUSTRATION',
     'BACKGROUND', 'WATERCOLOR', 'CYBERPUNK', 'FLATLAY', 'LANDSCAPE', 'UNSPECIFIED').
     """
     try:
@@ -1184,6 +1186,10 @@ def run_vids_rpc_generate_image(
 
     count = max(1, min(4, int(num_images or 1)))
     clean_prompt = re.sub(r"#[0-9a-fA-F]{6}\b", "", (prompt_text or "").strip()).strip()
+    if any(ord(ch) > 127 for ch in clean_prompt):
+        clean_prompt = _translate_vi_music_prompt_to_en(clean_prompt)
+
+    valid_ref_images = [p for p in (image_files or []) if p and os.path.exists(p)]
 
     client_context = [
         9,
@@ -1226,8 +1232,8 @@ def run_vids_rpc_generate_image(
         1,
     ]
 
-    # Tier 1: Try Vids GenerateImagesUseCase (Ndh(193) -> 141) on espresso-pa if enabled on this Workspace doc
-    use_cases_to_try = [141]
+    # Tier 1: Try Vids GenerateImagesUseCase (Ndh(193) -> 141) on espresso-pa if no reference image is attached
+    use_cases_to_try = [] if valid_ref_images else [141]
     text = None
     last_err = None
 
@@ -1314,6 +1320,7 @@ def run_vids_rpc_generate_image(
             run_vids_rpc_edit_or_generate(
                 prompt_text=still_prompt,
                 output_path=tmp_clip,
+                image_files=valid_ref_images,
                 duration_sec=3,
                 save_response_json=tmp_node,
                 session_path=session_path,
