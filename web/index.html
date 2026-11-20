@@ -1051,7 +1051,7 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
               </div>
             </div>
             <label>Mô tả cảnh quay</label>
-            <textarea onchange="storyboardScenes[${i}].prompt = this.value">${escapeHtml(sc.prompt)}</textarea>
+            <textarea id="scPrompt_${i}" onchange="storyboardScenes[${i}].prompt = this.value">${escapeHtml(sc.prompt)}</textarea>
             <label>Lời thoại</label>
             <textarea class="scene-voiceover" onchange="storyboardScenes[${i}].vo = this.value">${escapeHtml(sc.vo)}</textarea>
             <div class="field-grid">
@@ -1119,25 +1119,107 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
       renderStoryboard();
     }
 
-    function uploadSceneImg(input, idx) {
-      const file = input.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        storyboardScenes[idx].image = reader.result;
-        document.getElementById('scImg_' + idx).value = reader.result.slice(0, 42) + '...';
-      };
-      reader.readAsDataURL(file);
+    function isDefaultHebumTemplatePrompt(text) {
+      const lower = String(text || '').toLowerCase();
+      return (
+        !lower.trim() ||
+        lower.includes('32-year-old vietnamese male') ||
+        lower.includes('hebum crm') ||
+        lower.includes('the founder gestures toward the frameless ultrawide glass monitor')
+      );
     }
 
-    function encodeFileToInput(input, targetId) {
+    async function uploadImageToStudioServer(file, onProgressText) {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Không đọc được tệp ảnh.'));
+        reader.readAsDataURL(file);
+      });
+      if (onProgressText) onProgressText('Đang tải & phân tích nhân vật trong ảnh...');
+      const resp = await fetch('/api/upload-image', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          filename: file.name,
+          data: dataUrl,
+          analyze_subject: true
+        })
+      });
+      const d = await resp.json();
+      if (!resp.ok || !d.relative_path) {
+        throw new Error(d.error || 'Tải ảnh lên máy chủ thất bại.');
+      }
+      return { dataUrl, ...d };
+    }
+
+    async function uploadSceneImg(input, idx) {
       const file = input.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        document.getElementById(targetId).value = reader.result;
-      };
-      reader.readAsDataURL(file);
+      const imgInput = document.getElementById('scImg_' + idx);
+      const promptInput = document.getElementById('scPrompt_' + idx);
+      const prevVal = imgInput ? imgInput.value : '';
+      try {
+        const res = await uploadImageToStudioServer(file, msg => {
+          if (imgInput) imgInput.value = msg;
+        });
+        storyboardScenes[idx].image = res.relative_path;
+        if (imgInput) imgInput.value = res.relative_path;
+        if (res.suggested_prompt && isDefaultHebumTemplatePrompt(storyboardScenes[idx].prompt)) {
+          storyboardScenes[idx].prompt = res.suggested_prompt;
+          if (promptInput) promptInput.value = res.suggested_prompt;
+        }
+        if (idx === 0 && res.subject_description) {
+          for (let j = 1; j < storyboardScenes.length; j++) {
+            const p = String(storyboardScenes[j].prompt || '');
+            if (/32-year-old Vietnamese male/i.test(p) || /charcoal-black blazer/i.test(p)) {
+              storyboardScenes[j].prompt = p
+                .replace(/The same 32-year-old Vietnamese male founder in the charcoal-black blazer/gi, `The same person from Scene 1 (${res.subject_description})`)
+                .replace(/A charismatic 32-year-old Vietnamese male business founder in a tailored charcoal-black blazer/gi, res.subject_description);
+              const pjEl = document.getElementById('scPrompt_' + j);
+              if (pjEl) pjEl.value = storyboardScenes[j].prompt;
+            }
+          }
+        }
+        const stage = document.getElementById('tvcVideoStage');
+        if (stage && res.download_url) {
+          stage.innerHTML = `<img src="${res.download_url}?t=${Date.now()}" alt="Ảnh tham chiếu Cảnh ${idx + 1}" style="width:100%; height:100%; object-fit:contain;" />`;
+        }
+      } catch (err) {
+        console.error(err);
+        if (imgInput) imgInput.value = prevVal;
+      }
+    }
+
+    async function encodeFileToInput(input, targetId) {
+      const file = input.files[0];
+      if (!file) return;
+      const target = document.getElementById(targetId);
+      const promptInput = document.getElementById('scPrompt');
+      const presetSel = document.getElementById('scPresetImage');
+      const prevVal = target ? target.value : '';
+      try {
+        const res = await uploadImageToStudioServer(file, msg => {
+          if (target) target.value = msg;
+        });
+        if (target) target.value = res.relative_path;
+        if (presetSel) presetSel.value = '';
+        if (res.suggested_prompt && promptInput && isDefaultHebumTemplatePrompt(promptInput.value)) {
+          promptInput.value = res.suggested_prompt;
+        }
+        const stage = document.getElementById('scVideoStage');
+        if (stage && res.download_url) {
+          stage.innerHTML = `<img src="${res.download_url}?t=${Date.now()}" alt="Ảnh tham chiếu đã tải lên" style="width:100%; height:100%; object-fit:contain;" />`;
+        }
+        const con = document.getElementById('scConsole');
+        if (con) {
+          con.textContent = `Đã tải ảnh tham chiếu: ${res.relative_path} (${res.mime}, ${res.width}x${res.height})` +
+            (res.subject_description ? `\nNhân vật / Chủ thể nhận diện: ${res.subject_description}` : '');
+        }
+      } catch (err) {
+        console.error(err);
+        if (target) target.value = prevVal;
+      }
     }
 
     async function refreshStatus() {
@@ -1730,6 +1812,13 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
     function useCookieImageForQuickScene() {
       if (!lastGeneratedCookieImagePath) return;
       document.getElementById('scImagePath').value = lastGeneratedCookieImagePath;
+      const presetSel = document.getElementById('scPresetImage');
+      if (presetSel) presetSel.value = '';
+      const imgPrompt = (document.getElementById('imgPromptInput')?.value || '').trim();
+      const scPromptEl = document.getElementById('scPrompt');
+      if (imgPrompt && scPromptEl && isDefaultHebumTemplatePrompt(scPromptEl.value)) {
+        scPromptEl.value = `Continuous unbroken 15-second cinematic shot animating the exact subject, character, and environment from the reference image (${imgPrompt}). Smooth cinematic camera movement. No spoken dialogue.`;
+      }
       const navBtns = document.querySelectorAll('.seg-btn');
       if (navBtns[1]) switchTab('tab-scene', navBtns[1]);
     }
@@ -1737,6 +1826,10 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
     function useCookieImageForScene1() {
       if (!lastGeneratedCookieImagePath || !storyboardScenes.length) return;
       storyboardScenes[0].image = lastGeneratedCookieImagePath;
+      const imgPrompt = (document.getElementById('imgPromptInput')?.value || '').trim();
+      if (imgPrompt && isDefaultHebumTemplatePrompt(storyboardScenes[0].prompt)) {
+        storyboardScenes[0].prompt = `Continuous unbroken 15-second cinematic shot animating the exact subject, character, and environment from the reference image (${imgPrompt}). Smooth cinematic camera movement. No spoken dialogue.`;
+      }
       renderStoryboard();
       const navBtns = document.querySelectorAll('.seg-btn');
       if (navBtns[0]) switchTab('tab-commercial', navBtns[0]);

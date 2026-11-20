@@ -71,6 +71,9 @@ from edit_video import (
     DEFAULT_ORIGIN,
     DEFAULT_SERVER_TOKEN,
     DEFAULT_SESSION_PATH,
+    describe_image_subject_for_omni,
+    detect_image_mime_and_dimensions,
+    ensure_png_or_jpeg_image_file,
     format_editing_prompt,
     get_ffmpeg_exe,
     load_vids_session,
@@ -376,23 +379,39 @@ def get_session_status() -> dict:
 
 
 def save_base64_image_if_needed(img_spec: str, job_dir: str, idx: int) -> str:
-    """Accepts a local file path, relative repo path, or base64 data URL / raw base64 string."""
+    """
+    Accepts a local file path, relative repo path, or base64 data URL / raw base64 string.
+    Inspects binary magic bytes to save with matching .jpg or .png extension (and converts WebP to PNG)
+    so Google Vids RPC StructuredImage (Node[11]) receives exact MIME and dimensions.
+    """
     if not img_spec:
         return ""
-    if os.path.exists(img_spec):
-        return os.path.abspath(img_spec)
-    rel_candidate = os.path.join(REPO_ROOT, img_spec)
+    clean_spec = img_spec.strip()
+    if clean_spec.startswith("/outputs/"):
+        clean_spec = clean_spec.lstrip("/")
+    if os.path.exists(clean_spec):
+        norm_p, _, _, _, _ = ensure_png_or_jpeg_image_file(os.path.abspath(clean_spec))
+        return norm_p
+    rel_candidate = os.path.join(REPO_ROOT, clean_spec)
     if os.path.exists(rel_candidate):
-        return os.path.abspath(rel_candidate)
-    if img_spec.startswith("data:image/"):
-        _, b64_data = img_spec.split(",", 1)
+        norm_p, _, _, _, _ = ensure_png_or_jpeg_image_file(os.path.abspath(rel_candidate))
+        return norm_p
+    if clean_spec.startswith("data:image/"):
+        _, b64_data = clean_spec.split(",", 1)
     else:
-        b64_data = img_spec
+        b64_data = clean_spec
+    if b64_data.endswith("..."):
+        raise ValueError(
+            "Reference image base64 string was truncated ('...'). Please re-upload the image file in Web Studio."
+        )
     raw = base64.b64decode(b64_data)
-    out_p = os.path.join(job_dir, f"ingredient_{idx}.png")
+    mime, _, _ = detect_image_mime_and_dimensions(raw)
+    ext = ".jpg" if mime == "image/jpeg" else ".webp" if mime == "image/webp" else ".png"
+    out_p = os.path.join(job_dir, f"ingredient_{idx}{ext}")
     with open(out_p, "wb") as f:
         f.write(raw)
-    return out_p
+    norm_p, _, _, _, _ = ensure_png_or_jpeg_image_file(out_p)
+    return norm_p
 
 
 def run_job_generate_scene(job_id: str, payload: dict):
@@ -548,6 +567,19 @@ def run_job_produce_commercial(job_id: str, payload: dict):
         scene_mp4s = [None] * n_scenes
         node_jsons = [None] * n_scenes
 
+        # Pre-resolve Scene 1 subject identity if a custom image was uploaded so Scene 2..N prompts
+        # don't accidentally revert to the default "32-year-old Vietnamese male founder" template.
+        scene1_custom_subject = ""
+        if scenes_in and scenes_in[0].get("image"):
+            try:
+                s1_img_p = save_base64_image_if_needed(scenes_in[0]["image"], job_dir, 1)
+                if s1_img_p and os.path.exists(s1_img_p):
+                    s1_info = describe_image_subject_for_omni(s1_img_p)
+                    if not s1_info.get("is_hebum_ui") and s1_info.get("subject_description"):
+                        scene1_custom_subject = s1_info["subject_description"]
+            except Exception:
+                pass
+
         def _gen_single_scene(zero_idx: int, prior_files: list, use_rpc_lock: bool):
             sc = scenes_in[zero_idx]
             idx = zero_idx + 1
@@ -559,8 +591,22 @@ def run_job_produce_commercial(job_id: str, payload: dict):
             img_files = []
             if sc.get("image"):
                 img_files.append(save_base64_image_if_needed(sc["image"], job_dir, idx))
+            sc_prompt = sc.get("prompt", "")
+            if scene1_custom_subject and ("32-year-old vietnamese male" in sc_prompt.lower() or "charcoal-black blazer" in sc_prompt.lower()):
+                sc_prompt = re.sub(
+                    r"[Aa]\s+charismatic\s+32-year-old\s+Vietnamese\s+male\s+business\s+founder\s+in\s+a\s+tailored\s+charcoal-black\s+blazer",
+                    scene1_custom_subject,
+                    sc_prompt,
+                    flags=re.IGNORECASE,
+                )
+                sc_prompt = re.sub(
+                    r"[Tt]he\s+same\s+32-year-old\s+Vietnamese\s+male\s+founder\s+in\s+the\s+charcoal-black\s+blazer",
+                    f"the same person from Scene 1 ({scene1_custom_subject})",
+                    sc_prompt,
+                    flags=re.IGNORECASE,
+                )
             res = run_vids_rpc_edit_or_generate(
-                prompt_text=sc["prompt"],
+                prompt_text=sc_prompt,
                 output_path=raw_mp4,
                 prior_node_files=prior_files,
                 image_files=[p for p in img_files if p],
@@ -782,9 +828,30 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                 raw = DASHBOARD_HTML.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
             self.send_header("Content-Length", str(len(raw)))
             self.end_headers()
             self.wfile.write(raw)
+            return
+
+        if path.startswith("/assets_1080p/"):
+            rel_name = os.path.basename(urllib.parse.unquote(path.split("/assets_1080p/", 1)[1]))
+            file_p = os.path.join(REPO_ROOT, "assets_1080p", rel_name)
+            if not os.path.exists(file_p) or not os.path.isfile(file_p):
+                self._send_json({"error": "Asset not found"}, 404)
+                return
+            mime, _ = mimetypes.guess_type(file_p)
+            mime = mime or "image/png"
+            size = os.path.getsize(file_p)
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(size))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            with open(file_p, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
             return
 
         if path == "/api/outputs":
@@ -978,6 +1045,48 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                 out_wav = os.path.join(OUTPUTS_DIR, out_name)
                 generate_bgm_track(output_wav=out_wav, duration_sec=dur, bgm_prompt=prompt, bpm=bpm)
                 self._send_json({"status": "ok", "download_url": f"/outputs/{out_name}", "duration_sec": dur})
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+            return
+
+        if path == "/api/upload-image":
+            try:
+                data_str = (body.get("data") or "").strip()
+                if not data_str:
+                    self._send_json({"error": "Missing image base64 data"}, 400)
+                    return
+                if data_str.startswith("data:image/"):
+                    _, b64_data = data_str.split(",", 1)
+                else:
+                    b64_data = data_str
+                raw = base64.b64decode(b64_data)
+                mime, real_w, real_h = detect_image_mime_and_dimensions(raw)
+                orig_name = os.path.splitext(os.path.basename(body.get("filename") or "ref"))[0]
+                safe_stem = re.sub(r"[^a-zA-Z0-9_-]+", "_", orig_name).strip("_")[:36] or "ref"
+                ext = ".jpg" if mime == "image/jpeg" else ".webp" if mime == "image/webp" else ".png"
+                fn = f"upload_{int(time.time())}_{uuid.uuid4().hex[:4]}_{safe_stem}{ext}"
+                saved_path = os.path.join(OUTPUTS_DIR, fn)
+                with open(saved_path, "wb") as f:
+                    f.write(raw)
+                norm_path, _, norm_mime, norm_w, norm_h = ensure_png_or_jpeg_image_file(saved_path)
+                final_fn = os.path.basename(norm_path)
+                subj_info = {"is_hebum_ui": False, "is_character_or_person": False, "subject_description": "", "suggested_prompt": ""}
+                if body.get("analyze_subject", True):
+                    subj_info = describe_image_subject_for_omni(norm_path)
+                self._send_json(
+                    {
+                        "status": "ok",
+                        "filename": final_fn,
+                        "relative_path": f"outputs/{final_fn}",
+                        "download_url": f"/outputs/{final_fn}",
+                        "mime": norm_mime,
+                        "width": norm_w,
+                        "height": norm_h,
+                        "is_character_or_person": subj_info.get("is_character_or_person", False),
+                        "subject_description": subj_info.get("subject_description", ""),
+                        "suggested_prompt": subj_info.get("suggested_prompt", ""),
+                    }
+                )
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
             return

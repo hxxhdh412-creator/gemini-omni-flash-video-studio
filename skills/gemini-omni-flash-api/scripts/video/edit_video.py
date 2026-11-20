@@ -316,15 +316,19 @@ def extract_video_node_from_response_file(json_path: str):
         raise ValueError(f"Could not extract StructuredContentNode from '{json_path}': {e}")
 
 
-def sanitize_visual_prompt_for_omni(prompt: str, product_lock: str = None, mode: str = "generate") -> str:
+def sanitize_visual_prompt_for_omni(
+    prompt: str,
+    product_lock: str = None,
+    mode: str = "generate",
+    has_image_reference: bool = False,
+) -> str:
     """
     Mindset Guardrail for Gemini Omni 1.1 Flash:
     1. Strips raw CSS hex color codes (e.g., #151a18, #dfff62) from visual prompts so the diffusion model
        never prints literal '#RRGGBB' text strings onto monitors, walls, or UI surfaces.
-    2. When monitors, screens, or dashboards are mentioned without an explicit physical product text lock,
-       enforces Pure Graphical UI (glowing charts/nodes/waves, zero small dense text) so all typography is
-       rendered cleanly by the 1080p Vector ASS HUD layer.
-    3. Ensures 'Continuous unbroken cinematic shot. No internal scene cuts.' for seamless 10s generation/chaining.
+    2. When monitors, screens, or dashboards are mentioned without an explicit physical product text lock
+       or image reference, enforces Pure Graphical UI (glowing charts/nodes/waves, zero small dense text).
+    3. Ensures 'Continuous unbroken cinematic shot. No internal scene cuts.' for seamless 10s/15s generation/chaining.
     """
     cleaned = re.sub(r"\(\s*#[0-9a-fA-F]{3,8}\s*\)", "", prompt)
     cleaned = re.sub(r"#[0-9a-fA-F]{6}\b", "", cleaned)
@@ -335,7 +339,7 @@ def sanitize_visual_prompt_for_omni(prompt: str, product_lock: str = None, mode:
         cleaned = f"Continuous unbroken cinematic shot, no internal scene cuts. {cleaned}"
 
     screen_keywords = ("monitor", "screen", "dashboard", "display", "laptop", "interface", "ui ")
-    if any(k in lower for k in screen_keywords) and not product_lock:
+    if any(k in lower for k in screen_keywords) and not product_lock and not has_image_reference:
         if "no text or words on the screen" not in lower and "no text on the screen" not in lower:
             if not cleaned.endswith((".", "!", "?")):
                 cleaned += "."
@@ -543,18 +547,300 @@ def upscale_video_to_1080p(
     log(f"1080p Full HD saved: {output_mp4} ({os.path.getsize(output_mp4):,} bytes)")
 
 
-def build_structured_image_node(image_path: str, width: int = 1920, height: int = 1080) -> list:
+_IMAGE_SUBJECT_CACHE: dict[str, dict] = {}
+
+
+def detect_image_mime_and_dimensions(raw_bytes: bytes, fallback_w: int = 1920, fallback_h: int = 1080) -> tuple[str, int, int]:
     """
-    Encodes a local PNG/JPG image into a Google Vids RPC StructuredContentNode with
-    StructuredImage at field index 11 (prompt.container.children[i].image), enabling
-    native 'Thành phần' (Ingredients / Image Reference) generation in Gemini Omni 1.1 Flash.
+    Inspects binary magic bytes of an image buffer to return (mime_type, real_width, real_height).
+    Supports PNG and JPEG directly, falling back to (mime_type, fallback_w, fallback_h).
+    """
+    if not raw_bytes:
+        return ("image/png", fallback_w, fallback_h)
+
+    if raw_bytes.startswith(b"\x89PNG\r\n\x1a\n") and len(raw_bytes) >= 24:
+        w = int.from_bytes(raw_bytes[16:20], "big")
+        h = int.from_bytes(raw_bytes[20:24], "big")
+        if 1 <= w <= 16384 and 1 <= h <= 16384:
+            return ("image/png", w, h)
+        return ("image/png", fallback_w, fallback_h)
+
+    if raw_bytes.startswith(b"\xff\xd8"):
+        i = 2
+        n = len(raw_bytes)
+        while i + 9 < n:
+            if raw_bytes[i] != 0xFF:
+                i += 1
+                continue
+            marker = raw_bytes[i + 1]
+            while marker == 0xFF and i + 2 < n:
+                i += 1
+                marker = raw_bytes[i + 1]
+            if marker in (0xD8, 0xD9, 0x01) or (0xD0 <= marker <= 0xD7):
+                i += 2
+                continue
+            if i + 4 > n:
+                break
+            seg_len = int.from_bytes(raw_bytes[i + 2 : i + 4], "big")
+            if seg_len < 2:
+                break
+            if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                if i + 9 <= n:
+                    h = int.from_bytes(raw_bytes[i + 5 : i + 7], "big")
+                    w = int.from_bytes(raw_bytes[i + 7 : i + 9], "big")
+                    if 1 <= w <= 16384 and 1 <= h <= 16384:
+                        return ("image/jpeg", w, h)
+                break
+            i += 2 + seg_len
+        return ("image/jpeg", fallback_w, fallback_h)
+
+    if raw_bytes.startswith(b"RIFF") and b"WEBP" in raw_bytes[:16]:
+        return ("image/webp", fallback_w, fallback_h)
+
+    return ("image/png", fallback_w, fallback_h)
+
+
+def ensure_png_or_jpeg_image_file(image_path: str) -> tuple[str, bytes, str, int, int]:
+    """
+    Ensures the image file is clean PNG or JPEG bytes (converting WebP to PNG via ffmpeg if needed)
+    and returns (normalized_path, raw_bytes, mime, real_w, real_h).
     """
     with open(image_path, "rb") as f:
-        b64_str = base64.b64encode(f.read()).decode("ascii")
-    mime = "image/jpeg" if image_path.lower().endswith((".jpg", ".jpeg")) else "image/png"
+        raw = f.read()
+    mime, real_w, real_h = detect_image_mime_and_dimensions(raw)
+    if mime == "image/webp":
+        ffmpeg_exe = get_ffmpeg_exe()
+        conv_png = os.path.splitext(image_path)[0] + "_converted.png"
+        if ffmpeg_exe:
+            subprocess.run(
+                [ffmpeg_exe, "-y", "-i", image_path, "-frames:v", "1", conv_png],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if os.path.exists(conv_png) and os.path.getsize(conv_png) > 0:
+                with open(conv_png, "rb") as f2:
+                    raw = f2.read()
+                mime, real_w, real_h = detect_image_mime_and_dimensions(raw)
+                return (conv_png, raw, mime, real_w, real_h)
+    return (image_path, raw, mime, real_w, real_h)
+
+
+def _resolve_gemini_api_key() -> str:
+    api_key = (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or "").strip()
+    if api_key:
+        return api_key
+    for candidate in (
+        os.path.join(_REPO_ROOT, ".env"),
+        r"C:\Users\ASUS\.gemini\antigravity\scratch\.env",
+    ):
+        if os.path.exists(candidate):
+            try:
+                with open(candidate, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        s = line.strip()
+                        if s.startswith("GEMINI_API_KEY=") or s.startswith("GOOGLE_API_KEY="):
+                            val = s.split("=", 1)[1].strip().strip('"').strip("'")
+                            if val:
+                                return val
+            except Exception:
+                pass
+    return ""
+
+
+def describe_image_subject_for_omni(image_path: str) -> dict:
+    """
+    Analyzes an uploaded reference image via Gemini 2.5 Flash Vision (cached by file SHA-256 and sidecar JSON)
+    to extract an exact visual blueprint of the character/person/product/scene in the image plus a ready-to-use
+    Omni 1.1 Flash cinematic video prompt that animates the exact subject in the photo.
+    """
+    if not image_path or not os.path.exists(image_path):
+        return {"is_hebum_ui": False, "is_character_or_person": False, "subject_description": "", "suggested_prompt": ""}
+
+    base_lower = os.path.basename(image_path).lower()
+    if any(
+        base_lower.startswith(prefix)
+        for prefix in (
+            "asset_01_",
+            "asset_02_",
+            "asset_03_",
+            "asset_04_",
+            "asset_05_",
+            "asset_06_",
+        )
+    ):
+        return {"is_hebum_ui": True, "is_character_or_person": False, "subject_description": "", "suggested_prompt": ""}
+
+    norm_path, raw_bytes, mime, real_w, real_h = ensure_png_or_jpeg_image_file(image_path)
+    digest = hashlib.sha256(raw_bytes).hexdigest()[:16]
+    if digest in _IMAGE_SUBJECT_CACHE:
+        return _IMAGE_SUBJECT_CACHE[digest]
+
+    sidecar_path = f"{image_path}.omni_subject.json"
+    if os.path.exists(sidecar_path):
+        try:
+            with open(sidecar_path, "r", encoding="utf-8") as sf:
+                cached = json.load(sf)
+            if isinstance(cached, dict) and cached.get("subject_description"):
+                _IMAGE_SUBJECT_CACHE[digest] = cached
+                return cached
+        except Exception:
+            pass
+
+    fallback_suggested_prompt = (
+        "Continuous unbroken 15-second cinematic shot. Mandatory visual reference binding: animate the exact person, "
+        "character, facial features, hairstyle, outfit, and environment shown in the attached reference image with "
+        "natural lifelike movement, confident expressive presence, and smooth cinematic camera motion. Preserve 100% "
+        "visual identity and scene consistency with the reference image. No spoken dialogue."
+    )
+
+    api_key = _resolve_gemini_api_key()
+    if not api_key:
+        return {
+            "is_hebum_ui": False,
+            "is_character_or_person": True,
+            "subject_description": "the exact person, character, facial features, hairstyle, outfit, and setting shown in the attached reference image",
+            "suggested_prompt": fallback_suggested_prompt,
+        }
+
+    vision_prompt = (
+        "Analyze this reference image for an AI video generator (Gemini Omni 1.1 Flash).\n"
+        "Return a strict JSON object with these exact keys:\n"
+        "1. \"is_character_or_person\": true if the image features a person, human character, mascot, animal, or physical product; false if it is purely a flat software/dashboard screenshot.\n"
+        "2. \"subject_description\": A detailed, accurate 1-2 sentence English visual description of the exact main subject/person/character and setting in the image (include exact gender, approximate age, ethnicity/skin tone, facial features, hairstyle/hair color, facial expression, exact outfit/colors/accessories, and background environment).\n"
+        "3. \"suggested_prompt\": A complete, ready-to-use 15-second English video generation prompt starting with "
+        "\"Continuous unbroken 15-second cinematic shot. \" that animates the exact subject/person and environment from this reference image naturally (e.g. subtle natural movement, confident expression, smooth cinematic camera motion, realistic studio/scene lighting) while keeping 100% identical facial features, hairstyle, clothing, and background from the reference image, ending with \"No spoken dialogue.\""
+    )
+
+    req_body = {
+        "contents": [
+            {
+                "parts": [
+                    {"inlineData": {"mimeType": mime, "data": base64.b64encode(raw_bytes).decode("ascii")}},
+                    {"text": vision_prompt},
+                ]
+            }
+        ],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "temperature": 0.15,
+        },
+    }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(req_body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            resp_data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        text_out = (
+            resp_data.get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+            .strip()
+        )
+        parsed = json.loads(text_out)
+        result = {
+            "is_hebum_ui": False,
+            "is_character_or_person": bool(parsed.get("is_character_or_person", True)),
+            "subject_description": str(parsed.get("subject_description") or "").strip(),
+            "suggested_prompt": sanitize_visual_prompt_for_omni(
+                str(parsed.get("suggested_prompt") or "").strip(),
+                has_image_reference=True,
+            ),
+        }
+        if result["subject_description"]:
+            _IMAGE_SUBJECT_CACHE[digest] = result
+            try:
+                with open(sidecar_path, "w", encoding="utf-8") as sf:
+                    json.dump(result, sf, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+        return result
+    except Exception as e:
+        log(f"[ImageSubjectBind] Warning: Gemini Vision subject extraction skipped ({e})")
+        return {
+            "is_hebum_ui": False,
+            "is_character_or_person": True,
+            "subject_description": "the exact person, character, facial features, hairstyle, outfit, and setting shown in the attached reference image",
+            "suggested_prompt": fallback_suggested_prompt,
+        }
+
+
+def build_structured_image_node(image_path: str, width: int = 1920, height: int = 1080) -> list:
+    """
+    Encodes a local PNG/JPG/WebP image into a Google Vids RPC StructuredContentNode with
+    StructuredImage at field index 11 (prompt.container.children[i].image), enabling
+    native 'Thành phần' (Ingredients / Image Reference) generation in Gemini Omni 1.1 Flash.
+    Automatically detects true magic-byte MIME type (image/png vs image/jpeg) and actual
+    pixel dimensions [real_w, real_h], and assigns a unique image identifier at node[11][2].
+    """
+    norm_path, raw_bytes, mime, real_w, real_h = ensure_png_or_jpeg_image_file(image_path)
+    if real_w <= 0 or real_h <= 0:
+        real_w, real_h = width, height
+    b64_str = base64.b64encode(raw_bytes).decode("ascii")
+    img_id = f"img_{uuid.uuid4().hex[:8]}"
     node = [None] * 12
-    node[11] = [b64_str, None, None, None, None, None, None, [None, mime, [width, height]]]
+    node[11] = [b64_str, None, img_id, None, None, None, None, [None, mime, [real_w, real_h]]]
     return node
+
+
+def bind_prompt_to_uploaded_image(prompt_text: str, image_files: list) -> str:
+    """
+    Ensures that when a custom user image is provided (e.g., a portrait/photo of a specific person, character,
+    or product), any leftover default HEBUM founder/CRM template text is automatically replaced or bound to
+    the actual subject in the uploaded image so Omni 1.1 Flash animates the exact character in the photo.
+    """
+    clean = (prompt_text or "").strip()
+    valid_imgs = [p for p in (image_files or []) if p and os.path.exists(p)]
+    if not valid_imgs:
+        return clean
+
+    info = describe_image_subject_for_omni(valid_imgs[0])
+    if info.get("is_hebum_ui") or not info.get("subject_description"):
+        return clean
+
+    subj_desc = info["subject_description"]
+    suggested = info.get("suggested_prompt") or ""
+    lower = clean.lower()
+
+    # Check if the user left the default HEBUM preset prompt untouched while uploading their own custom photo
+    is_default_hebum_prompt = (
+        (
+            "32-year-old vietnamese male" in lower
+            or "hebum crm" in lower
+            or "charcoal-black blazer" in lower
+            or "the founder gestures toward the frameless ultrawide glass monitor" in lower
+        )
+        and info.get("is_character_or_person", True)
+    )
+    if is_default_hebum_prompt and suggested:
+        log(f"[ImageSubjectBind] Auto-replacing default HEBUM template prompt with uploaded photo subject blueprint: {subj_desc[:110]}...")
+        clean = suggested
+    elif "32-year-old vietnamese male" in lower or "charcoal-black blazer" in lower:
+        clean = re.sub(
+            r"[Aa]\s+charismatic\s+32-year-old\s+Vietnamese\s+male\s+business\s+founder\s+in\s+a\s+tailored\s+charcoal-black\s+blazer",
+            subj_desc,
+            clean,
+            flags=re.IGNORECASE,
+        )
+        clean = re.sub(
+            r"[Tt]he\s+same\s+32-year-old\s+Vietnamese\s+male\s+founder\s+in\s+the\s+charcoal-black\s+blazer",
+            f"the same person ({subj_desc})",
+            clean,
+            flags=re.IGNORECASE,
+        )
+
+    if "mandatory visual reference binding" not in clean.lower():
+        clean = (
+            f"Mandatory visual reference binding — keep the subject, face, hairstyle, outfit, and scene 100% identical to the attached reference image ({subj_desc}). "
+            + clean
+        )
+    return clean
 
 
 def run_vids_rpc_edit_or_generate(
@@ -582,25 +868,20 @@ def run_vids_rpc_edit_or_generate(
     img_w, img_h = (1080, 1920) if ar_key == "9:16" else (1920, 1080)
 
     image_nodes = []
+    valid_image_paths = []
     if image_files:
         for img_path in image_files:
             if img_path and os.path.exists(img_path):
+                valid_image_paths.append(img_path)
                 image_nodes.append(build_structured_image_node(img_path, width=img_w, height=img_h))
 
-    # Exact Google Vids UseCase selection (Lsv in m=tertiary):
-    # - 374: Generate video from text prompt
-    # - 376: Generate video with image ingredients (StructuredImage Node[11])
-    # - 375: Edit/Chain from prior video node + image ingredients
-    # - 377: Extend/Continue from prior video node
-    if prior_nodes and image_nodes:
-        vids_use_case = 374
-    elif image_nodes:
-        vids_use_case = 374
-    else:
-        vids_use_case = 374
+    # Google Vids RPC UseCase 374 accepts StructuredContentNode children (prior_nodes + image_nodes + text node)
+    vids_use_case = 374
 
     req_id = f"goog_{uuid.uuid4().int % 2000000000}"
     clean_prompt = prompt_text.strip()
+    if valid_image_paths:
+        clean_prompt = bind_prompt_to_uploaded_image(clean_prompt, valid_image_paths)
     if prior_nodes or image_nodes:
         # Strip SDK-only [# Sources / References] & <VIDEO_REF_N> / <IMAGE_REF_N> tags in Vids RPC (374)
         # so StructuredContentNode chaining never triggers HTTP 500 or prints literal '0' on screens
@@ -612,6 +893,10 @@ def run_vids_rpc_edit_or_generate(
         )
         clean_prompt = re.sub(r"<IMAGE_REF_\d+>", "the reference image", clean_prompt)
         clean_prompt = re.sub(r"<VIDEO_REF_\d+>", "the reference scene", clean_prompt)
+    clean_prompt = sanitize_visual_prompt_for_omni(
+        clean_prompt,
+        has_image_reference=bool(image_nodes),
+    )
     formatted_prompt = clean_prompt.strip() + "\n\n"
     children = list(prior_nodes) + list(image_nodes) + [[None, None, formatted_prompt]]
 
