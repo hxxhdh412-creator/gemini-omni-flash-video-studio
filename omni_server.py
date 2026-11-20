@@ -691,13 +691,16 @@ def run_job_produce_commercial(job_id: str, payload: dict):
         # Pre-resolve Scene 1 subject identity if a custom image was uploaded so Scene 2..N prompts
         # don't accidentally revert to the default "32-year-old Vietnamese male founder" template.
         scene1_custom_subject = ""
+        scene1_custom_img_path = ""
         if scenes_in and scenes_in[0].get("image"):
             try:
                 s1_img_p = save_base64_image_if_needed(scenes_in[0]["image"], job_dir, 1)
                 if s1_img_p and os.path.exists(s1_img_p):
                     s1_info = describe_image_subject_for_omni(s1_img_p)
-                    if not s1_info.get("is_hebum_ui") and s1_info.get("subject_description"):
-                        scene1_custom_subject = s1_info["subject_description"]
+                    if not s1_info.get("is_hebum_ui"):
+                        scene1_custom_img_path = s1_img_p
+                        if s1_info.get("subject_description"):
+                            scene1_custom_subject = s1_info["subject_description"]
             except Exception:
                 pass
 
@@ -710,8 +713,12 @@ def run_job_produce_commercial(job_id: str, payload: dict):
             raw_mp4 = os.path.join(OUTPUTS_DIR, f"job_{job_id}_s{idx}_720p.mp4")
             node_json = os.path.join(job_dir, f"s{idx}_node.json")
             img_files = []
+            if zero_idx > 0 and chain_anchor and scene1_custom_img_path:
+                img_files.append(scene1_custom_img_path)
             if sc.get("image"):
-                img_files.append(save_base64_image_if_needed(sc["image"], job_dir, idx))
+                cur_img_p = save_base64_image_if_needed(sc["image"], job_dir, idx)
+                if cur_img_p and cur_img_p not in img_files:
+                    img_files.append(cur_img_p)
             sc_prompt = sc.get("prompt", "")
             if scene1_custom_subject and ("32-year-old vietnamese male" in sc_prompt.lower() or "charcoal-black blazer" in sc_prompt.lower()):
                 sc_prompt = re.sub(

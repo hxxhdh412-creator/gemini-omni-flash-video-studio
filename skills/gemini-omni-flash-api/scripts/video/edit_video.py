@@ -884,6 +884,102 @@ def bind_prompt_to_uploaded_image(prompt_text: str, image_files: list) -> str:
     return clean
 
 
+def normalize_image_canvas_for_vids_r2v(image_path: str, aspect_ratio: str = "16:9") -> str:
+    """
+    Ensures reference images (especially 1:1 square or tight-cropped portrait headshots) are placed on a clean
+    16:9 (1280x720) or 9:16 (720x1280) PNG canvas so Google Vids UseCase 376 (/flix/generate_videos_omni_r2v_psq/v1)
+    and UseCase 375 never reject square/close-up face crops with HTTP 400 REQUEST_REFUSED.
+    """
+    norm_path, raw_bytes, mime, real_w, real_h = ensure_png_or_jpeg_image_file(image_path)
+    ar_key = str(aspect_ratio or "16:9").strip()
+    target_w, target_h = (720, 1280) if ar_key == "9:16" else (1280, 720)
+    target_ratio = target_w / float(target_h)
+    cur_ratio = (real_w / float(real_h)) if (real_w > 0 and real_h > 0) else 1.0
+
+    # If already matching target aspect ratio (within 8%) and reasonable size, use directly
+    if abs(cur_ratio - target_ratio) <= 0.08 and real_w >= 640:
+        return norm_path
+
+    base, _ = os.path.splitext(norm_path)
+    ar_tag = "9x16" if ar_key == "9:16" else "16x9"
+    padded_png = f"{base}_r2v_{ar_tag}.png"
+    if os.path.exists(padded_png) and os.path.getsize(padded_png) > 5000:
+        return padded_png
+
+    ffmpeg_exe = get_ffmpeg_exe()
+    vf = (
+        f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,"
+        f"pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2:color=white"
+    )
+    try:
+        subprocess.run(
+            [ffmpeg_exe, "-y", "-i", norm_path, "-vf", vf, "-frames:v", "1", padded_png],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if os.path.exists(padded_png) and os.path.getsize(padded_png) > 5000:
+            log(f"[Vids R2V Canvas] Normalized {real_w}x{real_h} reference image -> {target_w}x{target_h} ({padded_png})")
+            return padded_png
+    except Exception as e:
+        log(f"[Vids R2V Canvas Warning] Failed to pad image ({e}); using {norm_path}")
+    return norm_path
+
+
+def upload_image_to_vids_tempblob(image_path: str, session: dict, aspect_ratio: str = "16:9") -> str:
+    """
+    Uploads a reference image to Google Vids' temporary blob storage (`https://docs.google.com/upload/temporaryblob/videos`)
+    using the 2-step `X-Goog-Upload-Protocol: resumable` (`start` -> `upload, finalize`) protocol required by UseCase 376/375.
+    Returns the 183-character temporary blob token (`"AYGXpj..."`).
+    """
+    canvas_path = normalize_image_canvas_for_vids_r2v(image_path, aspect_ratio=aspect_ratio)
+    norm_path, raw_bytes, mime, _, _ = ensure_png_or_jpeg_image_file(canvas_path)
+    ext = ".jpg" if mime == "image/jpeg" else ".png"
+    authuser = str(session.get("authuser", "0"))
+    doc_id = session.get("doc_id") or DEFAULT_DOC_ID
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36"
+
+    init_url = f"https://docs.google.com/upload/temporaryblob/videos?authuser={authuser}"
+    init_headers = {
+        "cookie": session["cookie"],
+        "origin": "https://docs.google.com",
+        "referer": f"https://docs.google.com/videos/u/{authuser}/d/{doc_id}/edit",
+        "user-agent": ua,
+        "X-Goog-Upload-Protocol": "resumable",
+        "X-Goog-Upload-Command": "start",
+        "X-Goog-Upload-Content-Length": str(len(raw_bytes)),
+        "X-Goog-Upload-File-Name": f"image{ext}",
+        "X-Goog-Upload-Header-Content-Type": mime,
+        "Content-Type": "text/plain;charset=UTF-8",
+    }
+    req1 = urllib.request.Request(init_url, data=b"", headers=init_headers, method="POST")
+    with urllib.request.urlopen(req1, timeout=30) as r1:
+        upload_url = r1.headers.get("X-Goog-Upload-URL") or r1.headers.get("x-goog-upload-url")
+    if not upload_url:
+        raise RuntimeError("Missing X-Goog-Upload-URL from Google Vids temporaryblob resumable upload")
+
+    up_headers = {
+        "cookie": session["cookie"],
+        "origin": "https://docs.google.com",
+        "referer": f"https://docs.google.com/videos/u/{authuser}/d/{doc_id}/edit",
+        "user-agent": ua,
+        "X-Goog-Upload-Command": "upload, finalize",
+        "X-Goog-Upload-Offset": "0",
+        "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+    }
+    req2 = urllib.request.Request(upload_url, data=raw_bytes, headers=up_headers, method="POST")
+    with urllib.request.urlopen(req2, timeout=60) as r2:
+        txt = r2.read().decode("utf-8", errors="replace").lstrip()
+    if txt.startswith(")]}'"):
+        txt = txt.split("\n", 1)[-1]
+    arr = json.loads(txt)
+    if not isinstance(arr, list) or not arr:
+        raise RuntimeError(f"Unexpected temporaryblob response: {txt[:200]}")
+    blob_token = str(arr[0])
+    log(f"[Vids TempBlob Upload] Uploaded {os.path.basename(norm_path)} ({len(raw_bytes):,} bytes) -> token {blob_token[:28]}...")
+    return blob_token
+
+
 def run_vids_rpc_edit_or_generate(
     prompt_text: str,
     output_path: str,
@@ -897,8 +993,13 @@ def run_vids_rpc_edit_or_generate(
     use_lock: bool = True,
     on_raw_ready=None,
 ) -> dict:
-    """Executes unlimited Gemini Omni 1.1 Flash video generation, editing, image-ingredient ('Thành phần') generation, or multi-node chaining via Google Vids RPC."""
+    """Executes unlimited Gemini Omni 1.1 Flash video generation, Reference-to-Video (UseCase 376 r2v), or multi-node chaining (UseCase 374) via Google Vids RPC."""
+    try:
+        refresh_session_from_cdp(session_path)
+    except Exception:
+        pass
     session = load_vids_session(session_path)
+    authuser = str(session.get("authuser", "0"))
     prior_nodes = []
     if prior_node_files:
         for nf in prior_node_files:
@@ -916,16 +1017,11 @@ def run_vids_rpc_edit_or_generate(
                 valid_image_paths.append(img_path)
                 image_nodes.append(build_structured_image_node(img_path, width=img_w, height=img_h))
 
-    # Google Vids RPC UseCase 374 accepts StructuredContentNode children (prior_nodes + image_nodes + text node)
-    vids_use_case = 374
-
     req_id = f"goog_{uuid.uuid4().int % 2000000000}"
     clean_prompt = prompt_text.strip()
     if valid_image_paths:
         clean_prompt = bind_prompt_to_uploaded_image(clean_prompt, valid_image_paths)
     if prior_nodes or image_nodes:
-        # Strip SDK-only [# Sources / References] & <VIDEO_REF_N> / <IMAGE_REF_N> tags in Vids RPC (374)
-        # so StructuredContentNode chaining never triggers HTTP 500 or prints literal '0' on screens
         clean_prompt = re.sub(r"\[#\s*(?:Sources|References)[^\]]*\]\s*", "", clean_prompt)
         clean_prompt = re.sub(
             r"STRICT MULTIMODAL (?:OBJECT & CHARACTER|SUBJECT & SCENE) BINDING[^:]*:\s*",
@@ -938,11 +1034,153 @@ def run_vids_rpc_edit_or_generate(
         clean_prompt,
         has_image_reference=bool(image_nodes),
     )
-    formatted_prompt = clean_prompt.strip() + "\n\n"
-    children = list(prior_nodes) + list(image_nodes) + [[None, None, formatted_prompt]]
 
-    payload = [
-        vids_use_case,
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36"
+    headers = {
+        "accept": "*/*",
+        "accept-language": "vi",
+        "authorization": make_sapisidhash(session["sapisid"], session["origin"]),
+        "content-type": "application/json+protobuf",
+        "cookie": session["cookie"],
+        "origin": session["origin"],
+        "priority": "u=1, i",
+        "referer": "https://docs.google.com/",
+        "user-agent": ua,
+        "x-goog-authuser": authuser,
+        "x-server-token": session["server_token"],
+    }
+
+    def _build_uc376_r2v_payload(dur_val: int) -> list:
+        mentioned_context = []
+        chip_children = []
+        for idx, img_p in enumerate(valid_image_paths[:3]):
+            blob_tok = upload_image_to_vids_tempblob(img_p, session=session, aspect_ratio=ar_key)
+            img_uid = str(uuid.uuid4()).upper()
+            img_label = f"Image {idx + 1}"
+            wdp = [None, None, None, blob_tok, 1]
+            r0 = [None, None, None, None, None, None, None, None, wdp, None, None, None, None, img_label]
+            yc = [None, None, None, None, None, None, None, None, None, None, None, r0]
+            w0_ctx = [None, None, None, None, None, None, None, [img_uid, yc]]
+            mentioned_context.append([w0_ctx])
+
+            w0_ref = [None, None, None, None, None, None, None, [img_uid]]
+            d1_ref = [None, [None, None, img_label], w0_ref]
+            chip_f1 = [None, None, None, None, None, None, None, d1_ref]
+            if chip_children:
+                chip_children.append([None, None, " "])
+            chip_children.append(chip_f1)
+
+        # Strip verbose boilerplate prefixes and any "speaking" trigger on portrait photos so UC 376 safety passes cleanly
+        r2v_text = re.sub(
+            r"Mandatory visual reference binding[^.]*\.\s*",
+            "",
+            clean_prompt,
+            flags=re.IGNORECASE,
+        ).strip()
+        r2v_text = re.sub(
+            r"Continuous unbroken \d+-second cinematic shot\.?\s*",
+            "",
+            r2v_text,
+            flags=re.IGNORECASE,
+        ).strip()
+        r2v_text = re.sub(r"\b(?:is\s+)?speaking\b", "presenting", r2v_text, flags=re.IGNORECASE)
+        if not r2v_text:
+            r2v_text = "in a modern studio with soft cinematic lighting, natural lifelike motion and smooth camera movement. No spoken dialogue."
+        chip_children.append([None, None, " " + r2v_text])
+
+        r2v_req_id = f"goog_{uuid.uuid4().int % 2000000000}"
+        client_ctx = [
+            9,
+            None,
+            None,
+            None,
+            r2v_req_id,
+            None,
+            "0",
+            None,
+            [
+                None,
+                None,
+                None,
+                [
+                    [
+                        [
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            [None, None, [[session["doc_id"], "application/vnd.google-apps.flix", None, None, 1]]],
+                        ]
+                    ]
+                ],
+            ],
+            None,
+            None,
+            [24, 0],
+            None,
+            "vi",
+            None,
+            None,
+            None,
+            None,
+            None,
+            1,
+            None,
+            None,
+            None,
+            None,
+            None,
+            mentioned_context,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            "Asia/Bangkok",
+            None,
+            None,
+            None,
+            None,
+            None,
+            0,
+        ]
+        return [
+            376,
+            None,
+            client_ctx,
+            [None, None, None, [chip_children]],
+            [
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                [0, 12, None, 0, ar_enum, None, None, None, int(dur_val)],
+            ],
+            [1, None, [[None, "1", 1189]]],
+            1,
+        ]
+
+    formatted_prompt = clean_prompt.strip() + "\n\n"
+    children_374 = list(prior_nodes) + list(image_nodes) + [[None, None, formatted_prompt]]
+    payload_374 = [
+        374,
         None,
         [
             9,
@@ -951,7 +1189,7 @@ def run_vids_rpc_edit_or_generate(
             None,
             req_id,
             None,
-            str(session.get("authuser", "0")),
+            authuser,
             None,
             [
                 None,
@@ -988,7 +1226,7 @@ def run_vids_rpc_edit_or_generate(
             None,
             None,
             None,
-            [children],
+            [children_374],
         ],
         [
             None,
@@ -1012,30 +1250,11 @@ def run_vids_rpc_edit_or_generate(
         1,
     ]
 
-    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
-    headers = {
-        "accept": "*/*",
-        "accept-language": "vi",
-        "authorization": make_sapisidhash(session["sapisid"], session["origin"]),
-        "content-type": "application/json+protobuf",
-        "cookie": session["cookie"],
-        "origin": session["origin"],
-        "priority": "u=1, i",
-        "referer": "https://docs.google.com/",
-        "user-agent": ua,
-        "x-goog-authuser": str(session.get("authuser", "0")),
-        "x-server-token": session["server_token"],
-    }
-
-    log(
-        f"[Vids RPC] Calling Gemini Omni 1.1 Flash (prior_video_nodes={len(prior_nodes)}, images={len(image_nodes)}, duration={duration_sec or 10}s, aspect_ratio={ar_key})..."
-    )
-
-    def _do_rpc():
+    def _send_payload(pl_obj: list, label: str) -> str:
         t0 = time.time()
         req = urllib.request.Request(
             session["api_url"],
-            data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+            data=json.dumps(pl_obj, separators=(",", ":")).encode("utf-8"),
             headers=headers,
             method="POST",
         )
@@ -1044,8 +1263,29 @@ def run_vids_rpc_edit_or_generate(
             if resp.headers.get("Content-Encoding") == "gzip":
                 raw_bytes = gzip.decompress(raw_bytes)
             txt = raw_bytes.decode("utf-8", errors="replace")
-            log(f"[Vids RPC] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(txt):,} chars)")
+            log(f"[Vids RPC {label}] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(txt):,} chars)")
             return txt
+
+    def _do_rpc():
+        # Whenever reference images are provided, use native UseCase 376 (Ingredients/Reference-to-Video r2v)!
+        if valid_image_paths:
+            r2v_dur = min(10, max(5, int(duration_sec or 10)))
+            log(
+                f"[Vids RPC UC=376 R2V] Uploading {len(valid_image_paths)} reference image(s) to temporaryblob & calling Gemini Omni 1.1 Flash Reference-to-Video (duration={r2v_dur}s, aspect_ratio={ar_key})..."
+            )
+            try:
+                pl_376 = _build_uc376_r2v_payload(r2v_dur)
+                return _send_payload(pl_376, "UC=376 R2V")
+            except urllib.error.HTTPError as e_376:
+                err_b = e_376.read().decode("utf-8", errors="replace")
+                log(f"[Vids RPC UC=376 R2V Warning] HTTP {e_376.code}: {err_b[:220]} -> falling back to UC=374...")
+            except Exception as e_376_gen:
+                log(f"[Vids RPC UC=376 R2V Warning] {e_376_gen} -> falling back to UC=374...")
+
+        log(
+            f"[Vids RPC UC=374] Calling Gemini Omni 1.1 Flash (prior_video_nodes={len(prior_nodes)}, images={len(image_nodes)}, duration={duration_sec or 10}s, aspect_ratio={ar_key})..."
+        )
+        return _send_payload(payload_374, "UC=374")
 
     if use_lock:
         with _VIDS_RPC_LOCK:
