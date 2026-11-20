@@ -412,7 +412,7 @@
       <div class="project-stats" id="projectStats" aria-label="Thông tin video">
         <div class="stat"><strong id="sceneCount">4</strong><span>phân cảnh</span></div>
         <div class="stat"><strong id="totalDuration">60s</strong><span>thời lượng</span></div>
-        <div class="stat"><strong>1080p</strong><span>· 16:9</span></div>
+        <div class="stat"><strong>1080p</strong><span id="projectAspectRatioStat">· 16:9</span></div>
       </div>
     </div>
 
@@ -431,6 +431,10 @@
               <select id="tvcSceneDur" aria-label="Thời lượng mỗi cảnh" onchange="renderStoryboard()">
                 <option value="15" selected>15s / Cảnh</option>
                 <option value="10">10s / Cảnh</option>
+              </select>
+              <select id="tvcAspectRatio" aria-label="Định dạng khung hình TVC" onchange="updateTvcAspectRatioUI(this.value)">
+                <option value="16:9" selected>16:9 · Ngang (YouTube/Web)</option>
+                <option value="9:16">9:16 · Dọc (TikTok/Reels)</option>
               </select>
               <button class="btn btn-ghost btn-xs" onclick="loadPresetStoryboard(2, 15)">30s · 2 cảnh</button>
               <button class="btn btn-ghost btn-xs" onclick="loadPresetStoryboard(4, 15)">60s · 4 cảnh</button>
@@ -508,8 +512,11 @@
 
             <div class="field-grid">
               <div>
-                <label for="tvcBgmPrompt">Phong cách nhạc nền</label>
-                <input id="tvcBgmPrompt" value="Cinematic modern corporate electronic commercial music, driving synth pulse and warm deep bass" />
+                <label for="tvcAspectRatioExport">Định dạng khung hình (Ngang / Dọc)</label>
+                <select id="tvcAspectRatioExport" onchange="updateTvcAspectRatioUI(this.value)">
+                  <option value="16:9" selected>16:9 · Khổ ngang (1920 × 1080 · YouTube / TVC)</option>
+                  <option value="9:16">9:16 · Khổ dọc (1080 × 1920 · TikTok / Reels / Shorts)</option>
+                </select>
               </div>
               <div>
                 <label for="tvcOutputName">Tên file xuất</label>
@@ -517,10 +524,15 @@
               </div>
             </div>
 
+            <div style="margin-top:8px;">
+              <label for="tvcBgmPrompt">Phong cách nhạc nền</label>
+              <input id="tvcBgmPrompt" value="Cinematic modern corporate electronic commercial music, driving synth pulse and warm deep bass" />
+            </div>
+
             <button class="btn" id="produceButton" style="width:100%; margin-top:14px;" onclick="submitCommercialJob()">
               <svg class="sf-icon"><use href="#sf-sparkles"/></svg> Sản xuất TVC
             </button>
-            <p class="export-note">1920 × 1080 · MP4</p>
+            <p class="export-note" id="tvcExportNote">1920 × 1080 · MP4 (16:9 Ngang)</p>
           </div>
         </div>
       </div>
@@ -556,10 +568,10 @@
           <input id="scImagePath" value="assets_1080p/asset_01_kenh_ket_noi_1080p.png" />
         </div>
         <div class="panel quick-settings">
-          <div class="panel-header"><h2 class="panel-title">Thiết lập đầu ra</h2><span class="chip">1080p · MP4</span></div>
+          <div class="panel-header"><h2 class="panel-title">Thiết lập đầu ra</h2><span class="chip" id="scResChip">1080p · 16:9</span></div>
           <div class="quick-output-fields">
             <div>
-              <label>Thời lượng cảnh</label>
+              <label for="scDuration">Thời lượng cảnh</label>
               <select id="scDuration">
                 <option value="15" selected>15 giây</option>
                 <option value="10">10 Giây</option>
@@ -568,10 +580,15 @@
               </select>
             </div>
             <div>
-              <label>Tên File Xuất Ra</label>
-              <input id="scOutName" value="omni_scene_15s_1080p.mp4" />
+              <label for="scAspectRatio">Định dạng khung hình (Ngang / Dọc)</label>
+              <select id="scAspectRatio" onchange="updateQuickSceneAspectRatioUI(this.value)">
+                <option value="16:9" selected>16:9 · Khổ ngang (1920×1080)</option>
+                <option value="9:16">9:16 · Khổ dọc (1080×1920 · TikTok/Reels)</option>
+              </select>
             </div>
           </div>
+          <label for="scOutName">Tên File Xuất Ra</label>
+          <input id="scOutName" value="omni_scene_15s_1080p.mp4" />
           <label>Nối với cảnh trước (tùy chọn)</label>
           <input id="scPriorNode" placeholder="Ví dụ: omni_scene_s1_node.json (để trống nếu là Cảnh 1)" />
 
@@ -1371,6 +1388,28 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
       activity.finished = state === 'done' || state === 'failed';
     }
 
+    function updateTvcAspectRatioUI(val) {
+      const ar = val || '16:9';
+      const topSel = document.getElementById('tvcAspectRatio');
+      const expSel = document.getElementById('tvcAspectRatioExport');
+      if (topSel && topSel.value !== ar) topSel.value = ar;
+      if (expSel && expSel.value !== ar) expSel.value = ar;
+      const statEl = document.getElementById('projectAspectRatioStat');
+      if (statEl) statEl.textContent = '· ' + ar;
+      const noteEl = document.getElementById('tvcExportNote');
+      if (noteEl) {
+        noteEl.textContent = ar === '9:16'
+          ? '1080 × 1920 · MP4 (9:16 Dọc — TikTok / Reels / Shorts)'
+          : '1920 × 1080 · MP4 (16:9 Ngang — YouTube / TVC)';
+      }
+    }
+
+    function updateQuickSceneAspectRatioUI(val) {
+      const ar = val || '16:9';
+      const chip = document.getElementById('scResChip');
+      if (chip) chip.textContent = '1080p · ' + ar;
+    }
+
     async function submitCommercialJob() {
       if (commercialJobPending || !storyboardScenes.length) return;
       commercialJobPending = true;
@@ -1382,9 +1421,11 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
       showResultActivity('tvcVideoStage', 'working', 'Đang gửi yêu cầu', 'Đang gửi storyboard đến máy chủ.');
       document.getElementById('tvcProgressDetails').open = true;
       document.getElementById('tvcDownloadBar').style.display = 'none';
+      const tvcAr = (document.getElementById('tvcAspectRatioExport') || document.getElementById('tvcAspectRatio') || {}).value || '16:9';
       const payload = {
         scenes: storyboardScenes,
         scene_duration: parseInt((document.getElementById('tvcSceneDur') || {}).value || '15', 10),
+        aspect_ratio: tvcAr,
         voice: document.getElementById('tvcVoice').value,
         bpm: parseInt(document.getElementById('tvcBpm').value || '116', 10),
         scale: document.getElementById('tvcScale').value,
@@ -1478,9 +1519,11 @@ claude mcp add --transport http omni-flash-video-studio http://localhost:8765/mc
 
     async function submitQuickScene(button) {
       const priors = document.getElementById('scPriorNode').value.trim();
+      const scAr = (document.getElementById('scAspectRatio') || {}).value || '16:9';
       const payload = {
         prompt: document.getElementById('scPrompt').value.trim(),
         duration: parseInt((document.getElementById('scDuration') || {}).value || '15', 10),
+        aspect_ratio: scAr,
         image: document.getElementById('scImagePath').value.trim(),
         prior_node_files: priors ? [priors] : [],
         output_filename: document.getElementById('scOutName').value.trim(),

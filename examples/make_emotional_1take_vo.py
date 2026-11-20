@@ -453,13 +453,17 @@ def build_1take_master(
         s = sec % 60
         return f"{h}:{m:02d}:{s:05.2f}"
 
+    is_vertical = str(aspect_ratio).strip() == "9:16"
+    play_res_x, play_res_y = ("1080", "1920") if is_vertical else ("1920", "1080")
+    sub_margin_lr = "44" if is_vertical else "80"
+    sub_margin_v = "110" if is_vertical else "38"
     ass_path = os.path.join(work_dir, f"hebum_1take_{total_dur}s.ass")
     ass_lines = [
         "[Script Info]",
         f"Title: HEBUM {total_dur}s 1-Take Emotional Master",
         "ScriptType: v4.00+",
-        "PlayResX: 1920",
-        "PlayResY: 1080",
+        f"PlayResX: {play_res_x}",
+        f"PlayResY: {play_res_y}",
         "WrapStyle: 0",
         "ScaledBorderAndShadow: yes",
         "",
@@ -467,7 +471,7 @@ def build_1take_master(
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
         "Style: TopPill,Arial,24,&H00A7F3D0,&H000000FF,&H0014281E,&HC80A1912,-1,0,0,0,100,100,1.2,0,3,2,0,7,48,48,34,1",
         "Style: BrandTag,Arial,22,&H00FFFFFF,&H000000FF,&H0010B981,&HC80D261C,-1,0,0,0,100,100,0.8,0,3,2,0,9,48,48,34,1",
-        "Style: SubBox,Arial,36,&H00FFFFFF,&H000000FF,&H00081C14,&HD8081811,-1,0,0,0,100,100,0.3,0,3,3,0,2,80,80,38,1",
+        f"Style: SubBox,Arial,36,&H00FFFFFF,&H000000FF,&H00081C14,&HD8081811,-1,0,0,0,100,100,0.3,0,3,3,0,2,{sub_margin_lr},{sub_margin_lr},{sub_margin_v},1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
