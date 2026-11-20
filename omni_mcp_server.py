@@ -432,7 +432,7 @@ MCP_TOOLS_SCHEMA = [
                 },
                 "wait_seconds": {
                     "type": "integer",
-                    "description": "Optional long-poll duration in seconds (`0` to `18`, default `12`) to wait for the job to complete before returning.",
+                    "description": "Optional long-poll duration in seconds (`0` to `5`, default `4`) to wait for the job to complete before returning.",
                 },
             },
         },
@@ -484,7 +484,11 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
 
     if tool_name == "omni_session_status":
         if args.get("refresh") or args.get("rotate_now"):
-            srv.rotate_google_cookies_headless(srv.DEFAULT_SESSION_PATH)
+            threading.Thread(
+                target=srv.rotate_google_cookies_headless,
+                args=(srv.DEFAULT_SESSION_PATH,),
+                daemon=True,
+            ).start()
         raw_st = srv.get_session_status()
         return {
             "status": "ok",
@@ -502,7 +506,11 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
 
     if tool_name == "omni_session_update":
         upd = srv.update_session_payload(args)
-        srv.rotate_google_cookies_headless(srv.DEFAULT_SESSION_PATH)
+        threading.Thread(
+            target=srv.rotate_google_cookies_headless,
+            args=(srv.DEFAULT_SESSION_PATH,),
+            daemon=True,
+        ).start()
         raw_st = srv.get_session_status()
         return {
             "update": upd,
@@ -533,7 +541,19 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         final_fn = os.path.basename(norm_path)
         subj_info = {"is_hebum_ui": False, "is_character_or_person": False, "subject_description": "", "suggested_prompt": ""}
         if args.get("analyze_subject", True):
-            subj_info = describe_image_subject_for_omni(norm_path)
+            res_holder = []
+
+            def _analyze():
+                try:
+                    res_holder.append(describe_image_subject_for_omni(norm_path))
+                except Exception:
+                    pass
+
+            ta = threading.Thread(target=_analyze, daemon=True)
+            ta.start()
+            ta.join(timeout=3.0)
+            if res_holder:
+                subj_info = res_holder[0]
         host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
         return {
             "status": "completed",
@@ -558,25 +578,30 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         if out.get("preview_url"):
             out["public_preview_url"] = f"{host_url}{out['preview_url']}"
         if out.get("status") in ("queued", "running"):
+            jid = out.get("job_id")
             out["poll_tool"] = "omni_job_status"
-            out["next_action"] = f"Call omni_job_status(job_id='{out.get('job_id')}') until status is 'completed'."
+            out["poll_url"] = f"/api/jobs/{jid}"
+            out["next_action"] = (
+                f"Job '{jid}' is actively running on the Studio GPU server. "
+                f"IMMEDIATELY call `omni_job_status(job_id='{jid}', wait_seconds=5)` in a loop until `status` is `'completed'`, "
+                f"then return `public_download_url` to the user. Do NOT stop or ask the user to wait before polling!"
+            )
         return out
 
-    def _wait_for_job_bounded(job_id: str, max_sec: float = 18.0) -> dict:
-        deadline = time.time() + max_sec
+    def _wait_for_job_bounded(job_id: str, max_sec: float = 5.0) -> dict:
+        deadline = time.time() + min(max_sec, 5.0)
         while time.time() < deadline:
             with srv.JOBS_LOCK:
                 j = srv.JOBS.get(job_id)
                 if j and j.get("status") in ("completed", "failed"):
                     return _format_job_with_public_urls(j)
-            time.sleep(1.0)
+            time.sleep(0.5)
         with srv.JOBS_LOCK:
             j = srv.JOBS.get(job_id) or {"job_id": job_id, "status": "running"}
             return _format_job_with_public_urls(j)
 
     if tool_name == "omni_generate_scene":
         args.setdefault("upscale_1080p", False)
-        wait = bool(args.get("wait", False))
         job_id = uuid.uuid4().hex[:10]
         job_obj = {
             "job_id": job_id,
@@ -589,15 +614,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             srv.JOBS[job_id] = job_obj
         t = threading.Thread(target=srv.run_job_generate_scene, args=(job_id, args), daemon=True)
         t.start()
-        if wait:
-            return _wait_for_job_bounded(job_id, max_sec=18.0)
-        return {
-            "status": "queued",
-            "job_id": job_id,
-            "poll_tool": "omni_job_status",
-            "poll_url": f"/api/jobs/{job_id}",
-            "next_action": f"Call omni_job_status(job_id='{job_id}') to monitor progress and get public_download_url.",
-        }
+        return _wait_for_job_bounded(job_id, max_sec=5.0)
 
     if tool_name == "omni_generate_image":
         prompt = (args.get("prompt") or "").strip()
@@ -616,39 +633,65 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         for i, im in enumerate(args.get("images") or []):
             ref_imgs.append(srv.save_base64_image_if_needed(im, OUTPUTS_DIR, i + 1))
         ref_imgs = [p for p in ref_imgs if p]
-        res = run_vids_rpc_generate_image(
-            prompt_text=prompt,
-            output_path=out_path,
-            aspect_ratio=aspect_ratio,
-            style=style,
-            num_images=num_images,
-            image_files=ref_imgs,
-            save_all=(num_images > 1),
-        )
+
+        job_id = uuid.uuid4().hex[:10]
         host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
-        imgs = []
-        for p in res.get("images", [res["output_path"]]):
-            fn = os.path.basename(p)
-            imgs.append(
-                {
-                    "filename": fn,
-                    "path": p,
-                    "relative_path": f"outputs/{fn}",
-                    "download_url": f"/outputs/{fn}",
-                    "public_download_url": f"{host_url}/outputs/{fn}",
-                }
-            )
-        return {
-            "status": "completed",
-            "engine": "omni-studio-imagen",
-            "download_url": imgs[0]["download_url"],
-            "public_download_url": imgs[0]["public_download_url"],
-            "relative_path": imgs[0]["relative_path"],
-            "images": imgs,
-            "reference_images_used": len(ref_imgs),
-            "aspect_ratio": res.get("aspect_ratio", aspect_ratio),
-            "style": res.get("style", style),
-        }
+        with srv.JOBS_LOCK:
+            srv.JOBS[job_id] = {
+                "job_id": job_id,
+                "type": "generate-image",
+                "status": "running",
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "logs": [f"🖼️ Generating {aspect_ratio} image ({style})..."],
+            }
+
+        def _bg_img():
+            try:
+                res = run_vids_rpc_generate_image(
+                    prompt_text=prompt,
+                    output_path=out_path,
+                    aspect_ratio=aspect_ratio,
+                    style=style,
+                    num_images=num_images,
+                    image_files=ref_imgs,
+                    save_all=(num_images > 1),
+                )
+                imgs = []
+                for p in res.get("images", [res["output_path"]]):
+                    fn = os.path.basename(p)
+                    imgs.append(
+                        {
+                            "filename": fn,
+                            "path": p,
+                            "relative_path": f"outputs/{fn}",
+                            "download_url": f"/outputs/{fn}",
+                            "public_download_url": f"{host_url}/outputs/{fn}",
+                        }
+                    )
+                with srv.JOBS_LOCK:
+                    srv.JOBS[job_id].update(
+                        {
+                            "status": "completed",
+                            "engine": "omni-studio-imagen",
+                            "output_file": imgs[0]["filename"],
+                            "download_url": imgs[0]["download_url"],
+                            "public_download_url": imgs[0]["public_download_url"],
+                            "relative_path": imgs[0]["relative_path"],
+                            "images": imgs,
+                            "reference_images_used": len(ref_imgs),
+                            "aspect_ratio": res.get("aspect_ratio", aspect_ratio),
+                            "style": res.get("style", style),
+                        }
+                    )
+                    srv.JOBS[job_id]["logs"].append(f"✅ Image ready: {imgs[0]['download_url']}")
+            except Exception as e:
+                with srv.JOBS_LOCK:
+                    srv.JOBS[job_id]["status"] = "failed"
+                    srv.JOBS[job_id]["error"] = str(e)
+
+        t = threading.Thread(target=_bg_img, daemon=True)
+        t.start()
+        return _wait_for_job_bounded(job_id, max_sec=5.0)
 
     if tool_name == "omni_synthesize_1take_vo":
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
@@ -661,26 +704,51 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         if not out_name.lower().endswith(".wav"):
             out_name += ".wav"
         out_wav = os.path.join(OUTPUTS_DIR, out_name)
-        pcm_bytes, sr = call_gemini_38_flash_tts_1take(full_text=text, style=style, api_key=api_key, voice=voice)
-        with wave.open(out_wav, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(sr)
-            wf.writeframes(pcm_bytes)
-        dur = round((len(pcm_bytes) / 2.0) / sr, 2)
         host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
-        return {
-            "status": "completed",
-            "engine": "gemini-3.8-flash-tts",
-            "mode": "single-pass-1take-style-mastered",
-            "voice": voice,
-            "style": style,
-            "duration_sec": dur,
-            "output_path": out_wav,
-            "relative_path": f"outputs/{out_name}",
-            "download_url": f"/outputs/{out_name}",
-            "public_download_url": f"{host_url}/outputs/{out_name}",
-        }
+        job_id = uuid.uuid4().hex[:10]
+        with srv.JOBS_LOCK:
+            srv.JOBS[job_id] = {
+                "job_id": job_id,
+                "type": "synthesize-1take-vo",
+                "status": "running",
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "logs": [f"🎙️ Synthesizing 1-Take Voiceover ({voice})..."],
+            }
+
+        def _bg_vo():
+            try:
+                pcm_bytes, sr = call_gemini_38_flash_tts_1take(full_text=text, style=style, api_key=api_key, voice=voice)
+                with wave.open(out_wav, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(sr)
+                    wf.writeframes(pcm_bytes)
+                dur = round((len(pcm_bytes) / 2.0) / sr, 2)
+                with srv.JOBS_LOCK:
+                    srv.JOBS[job_id].update(
+                        {
+                            "status": "completed",
+                            "engine": "gemini-3.8-flash-tts",
+                            "mode": "single-pass-1take-style-mastered",
+                            "voice": voice,
+                            "style": style,
+                            "duration_sec": dur,
+                            "output_file": out_name,
+                            "output_path": out_wav,
+                            "relative_path": f"outputs/{out_name}",
+                            "download_url": f"/outputs/{out_name}",
+                            "public_download_url": f"{host_url}/outputs/{out_name}",
+                        }
+                    )
+                    srv.JOBS[job_id]["logs"].append(f"✅ Voiceover ready ({dur}s): /outputs/{out_name}")
+            except Exception as e:
+                with srv.JOBS_LOCK:
+                    srv.JOBS[job_id]["status"] = "failed"
+                    srv.JOBS[job_id]["error"] = str(e)
+
+        t = threading.Thread(target=_bg_vo, daemon=True)
+        t.start()
+        return _wait_for_job_bounded(job_id, max_sec=5.0)
 
     if tool_name == "omni_generate_lyria_bgm":
         prompt = args.get("prompt", "Cinematic modern corporate electronic commercial music")
@@ -694,32 +762,56 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             out_name += ".wav"
         out_wav = os.path.join(OUTPUTS_DIR, out_name)
         profile = parse_bgm_prompt_profile(prompt, requested_bpm=bpm, scale=scale)
-        generate_bgm_track(
-            output_wav=out_wav,
-            duration_sec=dur,
-            bgm_prompt=prompt,
-            bpm=bpm,
-            scale=scale,
-            force_regenerate=True,
-            instrumental=instrumental,
-        )
         host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
-        return {
-            "status": "completed",
-            "engine": "lyria-3.5-studio",
-            "duration_sec": dur,
-            "bpm": profile.get("bpm", bpm),
-            "scale": scale,
-            "instrumental": instrumental,
-            "profile": profile,
-            "output_path": out_wav,
-            "relative_path": f"outputs/{out_name}",
-            "download_url": f"/outputs/{out_name}",
-            "public_download_url": f"{host_url}/outputs/{out_name}",
-        }
+        job_id = uuid.uuid4().hex[:10]
+        with srv.JOBS_LOCK:
+            srv.JOBS[job_id] = {
+                "job_id": job_id,
+                "type": "generate-lyria-bgm",
+                "status": "running",
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "logs": [f"🎵 Generating Lyria BGM ({dur}s, {bpm} BPM, {scale})..."],
+            }
+
+        def _bg_bgm():
+            try:
+                generate_bgm_track(
+                    output_wav=out_wav,
+                    duration_sec=dur,
+                    bgm_prompt=prompt,
+                    bpm=bpm,
+                    scale=scale,
+                    force_regenerate=True,
+                    instrumental=instrumental,
+                )
+                with srv.JOBS_LOCK:
+                    srv.JOBS[job_id].update(
+                        {
+                            "status": "completed",
+                            "engine": "lyria-3.5-studio",
+                            "duration_sec": dur,
+                            "bpm": profile.get("bpm", bpm),
+                            "scale": scale,
+                            "instrumental": instrumental,
+                            "profile": profile,
+                            "output_file": out_name,
+                            "output_path": out_wav,
+                            "relative_path": f"outputs/{out_name}",
+                            "download_url": f"/outputs/{out_name}",
+                            "public_download_url": f"{host_url}/outputs/{out_name}",
+                        }
+                    )
+                    srv.JOBS[job_id]["logs"].append(f"✅ Lyria BGM ready ({dur}s): /outputs/{out_name}")
+            except Exception as e:
+                with srv.JOBS_LOCK:
+                    srv.JOBS[job_id]["status"] = "failed"
+                    srv.JOBS[job_id]["error"] = str(e)
+
+        t = threading.Thread(target=_bg_bgm, daemon=True)
+        t.start()
+        return _wait_for_job_bounded(job_id, max_sec=5.0)
 
     if tool_name == "omni_produce_commercial":
-        wait = bool(args.get("wait", False))
         job_id = uuid.uuid4().hex[:10]
         job_obj = {
             "job_id": job_id,
@@ -732,20 +824,11 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             srv.JOBS[job_id] = job_obj
         t = threading.Thread(target=srv.run_job_produce_commercial, args=(job_id, args), daemon=True)
         t.start()
-        if wait:
-            return _wait_for_job_bounded(job_id, max_sec=18.0)
-        return {
-            "status": "queued",
-            "job_id": job_id,
-            "scene_count": len(args.get("scenes") or []),
-            "poll_tool": "omni_job_status",
-            "poll_url": f"/api/jobs/{job_id}",
-            "next_action": f"Call omni_job_status(job_id='{job_id}') to monitor progress and get public_download_url.",
-        }
+        return _wait_for_job_bounded(job_id, max_sec=5.0)
 
     if tool_name == "omni_job_status":
         job_id = args.get("job_id")
-        wait_sec = min(18, max(0, int(args.get("wait_seconds", 12))))
+        wait_sec = min(5, max(0, int(args.get("wait_seconds", 4))))
         if job_id:
             with srv.JOBS_LOCK:
                 j = srv.JOBS.get(job_id)

@@ -977,15 +977,18 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 class OmniStudioHandler(BaseHTTPRequestHandler):
     def _send_json(self, data: dict, status: int = 200):
         raw = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(raw)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Mcp-Session-Id, Last-Event-ID")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Expose-Headers", "Mcp-Session-Id")
-        self.end_headers()
-        self.wfile.write(raw)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Mcp-Session-Id, Last-Event-ID")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+            self.send_header("Access-Control-Expose-Headers", "Mcp-Session-Id")
+            self.end_headers()
+            self.wfile.write(raw)
+        except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError, OSError):
+            pass
 
     def do_OPTIONS(self):
         self._send_json({"ok": True})
@@ -1075,6 +1078,9 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             return
 
         if path in ("/mcp", "/api/mcp/tools") or path.startswith("/mcp/"):
+            import importlib
+            import omni_mcp_server
+            importlib.reload(omni_mcp_server)
             from omni_mcp_server import MCP_INSTRUCTIONS, MCP_SERVER_INFO, MCP_TOOLS_SCHEMA
 
             host_hdr = self.headers.get("Host") or "localhost:8765"
@@ -1183,8 +1189,11 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             else:
                 resp = handle_mcp_jsonrpc(body)
                 if resp is None:
-                    self.send_response(202)
-                    self.end_headers()
+                    try:
+                        self.send_response(202)
+                        self.end_headers()
+                    except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError, OSError):
+                        pass
                 else:
                     self._send_json(resp)
             return
@@ -1397,6 +1406,19 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
         self._send_json({"error": f"Unknown POST endpoint: {path}"}, 404)
 
 
+class ResilientThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+    request_queue_size = 128
+
+    def handle_error(self, request, client_address):
+        import sys
+        exc_type, _, _ = sys.exc_info()
+        if exc_type in (ConnectionResetError, BrokenPipeError, ConnectionAbortedError, TimeoutError):
+            return
+        super().handle_error(request, client_address)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Omni 1.1 Flash Video Studio — Cloud Server & REST API")
     parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"), help="Bind host (default: 0.0.0.0)")
@@ -1407,7 +1429,7 @@ def main():
     bootstrap_session_from_env()
     start_cookie_keepalive_daemon(interval_sec=args.rotate_interval)
 
-    server = ThreadingHTTPServer((args.host, args.port), OmniStudioHandler)
+    server = ResilientThreadingHTTPServer((args.host, args.port), OmniStudioHandler)
     log(f"==================================================================")
     log(f"OMNI 1.1 FLASH VIDEO STUDIO SERVER RUNNING ON http://{args.host}:{args.port}")
     log(f"  • Web Studio UI    : http://localhost:{args.port}/")
