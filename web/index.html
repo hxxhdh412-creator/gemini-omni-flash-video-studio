@@ -3,428 +3,286 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Omni Studio Pro — Apple Media Engine</title>
-  <link rel="preconnect" href="https://fonts.cdnfonts.com" crossorigin />
-  <link href="https://fonts.cdnfonts.com/css/sf-pro-display" rel="stylesheet" />
-  <link href="https://fonts.cdnfonts.com/css/sf-mono" rel="stylesheet" />
+  <title>Omni Studio Pro — AI Video Studio</title>
+  <meta name="theme-color" content="#f7f8fa" />
+  <meta name="description" content="Không gian sáng tạo video AI với Gemini Omni 1.1 Flash, giọng đọc 1-Take và nhạc nền Lyria." />
   <style>
     :root {
-      --bg-base: #f5f5f7;
-      --bg-elevated: rgba(255, 255, 255, 0.92);
-      --bg-grouped: #fafafc;
-      --bg-input: #ffffff;
-      --border-hairline: rgba(0, 0, 0, 0.08);
-      --border-strong: rgba(0, 0, 0, 0.16);
-      --apple-blue: #0071e3;
-      --apple-blue-hover: #0077ed;
-      --apple-green: #28cd41;
-      --apple-orange: #ff9500;
-      --apple-red: #ff3b30;
-      --apple-purple: #af52de;
-      --text-primary: #1d1d1f;
-      --text-secondary: #515154;
-      --text-tertiary: #86868b;
-      --radius-lg: 16px;
-      --radius-md: 11px;
-      --radius-sm: 8px;
+      color-scheme: light;
+      --workspace-gutter: clamp(16px, 1.55vw, 32px);
+      --panel-gap: clamp(12px, 1.1vw, 20px);
+      --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+      --bg-base: #f5f6f8;
+      --bg-elevated: #ffffff;
+      --bg-grouped: #f5f6f8;
+      --bg-input: #f9fafb;
+      --border-hairline: #e9eaee;
+      --border-strong: #d5d8df;
+      --apple-blue: #006bd6;
+      --apple-blue-hover: #005cba;
+      --apple-green: #248a4a;
+      --apple-orange: #ba6900;
+      --apple-red: #d73638;
+      --apple-purple: #875be5;
+      --text-primary: #202126;
+      --text-secondary: #626670;
+      --text-tertiary: #767b86;
+      --radius-lg: 14px;
+      --radius-md: 13px;
+      --radius-sm: 9px;
     }
-
-    * {
-      box-sizing: border-box;
-      font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html { scroll-behavior: smooth; scroll-padding-top: 76px; }
     body {
-      margin: 0;
-      background:
-        radial-gradient(1000px 460px at 15% -10%, rgba(0, 113, 227, 0.06), transparent 70%),
-        radial-gradient(900px 420px at 85% -15%, rgba(175, 82, 222, 0.05), transparent 70%),
-        var(--bg-base);
-      color: var(--text-primary);
-      min-height: 100vh;
-      font-size: 13px;
-      letter-spacing: -0.012em;
+      margin: 0; background: var(--bg-base); color: var(--text-primary);
+      font: 0.9375rem/1.5 var(--font-ui);
+      letter-spacing: normal;
     }
-
-    svg.sf-icon {
-      width: 15px;
-      height: 15px;
-      flex-shrink: 0;
-      vertical-align: -2.5px;
-      fill: currentColor;
+    button, input, select, textarea { font: inherit; letter-spacing: inherit; }
+    button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+    button { cursor: pointer; }
+    button:focus-visible, a:focus-visible, summary:focus-visible {
+      outline: 3px solid #007aff; outline-offset: 4px;
     }
-    svg.sf-icon-lg {
-      width: 17px;
-      height: 17px;
-      color: var(--apple-blue);
-    }
-
-    /* macOS Sequoia Light Window Toolbar / Header */
+    button:disabled { cursor: wait; opacity: .6; }
+    svg.sf-icon { width: 18px; height: 18px; flex: 0 0 auto; fill: currentColor; vertical-align: middle; }
+    svg.sf-icon-lg { width: 20px; height: 20px; color: var(--apple-blue); }
     .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      height: 54px;
-      padding: 0 24px;
-      background: rgba(255, 255, 255, 0.78);
-      backdrop-filter: saturate(180%) blur(24px);
-      -webkit-backdrop-filter: saturate(180%) blur(24px);
-      border-bottom: 0.5px solid rgba(0, 0, 0, 0.1);
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      position: sticky; top: 0; z-index: 20;
+      display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: center; column-gap: 14px;
+      min-height: 54px; padding: 7px var(--workspace-gutter);
+      background: rgba(247,248,250,.94); border-bottom: 1px solid #e2e5ea;
+      backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
     }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .traffic-lights {
-      display: flex;
-      gap: 7px;
-      margin-right: 8px;
-    }
-    .tl { width: 11px; height: 11px; border-radius: 50%; border: 0.5px solid rgba(0,0,0,0.12); }
-    .tl.red { background: #ff5f57; }
-    .tl.yellow { background: #febc2e; }
-    .tl.green { background: #28c840; }
-
+    .brand { display: flex; align-items: center; justify-self: start; gap: 9px; padding: 0 5px; }
     .brand-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: 7px;
-      background: linear-gradient(180deg, #1d1d1f 0%, #000000 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #ffffff;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+      display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0;
+      border-radius: 12px; color: white; background: linear-gradient(145deg,#3d414b,#17191f);
+      box-shadow: 0 3px 6px #15172420, inset 0 1px 0 #ffffff30;
     }
-    .brand-title {
-      font-size: 14.5px;
-      font-weight: 600;
-      color: var(--text-primary);
-      letter-spacing: -0.022em;
-    }
-    .brand-badge {
-      font-size: 11px;
-      font-weight: 500;
-      color: var(--apple-blue);
-      background: rgba(0, 113, 227, 0.08);
-      padding: 2px 8px;
-      border-radius: 6px;
-      border: 0.5px solid rgba(0, 113, 227, 0.18);
-    }
-
-    /* Segmented Control (Apple Light Mode) */
-    .segmented-nav {
-      display: inline-flex;
-      background: rgba(118, 118, 128, 0.12);
-      padding: 3px;
-      border-radius: 10px;
-      gap: 2px;
-    }
+    .brand-icon svg { width: 22px; height: 22px; }
+    .brand-title { font: 700 .9375rem/1.2 var(--font-display); letter-spacing: -.025em; white-space: nowrap; }
+    .segmented-nav { display: flex; align-items: center; gap: 3px; }
     .seg-btn {
-      background: transparent;
-      color: var(--text-secondary);
-      border: none;
-      padding: 5.5px 13px;
-      border-radius: 7.5px;
-      font-size: 12.5px;
-      font-weight: 500;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      transition: all 0.16s cubic-bezier(0.25, 1, 0.5, 1);
-      white-space: nowrap;
+      display: flex; align-items: center; gap: 7px; min-height: 36px;
+      border: 1px solid transparent; border-radius: 8px; padding: 7px 10px;
+      color: var(--text-secondary); background: transparent; text-align: left; white-space: nowrap; flex-shrink: 0;
+      font-size: .84375rem; font-weight: 500; transition: background .18s, color .18s, box-shadow .18s;
     }
-    .seg-btn:hover { color: var(--text-primary); }
-    .seg-btn.active {
-      background: #ffffff;
-      color: var(--text-primary);
-      font-weight: 600;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1), 0 0.5px 1px rgba(0, 0, 0, 0.06);
-    }
-    .seg-btn.active svg.sf-icon {
-      color: var(--apple-blue);
-    }
-
-    /* Status Indicators */
-    .status-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 11.5px;
-      font-weight: 500;
-      background: rgba(0, 0, 0, 0.04);
-      border: 0.5px solid var(--border-hairline);
-      color: var(--text-secondary);
-    }
-    .dot {
-      width: 6.5px;
-      height: 6.5px;
-      border-radius: 50%;
-      background: var(--text-tertiary);
-    }
-    .chip.ok .dot { background: var(--apple-green); box-shadow: 0 0 5px rgba(40, 205, 65, 0.55); }
-    .chip.ok { color: #166534; background: rgba(40, 205, 65, 0.1); border-color: rgba(40, 205, 65, 0.25); }
-    .chip.warn .dot { background: var(--apple-orange); }
-    .chip.warn { color: #b45309; background: rgba(255, 149, 0, 0.12); border-color: rgba(255, 149, 0, 0.28); }
-
-    /* Main Workspace Layout */
-    .workspace {
-      max-width: 1320px;
-      margin: 0 auto;
-      padding: 22px 24px 48px;
-    }
+    .seg-btn:hover { background: #e5e8ee; color: var(--text-primary); }
+    .seg-btn.active { color: var(--apple-blue); background: white; border-color: #e2e6ed; box-shadow: 0 2px 5px #24293608; font-weight: 650; }
+    .status-bar { display: flex; justify-self: end; align-items: center; gap: 5px; white-space: nowrap; }
+    .status-short { display: none; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 9px; border-radius: 7px; color: var(--text-secondary); background: #eef0f3; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: #9297a2; }
+    .chip.ok { color: #227044; background: #edf7ef; }
+    .chip.ok .dot { background: #2a9652; }
+    .chip.warn { color: #975400; background: #fff4df; }
+    .chip.warn .dot { background: #bc760c; }
+    .workspace { max-width: 2440px; margin-inline: auto; padding: 0 var(--workspace-gutter) 36px; container: workspace / inline-size; }
+    .workspace-engine { color: var(--text-secondary); font-size: .75rem; font-weight: 500; white-space: nowrap; border-left: 1px solid var(--border-strong); padding-left: 9px; }
+    .page-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; padding: 14px 0; }
+    h1 { font: 700 clamp(1.375rem, 1.85vw, 1.875rem)/1.25 var(--font-display); letter-spacing: -.035em; margin: 0; }
+    .project-stats { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+    .stat { display: flex; align-items: baseline; gap: 4px; padding: 3px 8px; border: 1px solid #e0e3ea; border-radius: 6px; background: white; color: var(--text-secondary); font-size: .75rem; }
+    .stat strong { font-weight: 650; color: var(--text-primary); font-variant-numeric: tabular-nums; }
     .tab-pane { display: none; }
-    .tab-pane.active { display: block; animation: fadeIn 0.18s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
-
-    .layout-split {
-      display: grid;
-      grid-template-columns: 1.25fr 0.95fr;
-      gap: 18px;
-      align-items: start;
-    }
-    .layout-2col {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 18px;
-      align-items: start;
-    }
-    @media (max-width: 1024px) {
-      .layout-split, .layout-2col { grid-template-columns: 1fr; }
-      .topbar { height: auto; padding: 10px 16px; flex-wrap: wrap; gap: 10px; }
-      .segmented-nav { overflow-x: auto; width: 100%; }
-    }
-
-    /* Apple Light Cards & Panels */
-    .panel {
-      background: var(--bg-elevated);
-      backdrop-filter: saturate(180%) blur(20px);
-      -webkit-backdrop-filter: saturate(180%) blur(20px);
-      border: 0.5px solid var(--border-hairline);
-      border-radius: var(--radius-lg);
-      padding: 18px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
-    }
-    .panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 14px;
-      padding-bottom: 11px;
-      border-bottom: 0.5px solid var(--border-hairline);
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .panel-title {
-      margin: 0;
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-primary);
-      letter-spacing: -0.018em;
-      display: flex;
-      align-items: center;
-      gap: 7px;
-    }
-
-    /* Form Controls */
-    .field-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    label {
-      display: block;
-      font-size: 11.5px;
-      font-weight: 500;
-      color: var(--text-secondary);
-      margin: 9px 0 4px;
-    }
-    input, select, textarea {
-      width: 100%;
-      background: var(--bg-input);
-      border: 1px solid rgba(0, 0, 0, 0.13);
-      color: var(--text-primary);
-      padding: 7.5px 10px;
-      border-radius: var(--radius-sm);
-      font-size: 12.5px;
-      outline: none;
-      transition: border-color 0.15s, box-shadow 0.15s;
-    }
-    input:focus, select:focus, textarea:focus {
-      border-color: var(--apple-blue);
-      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.18);
-    }
-    textarea { min-height: 62px; resize: vertical; line-height: 1.44; }
-
-    /* Apple Buttons */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      background: var(--apple-blue);
-      color: #ffffff;
-      font-weight: 500;
-      font-size: 12.5px;
-      border: none;
-      padding: 8.5px 15px;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      box-shadow: 0 1px 2px rgba(0, 113, 227, 0.25);
-      transition: background 0.14s, transform 0.08s;
-    }
-    .btn:hover { background: var(--apple-blue-hover); }
-    .btn:active { transform: scale(0.985); }
-    .btn-ghost {
-      background: rgba(118, 118, 128, 0.12);
-      color: var(--text-primary);
-      border: 0.5px solid rgba(0, 0, 0, 0.06);
-      box-shadow: none;
-    }
-    .btn-ghost:hover { background: rgba(118, 118, 128, 0.2); }
-    .btn-danger {
-      background: rgba(255, 59, 48, 0.1);
-      color: var(--apple-red);
-      border: 0.5px solid rgba(255, 59, 48, 0.22);
-      box-shadow: none;
-      padding: 4px 9px;
-      font-size: 11.5px;
-    }
-    .btn-danger:hover { background: rgba(255, 59, 48, 0.18); }
-    .btn-xs { padding: 5.5px 10px; font-size: 11.5px; border-radius: 7px; }
-
-    /* Compact Final Cut / Apple Light Timeline Scene Cards */
-    .scene-stack { display: flex; flex-direction: column; gap: 10px; }
-    .scene-card {
-      background: #ffffff;
-      border: 1px solid rgba(0, 0, 0, 0.09);
-      border-radius: var(--radius-md);
-      overflow: hidden;
-      transition: border-color 0.15s, box-shadow 0.15s;
-    }
-    .scene-card:hover { border-color: rgba(0, 113, 227, 0.35); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03); }
-    .scene-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 9px 12px;
-      background: #f5f5f7;
-      cursor: pointer;
-      user-select: none;
-    }
-    .scene-bar-left {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      min-width: 0;
-    }
-    .scene-pill {
-      background: rgba(0, 113, 227, 0.1);
-      color: var(--apple-blue);
-      border: 0.5px solid rgba(0, 113, 227, 0.22);
-      font-size: 11px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 6px;
-      white-space: nowrap;
-    }
-    .scene-summary {
-      font-size: 12.5px;
-      font-weight: 600;
-      color: var(--text-primary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 340px;
-    }
-    .scene-body {
-      padding: 10px 12px 12px;
-      border-top: 0.5px solid var(--border-hairline);
-      background: #ffffff;
-      display: block;
-    }
+    .tab-pane.active { display: block; animation: fadeIn .22s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .layout-split, .layout-2col { display: grid; grid-template-columns: minmax(0,1fr); gap: var(--panel-gap); align-items: start; }
+    .layout-split > *, .layout-2col > *, .field-grid > * { min-width: 0; }
+    .panel { min-width: 0; container: panel / inline-size; background: var(--bg-elevated); border: 1px solid #e0e3ea; border-radius: var(--radius-lg); padding: clamp(12px, 1.15vw, 19px); box-shadow: 0 2px 4px #24293605; overflow-wrap: anywhere; }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .panel-title { margin: 0; font: 650 1rem/1.4 var(--font-display); display: flex; align-items: center; gap: 8px; letter-spacing: -.015em; }
+    .storyboard-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 0 0 10px; margin-bottom: 10px; border-bottom: 1px solid var(--border-hairline); }
+    .storyboard-tools select { width: auto; font-size: 12px; min-height: 33px; }
+    .field-grid { display: grid; grid-template-columns: minmax(0,1fr); column-gap: 10px; }
+    label { display: block; font-size: .8125rem; font-weight: 550; color: var(--text-secondary); margin: 10px 0 5px; }
+    input, select, textarea { width: 100%; min-width: 0; max-width: 100%; background: var(--bg-input); border: 1px solid #e0e3e9; border-radius: var(--radius-sm); color: var(--text-primary); padding: 7px 9px; font-size: .875rem; outline: none; transition: box-shadow .18s,border-color .18s; }
+    input:hover, select:hover, textarea:hover { border-color: #c9cfd9; }
+    input:focus, select:focus, textarea:focus { border-color: var(--apple-blue); box-shadow: 0 0 0 3px #007aff18; background: white; }
+    input[type=file] { padding: 8px; font-size: 12px; background: white; }
+    input::file-selector-button { border: 0; border-radius: 5px; padding: 5px 7px; background: #edf3fc; color: var(--apple-blue); font: inherit; cursor: pointer; }
+    select { appearance: none; padding-right: 30px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%23626670' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-position: right 11px center; background-repeat: no-repeat; }
+    textarea { display: block; field-sizing: content; min-height: 72px; max-height: 280px; resize: vertical; line-height: 1.5; }
+    .scene-voiceover { min-height: 54px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 41px; border: 1px solid transparent; border-radius: 9px; padding: 10px 15px; color: white; background: var(--apple-blue); font-size: 14px; font-weight: 550; text-decoration: none; box-shadow: 0 2px 4px #007aff14; transition: background .18s,box-shadow .18s,transform .18s; }
+    .btn:hover { background: var(--apple-blue-hover); box-shadow: 0 3px 8px #007aff26; }
+    .btn:active { transform: scale(.98); }
+    .btn-ghost { color: var(--text-secondary); background: #f4f5f7; border-color: #e9ebef; box-shadow: none; }
+    .btn-ghost:hover { background: #e9edf3; box-shadow: none; color: var(--text-primary); }
+    .btn-xs { min-height: 32px; font-size: 12px; padding: 6px 9px; border-radius: 7px; }
+    .btn-danger { padding: 5px 7px; min-height: 30px; background: transparent; box-shadow: none; color: var(--text-tertiary); }
+    .btn-danger:hover { background: #fff0ef; color: var(--apple-red); box-shadow: none; }
+    .btn-danger svg { width: 15px; height: 15px; }
+    .scene-stack { display: flex; flex-direction: column; gap: 8px; }
+    .scene-card { background: white; border: 1px solid #e1e5ed; border-radius: var(--radius-md); overflow: hidden; transition: border-color .2s,box-shadow .2s; }
+    .scene-card:not(.collapsed) { border-color: #b8d5ff; box-shadow: 0 0 0 3px #007aff05; }
+    .scene-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #fafbfc; }
+    .scene-bar-left { display: flex; flex: 1; align-items: center; gap: 11px; min-width: 0; border: 0; background: transparent; color: inherit; text-align: left; padding: 0; }
+    .scene-number { display: grid; place-items: center; width: 34px; height: 39px; flex-shrink: 0; background: #edf3ff; border: 1px solid #deebff; color: #2776d5; border-radius: 8px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .scene-heading { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+    .scene-summary { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .scene-pill { color: var(--text-tertiary); font-size: 12px; font-weight: 400; }
+    .scene-actions { display: flex; align-items: center; flex-shrink: 0; gap: 1px; }
+    .scene-toggle { transition: transform .2s; color: var(--text-tertiary); }
+    .scene-card:not(.collapsed) .scene-toggle { transform: rotate(180deg); }
+    .scene-body { padding: 1px 12px 12px; border-top: 1px solid #edf0f5; }
     .scene-card.collapsed .scene-body { display: none; }
-
-    /* Monitor Player & Terminal */
-    .monitor-frame {
-      width: 100%;
-      aspect-ratio: 16 / 9;
-      background: #1d1d1f;
-      border: 1px solid rgba(0, 0, 0, 0.1);
-      border-radius: var(--radius-md);
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 10px;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
-    }
-    .monitor-frame video { width: 100%; height: 100%; object-fit: contain; }
-    pre.apple-console {
-      background: #f5f5f7;
-      border: 1px solid rgba(0, 0, 0, 0.08);
-      padding: 11px 12px;
-      border-radius: var(--radius-sm);
-      font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-      font-size: 11.5px;
-      line-height: 1.45;
-      color: #1d1d1f;
-      max-height: 220px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      margin: 8px 0 0;
-    }
-
-    /* Gallery Grid */
-    .gallery-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 12px;
-    }
-    .media-tile {
-      background: #ffffff;
-      border: 1px solid rgba(0, 0, 0, 0.08);
-      border-radius: var(--radius-md);
-      padding: 10px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
-    }
-    .media-tile video, .media-tile audio {
-      width: 100%;
-      border-radius: 7px;
-      background: #1d1d1f;
-      margin-bottom: 7px;
-    }
-    .media-meta {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 11.5px;
-      color: var(--text-secondary);
-    }
-    a.apple-link {
-      color: var(--apple-blue);
-      text-decoration: none;
-      font-weight: 500;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
+    .scene-upload { display: flex; gap: 6px; }
+    .scene-upload input[type=file] { max-width: 118px; }
+    .inspector-column { display: grid; grid-template-columns: minmax(0,1fr); gap: var(--panel-gap); }
+    .quick-layout { display: grid; gap: var(--panel-gap); align-items: start; grid-template-areas: "brief" "settings" "preview" "videos"; grid-template-columns: minmax(0,1fr); }
+    .quick-brief { grid-area: brief; }
+    .quick-settings { grid-area: settings; }
+    .quick-preview { grid-area: preview; }
+    .quick-videos { grid-area: videos; }
+    .quick-brief textarea { min-height: 144px; }
+    .quick-reference { display: grid; gap: 8px; grid-template-columns: minmax(0,1fr); }
+    .quick-output-fields { display: grid; gap: 0 10px; grid-template-columns: minmax(0,1fr); }
+    .quick-settings .btn { width: 100%; margin-top: 14px; }
+    .quick-videos-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(250px,100%),1fr)); gap: 8px; }
+    .quick-video { display: flex; align-items: center; gap: 10px; padding: 10px; min-width: 0; border: 1px solid var(--border-hairline); background: var(--bg-input); border-radius: 9px; }
+    .quick-video > svg { color: var(--apple-blue); }
+    .quick-video-info { flex: 1; min-width: 0; }
+    .quick-video-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .8125rem; font-weight: 600; }
+    .quick-video-size, .quick-videos-message { font-size: .75rem; color: var(--text-secondary); }
+    .quick-video a { color: var(--apple-blue); white-space: nowrap; font-size: .75rem; }
+    .audio-layout { display: grid; gap: var(--panel-gap); grid-template-columns: minmax(0,1fr); align-items: start; }
+    .audio-editor textarea { min-height: 124px; }
+    .audio-editor #voTextInput { min-height: 194px; }
+    .audio-editor #voStyleInput { min-height: 72px; }
+    .audio-editor > .btn { width: 100%; margin-top: 14px; }
+    .audio-editor > .btn:disabled { opacity: .65; cursor: wait; }
+    .audio-field-heading, .audio-result-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; }
+    .audio-counter { font-size: .75rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+    .audio-presets { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+    .audio-results-grid { display: grid; gap: 10px; }
+    .audio-result-card { min-width: 0; padding: 12px; border: 1px solid var(--border-hairline); border-radius: 9px; background: var(--bg-input); }
+    .audio-result-card h3 { font-size: .875rem; margin: 0 0 7px; }
+    .audio-result-heading .chip { margin-bottom: 7px; }
+    .media-hint { color: var(--text-secondary); font-size: .8125rem; margin: 0; }
+    .audio-result-card audio, .audio-saved-player audio { width: 100%; display: block; margin: 8px 0; }
+    .audio-saved { margin-top: 14px; padding: 12px; border: 1px solid #dfe7f4; border-radius: 10px; background: #f0f5fc; }
+    .audio-saved label { color: var(--text-primary); margin-top: 0; }
+    .audio-saved select { background-color: white; }
+    .audio-saved-player { margin-top: 8px; }
+    .audio-saved .apple-link, .audio-result-card .apple-link { font-size: .8125rem; }
+    .library-toolbar { display: grid; grid-template-columns: minmax(0,440px) minmax(106px,150px); gap: 8px; margin-bottom: 10px; }
+    .library-count { margin-bottom: 12px; }
+    .library-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(290px,100%),1fr)); gap: var(--panel-gap); }
+    .library-grid > .empty-state { grid-column: 1 / -1; margin: 0; }
+    .library-card { min-width: 0; border: 1px solid #e0e3ea; border-radius: 12px; overflow: hidden; background: #fff; }
+    .library-card:focus-within, .library-card:hover { border-color: #a7cbff; }
+    .library-stage { aspect-ratio: 16/9; display: grid; grid-template: minmax(0,1fr) / minmax(0,1fr); place-items: center; background: #f1f3f7; }
+    .library-card[data-type=mp4] .library-stage { background: radial-gradient(ellipse at 73% 8%,#344764,transparent 72%),#151c2b; color: #fff; }
+    .library-card[data-type=wav] .library-stage { background: radial-gradient(ellipse at 85% 0%,#e3dcff,transparent 75%),#f3f0ff; color: #47318a; }
+    .library-action { width: 100%; height: 100%; display: grid; place-content: center; justify-items: center; gap: 7px; border: 0; background: transparent; color: inherit; font-size: .8125rem; font-weight: 600; text-decoration: none; }
+    .library-action:hover { background: #7e91b61a; }
+    .library-action:focus-visible { outline-offset: -4px; }
+    .library-action .sf-icon { width: 22px; height: 22px; }
+    .library-stage video { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; background: #10141e; }
+    .library-stage audio { display: block; width: calc(100% - 24px); }
+    .library-card-footer { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+    .library-download { display: grid; place-items: center; flex-shrink: 0; padding: 7px; border-radius: 7px; color: var(--apple-blue); background: #edf4ff; }
+    .library-download:hover { background: #dfedff; }
+    .session-metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(180px,100%),1fr)); gap: var(--panel-gap); margin-bottom: var(--panel-gap); }
+    .session-metric { padding: 12px 14px; border: 1px solid #e0e3ea; border-radius: 10px; background: white; min-width: 0; }
+    .session-metric strong { display: block; font-size: .875rem; margin-bottom: 5px; }
+    .utility-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .utility-message { margin: 9px 0 0; font-size: .8125rem; color: var(--text-secondary); }
+    .utility-message:empty { display: none; }
+    .utility-details { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-hairline); }
+    .utility-details summary { cursor: pointer; font-size: .8125rem; font-weight: 600; }
+    .mcp-layout { display: grid; grid-template-columns: minmax(0,1fr); gap: var(--panel-gap); align-items: start; }
+    .mcp-catalog { display: grid; grid-template-columns: minmax(0,1fr); gap: 5px; }
+    .mcp-tool { display: block; text-align: left; overflow-wrap: anywhere; padding: 8px; border: 1px solid var(--border-hairline); border-radius: 8px; color: var(--text-primary); background: var(--bg-input); }
+    .mcp-tool[aria-pressed=true] { color: var(--apple-blue); background: #edf4ff; border-color: #a7cbff; }
+    .mcp-tool:hover { border-color: #a7cbff; }
+    .mcp-tool code { font-size: .75rem; }
+    .json-editor { min-height: 160px; font-family: 'SF Mono', Consolas, monospace; font-size: .8125rem; }
+    .mcp-result pre { min-height: 110px; max-height: 440px; }
+    .monitor-frame { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 16/9; background: #10141e; border: 1px solid #242c3c; border-radius: 10px; overflow: hidden; margin-bottom: 9px; }
+    .monitor-frame video { width: 100%; height: 100%; object-fit: contain; position: relative; z-index: 2; background: #10141e; }
+    .monitor-empty { display: flex; align-items: center; justify-content: center; flex-direction: column; position: absolute; inset: 0; isolation: isolate; color: white; text-align: center; padding: 20px; }
+    .monitor-empty::before { content: ''; position: absolute; z-index: -1; inset: 0; background: radial-gradient(ellipse at 27% 75%,#205d6338,transparent 65%),radial-gradient(ellipse at 80% 20%,#6b52ae42,transparent 65%),linear-gradient(140deg,#151b2a,#0d1018); }
+    .monitor-empty::after { content: ''; width: 200px; height: 200px; border: 1px solid #ffffff08; border-radius: 50%; position: absolute; z-index: -1; box-shadow: 0 0 0 36px #ffffff02,0 0 0 72px #ffffff02; }
+    .preview-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: #ffffff0c; border: 1px solid #ffffff18; margin-bottom: 15px; color: #c5d3ed; }
+    .preview-mark svg { width: 23px; height: 23px; }
+    .monitor-empty strong { font-size: 16px; font-weight: 500; letter-spacing: -.025em; }
+    .timeline-title { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; font-size: .75rem; color: var(--text-secondary); margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+    .timeline-track { display: flex; gap: 4px; padding: 0 2px 8px; overflow-x: auto; }
+    .timeline-clip { flex: 1 0 54px; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 5px 7px; border-radius: 6px; border: 1px solid #d8e5fc; background: #edf4ff; color: #246bc0; font-size: .6875rem; text-align: left; overflow: hidden; transition: background .15s; }
+    .timeline-clip:hover, .timeline-clip[aria-pressed=true] { background: #dfeeff; border-color: #79adf7; }
+    .timeline-clip:focus-visible { outline-offset: -3px; }
+    .timeline-clip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .console-details { border-top: 1px solid var(--border-hairline); padding-top: 13px; }
+    .console-details summary { cursor: pointer; font-size: 12px; color: var(--text-secondary); }
+    pre.apple-console { font: 12px/1.7 'SF Mono',Consolas,monospace; white-space: pre-wrap; overflow-wrap: anywhere; background: #f6f7f9; color: #5b6371; border: 1px solid var(--border-hairline); border-radius: 9px; padding: 14px; max-height: 240px; overflow-y: auto; margin: 12px 0 0; }
+    .export-note { font-size: 12px; color: var(--text-tertiary); text-align: center; margin: 10px 0 0; }
+    a.apple-link { color: var(--apple-blue); text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-weight: 500; }
     a.apple-link:hover { text-decoration: underline; }
+    .empty-state { padding: 45px 18px; text-align: center; color: var(--text-secondary); background: #fafbfc; border: 1px dashed #dbe0e8; border-radius: 12px; font-size: 14px; }
+    .empty-state svg { color: var(--apple-blue); width: 30px; height: 30px; margin-bottom: 10px; }
+    .empty-state strong { display: block; color: var(--text-primary); margin-bottom: 5px; }
+    @container workspace (min-width: 700px) {
+      .layout-split { grid-template-columns: minmax(0,1fr) clamp(312px, 40cqi, 640px); }
+      .layout-2col { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .quick-layout { grid-template-columns: minmax(0,1fr) minmax(0,1.15fr); grid-template-areas: "brief preview" "settings preview" "videos videos"; }
+      .quick-preview { align-self: start; }
+      .audio-layout { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .audio-results { grid-column: 1 / -1; }
+      .audio-results-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .mcp-layout { grid-template-columns: minmax(0,.85fr) minmax(0,1.15fr); }
+      .mcp-result { grid-column: 1 / -1; }
+    }
+    @container workspace (min-width: 1550px) {
+      .layout-split { grid-template-columns: minmax(0, 1.18fr) minmax(0, 1fr) clamp(310px, 21cqi, 400px); }
+      .inspector-column { display: contents; }
+      .export-panel .field-grid { grid-template-columns: minmax(0,1fr); }
+      .preview-panel, .export-panel { position: sticky; top: 70px; }
+      .quick-layout { grid-template-columns: minmax(0,1fr) minmax(0,1.3fr) clamp(280px,20cqi,360px); grid-template-areas: "brief preview settings" "videos videos videos"; }
+      .audio-layout { grid-template-columns: minmax(0,1.2fr) minmax(0,1fr) minmax(300px,.76fr); }
+      .audio-results { grid-column: auto; }
+      .audio-results-grid { grid-template-columns: minmax(0,1fr); }
+      .mcp-layout { grid-template-columns: minmax(250px,.75fr) minmax(0,1.1fr) minmax(0,1fr); }
+      .mcp-result { grid-column: auto; }
+    }
+    @container panel (min-width: 320px) {
+      .field-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    }
+    @container panel (min-width: 430px) {
+      .quick-reference { grid-template-columns: minmax(0,1fr) minmax(155px,36%); }
+      .quick-output-fields { grid-template-columns: minmax(115px,1fr) minmax(0,2fr); }
+    }
+    @container panel (max-width: 520px) {
+      .scene-upload { flex-wrap: wrap; }
+      .scene-upload input[type=file] { max-width: none; }
+    }
+    @media (max-width: 1390px) {
+      .topbar { grid-template-columns: auto minmax(0, 1fr) auto; }
+      .segmented-nav { justify-self: center; max-width: 100%; overflow-x: auto; padding: 3px; }
+      .seg-btn { gap: 5px; padding-inline: 7px; font-size: .8125rem; }
+    }
+    @media (max-width: 1100px) {
+      .workspace-engine { display: none; }
+    }
+    @media (max-width: 760px) {
+      .topbar { column-gap: 6px; padding-inline: 8px; }
+      .brand { padding: 0; }
+      .brand-title, .status-full { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
+      .status-short { display: inline; }
+      .status-bar { gap: 3px; }
+      .status-bar .chip { padding-inline: 4px; gap: 3px; font-size: .625rem; }
+      .seg-btn { gap: 4px; padding: 4px 6px; font-size: .75rem; }
+      .seg-btn svg { width: 14px; height: 14px; }
+      .page-heading { padding: 11px 0; }
+      input, select, textarea { font-size: 1rem; }
+    }
+    @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
   </style>
 </head>
 <body>
@@ -470,51 +328,60 @@
     <symbol id="sf-chevron" viewBox="0 0 24 24">
       <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
     </symbol>
+    <symbol id="sf-photo" viewBox="0 0 24 24">
+      <path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm0 2v7.59l3.3-3.3a1 1 0 0 1 1.4 0l3.8 3.8 2.8-2.8a1 1 0 0 1 1.4 0L20 15.59V7H4zm4.5 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
+    </symbol>
   </svg>
 
   <!-- Apple macOS Pro Top Toolbar -->
   <header class="topbar">
     <div class="brand">
-      <div class="traffic-lights">
-        <span class="tl red"></span>
-        <span class="tl yellow"></span>
-        <span class="tl green"></span>
-      </div>
       <div class="brand-icon">
-        <svg class="sf-icon"><use href="#sf-apple"/></svg>
+        <svg class="sf-icon" aria-hidden="true"><use href="#sf-film"/></svg>
       </div>
       <span class="brand-title">Omni Studio Pro</span>
-      <span class="brand-badge">Omni 1.1 Flash • 15s Engine</span>
+      <span class="workspace-engine">Gemini Omni 1.1 Flash</span>
     </div>
 
     <!-- Apple Segmented Control Navigation -->
-    <nav class="segmented-nav">
+    <nav class="segmented-nav" aria-label="Công cụ studio">
       <button class="seg-btn active" onclick="switchTab('tab-commercial', this)">
-        <svg class="sf-icon"><use href="#sf-film"/></svg> TVC Đa Cảnh
+        <svg class="sf-icon"><use href="#sf-film"/></svg> TVC đa cảnh
       </button>
       <button class="seg-btn" onclick="switchTab('tab-scene', this)">
-        <svg class="sf-icon"><use href="#sf-sparkles"/></svg> Cảnh Nhanh 15s
+        <svg class="sf-icon"><use href="#sf-sparkles"/></svg> Cảnh nhanh
+      </button>
+      <button class="seg-btn" onclick="switchTab('tab-image', this)">
+        <svg class="sf-icon"><use href="#sf-photo"/></svg> Tạo ảnh
       </button>
       <button class="seg-btn" onclick="switchTab('tab-audio', this)">
-        <svg class="sf-icon"><use href="#sf-waveform"/></svg> Giọng 1-Take & Nhạc
+        <svg class="sf-icon"><use href="#sf-waveform"/></svg> Âm thanh
       </button>
-      <button class="seg-btn" onclick="switchTab('tab-gallery', this); loadGallery();">
-        <svg class="sf-icon"><use href="#sf-folder"/></svg> Kho Media
+      <button class="seg-btn" aria-controls="tab-gallery" onclick="switchTab('tab-gallery', this); loadGallery();">
+        <svg class="sf-icon"><use href="#sf-folder"/></svg> Thư viện
       </button>
       <button class="seg-btn" onclick="switchTab('tab-session', this)">
-        <svg class="sf-icon"><use href="#sf-shield"/></svg> Phiên & Cookie
+        <svg class="sf-icon"><use href="#sf-shield"/></svg> Kết nối
       </button>
       <button class="seg-btn" onclick="switchTab('tab-mcp', this); loadMcpTools();">
-        <svg class="sf-icon"><use href="#sf-nodes"/></svg> Luồng MCP
+        <svg class="sf-icon"><use href="#sf-nodes"/></svg> Công cụ MCP
       </button>
     </nav>
 
-    <div class="status-bar" id="topStatusPills">
-      <span class="chip"><span class="dot"></span> Đang kết nối...</span>
+    <div class="status-bar" id="topStatusPills" aria-live="polite">
+      <span class="chip"><span class="dot"></span><span class="status-full">Đang kết nối...</span><span class="status-short" aria-hidden="true">…</span></span>
     </div>
   </header>
 
   <main class="workspace">
+    <div class="page-heading">
+      <h1 id="pageTitle">TVC đa cảnh</h1>
+      <div class="project-stats" id="projectStats" aria-label="Thông tin video">
+        <div class="stat"><strong id="sceneCount">4</strong><span>phân cảnh</span></div>
+        <div class="stat"><strong id="totalDuration">60s</strong><span>thời lượng</span></div>
+        <div class="stat"><strong>1080p</strong><span>· 16:9</span></div>
+      </div>
+    </div>
 
     <!-- TAB 1: COMPACT MULTI-SCENE COMMERCIAL BUILDER (15S / 10S) -->
     <section id="tab-commercial" class="tab-pane active">
@@ -524,37 +391,60 @@
           <div class="panel-header">
             <h2 class="panel-title">
               <svg class="sf-icon sf-icon-lg"><use href="#sf-film"/></svg>
-              Timeline Phân Cảnh (`StructuredImage` + `1-Take TTS`)
+              Storyboard
             </h2>
-            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-              <select id="tvcSceneDur" style="width:135px; padding:5px 8px; font-weight:500;" onchange="renderStoryboard()">
-                <option value="15" selected>15s / Cảnh (Mới)</option>
+          </div>
+            <div class="storyboard-tools">
+              <select id="tvcSceneDur" aria-label="Thời lượng mỗi cảnh" onchange="renderStoryboard()">
+                <option value="15" selected>15s / Cảnh</option>
                 <option value="10">10s / Cảnh</option>
               </select>
-              <button class="btn btn-ghost btn-xs" onclick="loadPresetStoryboard(2, 15)">Mẫu 30s (2×15s)</button>
-              <button class="btn btn-ghost btn-xs" onclick="loadPresetStoryboard(4, 15)">Mẫu 60s (4×15s)</button>
-              <button class="btn btn-ghost btn-xs" onclick="loadPresetStoryboard(6, 10)">Mẫu 60s (6×10s)</button>
+              <button class="btn btn-ghost btn-xs" onclick="loadPresetStoryboard(2, 15)">30s · 2 cảnh</button>
+              <button class="btn btn-ghost btn-xs" onclick="loadPresetStoryboard(4, 15)">60s · 4 cảnh</button>
+              <button class="btn btn-ghost btn-xs" onclick="loadPresetStoryboard(6, 10)">60s · 6 cảnh</button>
               <button class="btn btn-xs" onclick="addSceneBox()">
                 <svg class="sf-icon"><use href="#sf-plus"/></svg> Thêm Cảnh
               </button>
             </div>
-          </div>
-
           <div id="storyboardList" class="scene-stack"></div>
         </div>
 
         <!-- Right: Inspector & Monitor -->
-        <div style="display:flex; flex-direction:column; gap:16px;">
-          <div class="panel">
+        <div class="inspector-column">
+          <div class="panel preview-panel">
+            <div class="panel-header">
+              <h2 class="panel-title">
+                <svg class="sf-icon sf-icon-lg"><use href="#sf-play"/></svg>
+                Xem trước
+              </h2>
+              <span id="tvcJobBadge" class="chip"><span class="dot"></span> Sẵn sàng</span>
+            </div>
+            <div class="monitor-frame" id="tvcVideoStage">
+              <div class="monitor-empty">
+                <span class="preview-mark"><svg class="sf-icon"><use href="#sf-film"/></svg></span>
+                <strong>Chưa có video</strong>
+              </div>
+            </div>
+            <div class="timeline-title"><span>Timeline phân cảnh</span><span id="monitorDuration">00:00 / 01:00</span></div>
+            <div class="timeline-track" id="timelineTrack" aria-label="Chọn phân cảnh để chỉnh sửa"></div>
+            <div id="tvcDownloadBar" style="display:none; margin-bottom:8px; text-align:right;">
+              <a id="tvcDownloadLink" class="btn btn-xs" href="#" download>
+                <svg class="sf-icon"><use href="#sf-download"/></svg> Tải Video MP4 (1080p)
+              </a>
+            </div>
+            <details class="console-details" id="tvcProgressDetails"><summary>Tiến trình sản xuất</summary><pre class="apple-console" id="tvcConsole" aria-live="polite">Sẵn sàng nhận lệnh sản xuất...</pre></details>
+          </div>
+
+          <div class="panel export-panel">
             <div class="panel-header">
               <h2 class="panel-title">
                 <svg class="sf-icon sf-icon-lg"><use href="#sf-waveform"/></svg>
-                Thiết Lập Âm Thanh & Xuất File Master 1080p
+                Âm thanh & xuất phim
               </h2>
             </div>
             <div class="field-grid">
               <div>
-                <label>Giọng Đọc (`gemini-3.8-flash-tts` 1-Take)</label>
+                <label for="tvcVoice">Giọng đọc 1-Take</label>
                 <select id="tvcVoice">
                   <option value="Puck" selected>Puck — Nam Founder Truyền Lửa</option>
                   <option value="Aoede">Aoede — Nữ Truyền Cảm, Sang Trọng</option>
@@ -564,10 +454,10 @@
                 </select>
               </div>
               <div>
-                <label>Nhạc Nền Lyria (`BPM` & `Scale`)</label>
+                <label for="tvcBpm">Nhịp độ & sắc thái</label>
                 <div style="display:flex; gap:6px;">
-                  <input id="tvcBpm" type="number" value="116" style="width:76px;" />
-                  <select id="tvcScale">
+                  <input id="tvcBpm" type="number" value="116" style="width:76px; flex-shrink:0;" aria-label="Nhịp độ BPM" />
+                  <select id="tvcScale" aria-label="Sắc thái nhạc">
                     <option value="MINOR" selected>MINOR (Hiện Đại)</option>
                     <option value="MAJOR">MAJOR (Tươi Sáng)</option>
                     <option value="PENTATONIC">PENTATONIC (Tinh Tế)</option>
@@ -578,37 +468,19 @@
 
             <div class="field-grid">
               <div>
-                <label>Prompt Nhạc Nền (`Lyria RealTime 48kHz`)</label>
+                <label for="tvcBgmPrompt">Phong cách nhạc nền</label>
                 <input id="tvcBgmPrompt" value="Cinematic modern corporate electronic commercial music, driving synth pulse and warm deep bass" />
               </div>
               <div>
-                <label>Tên File Xuất (`1920×1080 Full HD`)</label>
+                <label for="tvcOutputName">Tên file xuất</label>
                 <input id="tvcOutputName" value="hebum_tvc_60s_4x15s_1080p.mp4" />
               </div>
             </div>
 
-            <button class="btn" style="width:100%; margin-top:14px;" onclick="submitCommercialJob()">
-              <svg class="sf-icon"><use href="#sf-play"/></svg> Sản Xuất TVC 1080p Full HD
+            <button class="btn" id="produceButton" style="width:100%; margin-top:14px;" onclick="submitCommercialJob()">
+              <svg class="sf-icon"><use href="#sf-sparkles"/></svg> Sản xuất TVC
             </button>
-          </div>
-
-          <div class="panel">
-            <div class="panel-header">
-              <h2 class="panel-title">
-                <svg class="sf-icon sf-icon-lg"><use href="#sf-play"/></svg>
-                Studio Monitor
-              </h2>
-              <span id="tvcJobBadge" class="chip"><span class="dot"></span> Sẵn sàng</span>
-            </div>
-            <div class="monitor-frame" id="tvcVideoStage">
-              <span style="color:var(--text-tertiary); font-size:12px;">Khung hình preview 1080p Full HD</span>
-            </div>
-            <div id="tvcDownloadBar" style="display:none; margin-bottom:8px; text-align:right;">
-              <a id="tvcDownloadLink" class="btn btn-xs" href="#" download>
-                <svg class="sf-icon"><use href="#sf-download"/></svg> Tải Video MP4 (1080p)
-              </a>
-            </div>
-            <pre class="apple-console" id="tvcConsole">Sẵn sàng nhận lệnh sản xuất...</pre>
+            <p class="export-note">1920 × 1080 · MP4</p>
           </div>
         </div>
       </div>
@@ -616,22 +488,40 @@
 
     <!-- TAB 2: QUICK 15S SCENE GENERATOR -->
     <section id="tab-scene" class="tab-pane">
-      <div class="layout-2col">
-        <div class="panel">
+      <div class="quick-layout">
+        <div class="panel quick-brief">
           <div class="panel-header">
             <h2 class="panel-title">
               <svg class="sf-icon sf-icon-lg"><use href="#sf-sparkles"/></svg>
-              Tạo Cảnh Đơn `15 Giây` (`Omni 1.1 Flash` + `StructuredImage`)
+              Nội dung cảnh quay
             </h2>
           </div>
-          <label>Prompt Mô Tả Cảnh (Tiếng Anh)</label>
-          <textarea id="scPrompt" style="min-height:92px;">Continuous unbroken 15-second cinematic shot in a sleek dark-emerald executive glass office. A charismatic 32-year-old Vietnamese male business founder in a tailored charcoal-black blazer stands on the left and gestures proudly toward a large frameless ultrawide glass monitor on the right that displays the exact HEBUM CRM interface from the reference image. Smooth camera push-in toward the glowing CRM monitor. No spoken dialogue.</textarea>
+          <label>Mô tả cảnh quay bằng tiếng Anh</label>
+          <textarea id="scPrompt">Continuous unbroken 15-second cinematic shot in a sleek dark-emerald executive glass office. A charismatic 32-year-old Vietnamese male business founder in a tailored charcoal-black blazer stands on the left and gestures proudly toward a large frameless ultrawide glass monitor on the right that displays the exact HEBUM CRM interface from the reference image. Smooth camera push-in toward the glowing CRM monitor. No spoken dialogue.</textarea>
 
-          <div class="field-grid">
+          <label>Chọn hoặc tải lên ảnh tham chiếu</label>
+          <div class="quick-reference">
+            <select id="scPresetImage" onchange="document.getElementById('scImagePath').value = this.value">
+              <option value="assets_1080p/asset_01_kenh_ket_noi_1080p.png">Ảnh #1 — Kênh kết nối đa nền tảng (1080p)</option>
+              <option value="assets_1080p/asset_02_hop_thu_da_kenh_1080p.png">Ảnh #2 — Hộp thư đa kênh Live Chat (1080p)</option>
+              <option value="assets_1080p/asset_03_ho_so_khach_hang_cong_no_1080p.png">Ảnh #3 — Hồ sơ Khách hàng 360° & Công nợ (1080p)</option>
+              <option value="assets_1080p/asset_04_pipeline_kinh_doanh_1080p.png">Ảnh #4 — Pipeline kinh doanh Kanban (1080p)</option>
+              <option value="assets_1080p/asset_05_luong_tu_dong_hoa_1080p.png">Ảnh #5 — Thiết lập luồng Tự động hóa VIP (1080p)</option>
+              <option value="assets_1080p/asset_06_bao_cao_dashboard_1080p.png">Ảnh #6 — Báo cáo Dashboard Real-Time (1080p)</option>
+              <option value="">-- Không dùng ảnh thành phần --</option>
+            </select>
+            <input type="file" accept="image/*" onchange="encodeFileToInput(this, 'scImagePath')" />
+          </div>
+          <label>Đường dẫn ảnh tham chiếu</label>
+          <input id="scImagePath" value="assets_1080p/asset_01_kenh_ket_noi_1080p.png" />
+        </div>
+        <div class="panel quick-settings">
+          <div class="panel-header"><h2 class="panel-title">Thiết lập đầu ra</h2><span class="chip">1080p · MP4</span></div>
+          <div class="quick-output-fields">
             <div>
-              <label>Thời Lượng Clip (`3s – 15s`)</label>
+              <label>Thời lượng cảnh</label>
               <select id="scDuration">
-                <option value="15" selected>15 Giây (Chuẩn Mới)</option>
+                <option value="15" selected>15 giây</option>
                 <option value="10">10 Giây</option>
                 <option value="8">8 Giây</option>
                 <option value="5">5 Giây</option>
@@ -642,63 +532,146 @@
               <input id="scOutName" value="omni_scene_15s_1080p.mp4" />
             </div>
           </div>
-
-          <label>Chọn Hoặc Tải Lên Ảnh Thành Phần (`StructuredImage Node[11]`)</label>
-          <div style="display:flex; gap:8px;">
-            <select id="scPresetImage" onchange="document.getElementById('scImagePath').value = this.value">
-              <option value="assets_1080p/asset_01_kenh_ket_noi_1080p.png">Ảnh #1 — Kênh kết nối đa nền tảng (1080p)</option>
-              <option value="assets_1080p/asset_02_hop_thu_da_kenh_1080p.png">Ảnh #2 — Hộp thư đa kênh Live Chat (1080p)</option>
-              <option value="assets_1080p/asset_03_ho_so_khach_hang_cong_no_1080p.png">Ảnh #3 — Hồ sơ Khách hàng 360° & Công nợ (1080p)</option>
-              <option value="assets_1080p/asset_04_pipeline_kinh_doanh_1080p.png">Ảnh #4 — Pipeline kinh doanh Kanban (1080p)</option>
-              <option value="assets_1080p/asset_05_luong_tu_dong_hoa_1080p.png">Ảnh #5 — Thiết lập luồng Tự động hóa VIP (1080p)</option>
-              <option value="assets_1080p/asset_06_bao_cao_dashboard_1080p.png">Ảnh #6 — Báo cáo Dashboard Real-Time (1080p)</option>
-              <option value="">-- Không dùng ảnh thành phần --</option>
-            </select>
-            <input type="file" accept="image/*" style="max-width:190px;" onchange="encodeFileToInput(this, 'scImagePath')" />
-          </div>
-          <label>Đường Dẫn Hoặc Base64 Ảnh Thành Phần</label>
-          <input id="scImagePath" value="assets_1080p/asset_01_kenh_ket_noi_1080p.png" />
-
-          <label>Nối Chuỗi Từ Node Cảnh Trước (`prior_node_files` — Tùy chọn)</label>
+          <label>Nối với cảnh trước (tùy chọn)</label>
           <input id="scPriorNode" placeholder="Ví dụ: omni_scene_s1_node.json (để trống nếu là Cảnh 1)" />
 
-          <button class="btn" style="margin-top:14px; width:100%;" onclick="submitQuickScene()">
-            <svg class="sf-icon"><use href="#sf-play"/></svg> Tạo Cảnh Video 1080p
+          <button class="btn" onclick="submitQuickScene()">
+            <svg class="sf-icon"><use href="#sf-play"/></svg> Tạo cảnh video
+          </button>
+        </div>
+
+        <div class="panel quick-preview">
+          <div class="panel-header">
+            <h2 class="panel-title">
+              <svg class="sf-icon sf-icon-lg"><use href="#sf-play"/></svg>
+              Xem trước cảnh quay
+            </h2>
+            <span id="scJobBadge" class="chip"><span class="dot"></span> Chờ lệnh</span>
+          </div>
+          <div class="monitor-frame" id="scVideoStage">
+            <div class="monitor-empty"><span class="preview-mark"><svg class="sf-icon" aria-hidden="true"><use href="#sf-film"/></svg></span><strong>Chưa có cảnh để xem</strong></div>
+          </div>
+          <pre class="apple-console" id="scConsole">Chưa có tiến trình nào.</pre>
+        </div>
+        <div class="panel quick-videos">
+          <div class="panel-header">
+            <h2 class="panel-title">Video đã xuất</h2>
+            <button class="btn btn-ghost btn-xs" onclick="document.querySelector('.seg-btn[aria-controls=tab-gallery]').click()">Mở thư viện</button>
+          </div>
+          <div id="quickVideos" class="quick-videos-list" aria-busy="true" onclick="previewSavedVideo(event)"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2B: COOKIE AI IMAGE GENERATOR -->
+    <section id="tab-image" class="tab-pane">
+      <div class="layout-2col">
+        <div class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title">
+              <svg class="sf-icon sf-icon-lg"><use href="#sf-photo"/></svg>
+              Tạo ảnh AI qua Cookie
+            </h2>
+            <span class="chip ok"><span class="dot"></span> Không tốn API Key</span>
+          </div>
+          <label for="imgPromptInput">Mô tả hình ảnh bằng tiếng Anh</label>
+          <textarea id="imgPromptInput" style="min-height:92px;">A sleek futuristic dark-emerald glass executive office with a large frameless ultrawide glass monitor displaying a modern multi-channel CRM dashboard, warm cinematic studio lighting, 4k photorealistic</textarea>
+
+          <div class="field-grid">
+            <div>
+              <label for="imgAspectRatio">Tỷ lệ khung hình</label>
+              <select id="imgAspectRatio">
+                <option value="16:9" selected>16:9 · Khổ ngang (Video)</option>
+                <option value="1:1">1:1 · Hình vuông</option>
+                <option value="9:16">9:16 · Khổ dọc (Shorts/Reels)</option>
+              </select>
+            </div>
+            <div>
+              <label for="imgStyleSelect">Phong cách hình ảnh</label>
+              <select id="imgStyleSelect">
+                <option value="PHOTOGRAPHY" selected>Nhiếp ảnh (Photography)</option>
+                <option value="VECTOR_ART">Nghệ thuật Vector (Vector Art)</option>
+                <option value="ILLUSTRATION">Minh họa (Illustration)</option>
+                <option value="BACKGROUND">Phông nền (Background)</option>
+                <option value="LANDSCAPE">Phong cảnh (Landscape)</option>
+                <option value="FLATLAY">Trải phẳng (Flatlay)</option>
+                <option value="WATERCOLOR">Màu nước (Watercolor)</option>
+                <option value="CYBERPUNK">Viễn tưởng công nghệ cao (Cyberpunk)</option>
+                <option value="UNSPECIFIED">Mặc định (Không chọn kiểu)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-grid">
+            <div>
+              <label for="imgCountSelect">Số lượng ảnh</label>
+              <select id="imgCountSelect">
+                <option value="1" selected>1 ảnh</option>
+                <option value="2">2 ảnh</option>
+                <option value="4">4 ảnh</option>
+              </select>
+            </div>
+            <div>
+              <label for="imgOutName">Tên file ảnh xuất ra</label>
+              <input id="imgOutName" value="omni_cookie_image_1080p.png" />
+            </div>
+          </div>
+
+          <button class="btn" id="generateImageBtn" style="margin-top:14px; width:100%;" onclick="submitCookieImageGen()">
+            <svg class="sf-icon"><use href="#sf-sparkles"/></svg> Tạo ảnh qua Cookie
           </button>
         </div>
 
         <div class="panel">
           <div class="panel-header">
             <h2 class="panel-title">
-              <svg class="sf-icon sf-icon-lg"><use href="#sf-play"/></svg>
-              Màn Hình Xem Trước Cảnh Đơn
+              <svg class="sf-icon sf-icon-lg"><use href="#sf-photo"/></svg>
+              Xem trước ảnh AI
             </h2>
-            <span id="scJobBadge" class="chip"><span class="dot"></span> Chờ lệnh</span>
+            <span id="imgJobBadge" class="chip"><span class="dot"></span> Sẵn sàng</span>
           </div>
-          <div class="monitor-frame" id="scVideoStage">
-            <span style="color:var(--text-tertiary); font-size:12px;">Video cảnh đơn sẽ phát tại đây</span>
+          <div class="monitor-frame" id="imgPreviewStage">
+            <div class="monitor-empty">
+              <span class="preview-mark"><svg class="sf-icon" aria-hidden="true"><use href="#sf-photo"/></svg></span>
+              <strong>Chưa có hình ảnh</strong>
+            </div>
           </div>
-          <pre class="apple-console" id="scConsole">Chưa có tiến trình nào.</pre>
+          <div id="imgActionRow" style="display:none; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+            <button class="btn btn-xs" onclick="useCookieImageForQuickScene()">
+              <svg class="sf-icon"><use href="#sf-sparkles"/></svg> Dùng làm ảnh tham chiếu Cảnh nhanh
+            </button>
+            <button class="btn btn-ghost btn-xs" onclick="useCookieImageForScene1()">
+              <svg class="sf-icon"><use href="#sf-film"/></svg> Gắn vào Cảnh 1 TVC
+            </button>
+            <a id="imgDownloadLink" class="btn btn-ghost btn-xs" href="#" download>
+              <svg class="sf-icon"><use href="#sf-download"/></svg> Tải ảnh PNG
+            </a>
+          </div>
+          <pre class="apple-console" id="imgConsole">Sẵn sàng tạo ảnh trực tiếp qua Cookie phiên Google Vids...</pre>
         </div>
       </div>
     </section>
 
     <!-- TAB 3: STANDALONE 1-TAKE VOICEOVER & LYRIA MUSIC STUDIO -->
     <section id="tab-audio" class="tab-pane">
-      <div class="layout-2col">
-        <div class="panel">
+      <div class="audio-layout">
+        <div class="panel audio-editor">
           <div class="panel-header">
             <h2 class="panel-title">
               <svg class="sf-icon sf-icon-lg"><use href="#sf-waveform"/></svg>
-              Phòng Thu Giọng Đọc `Single-Pass 1-Take` (`gemini-3.8-flash-tts`)
-            </h2>
+              Giọng đọc 1-Take
+            </h2><span class="chip">Gemini 3.8 Flash TTS</span>
           </div>
-          <label>Kịch Bản Lời Thoại Tiếng Việt (Ngăn cách mỗi cảnh bằng 1 dòng trống `\n\n`)</label>
-          <textarea id="voTextInput" style="min-height:130px;">Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập... Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!
+          <div class="audio-field-heading">
+            <label for="voTextInput">Lời thoại tiếng Việt</label>
+            <span class="audio-counter" id="voiceScriptCount"></span>
+          </div>
+          <textarea id="voTextInput" aria-describedby="voiceScriptHint" oninput="updateVoiceScriptCount()">Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập... Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!
 
 Đó là lúc Hebum xuất hiện! Gom trọn mọi hội thoại về một màn hình Live Chat, phản hồi khách tức thì!
 
 Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng ký ngay tại wscrm chấm hebum chấm com chấm vn, chỉ sáu trăm chín mươi nghìn đồng!</textarea>
+          <p class="media-hint" id="voiceScriptHint">Dùng một dòng trống để ngắt giữa các cảnh.</p>
           <div class="field-grid">
             <div>
               <label>Giọng Đọc</label>
@@ -714,39 +687,56 @@ Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng k�
               <input id="voOutName" value="vo_1take_emotional.wav" />
             </div>
           </div>
-          <label>Chỉ Dẫn Đạo Diễn Cảm Xúc (`speech_metadata`)</label>
-          <input id="voStyleInput" value="Expressive, deeply emotional, charismatic Vietnamese commercial storyteller and startup founder. Start with empathetic concern, shift into warm excitement, and finish with an inspiring call to action." />
-          <button class="btn" style="margin-top:14px; width:100%;" onclick="generateStandaloneVO()">
-            <svg class="sf-icon"><use href="#sf-waveform"/></svg> Thu Âm 1-Take (`24kHz WAV` • Lọc Sạch 6KB C2PA)
+          <label>Phong cách & cảm xúc</label>
+          <textarea id="voStyleInput">Expressive, deeply emotional, charismatic Vietnamese commercial storyteller and startup founder. Start with empathetic concern, shift into warm excitement, and finish with an inspiring call to action.</textarea>
+          <button class="btn" onclick="generateStandaloneVO(this)">
+            <svg class="sf-icon"><use href="#sf-waveform"/></svg> Tạo giọng đọc 1-Take
           </button>
-          <div id="voAudioResult" style="margin-top:12px;"></div>
         </div>
 
-        <div class="panel">
+        <div class="panel audio-editor">
           <div class="panel-header">
             <h2 class="panel-title">
               <svg class="sf-icon sf-icon-lg"><use href="#sf-sparkles"/></svg>
-              Sáng Tác Nhạc Nền AI (`Google Lyria RealTime 48kHz Stereo`)
-            </h2>
+              Nhạc nền Lyria
+            </h2><span class="chip">Stereo · WAV 48 kHz</span>
           </div>
-          <label>Mô Tả Phong Cách Nhạc Nền</label>
-          <textarea id="bgmPromptInput" style="min-height:90px;">Cinematic futuristic corporate synthwave electronic commercial music, deep driving bassline, inspiring warm pads</textarea>
+          <label>Mô tả phong cách nhạc nền</label>
+          <textarea id="bgmPromptInput">Cinematic futuristic corporate synthwave electronic commercial music, deep driving bassline, inspiring warm pads</textarea>
+          <div class="audio-presets" aria-label="Mẫu phong cách nhạc nền">
+            <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('cinematic')">Điện ảnh</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('technology')">Công nghệ</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="applyMusicPreset('acoustic')">Acoustic</button>
+          </div>
           <div class="field-grid">
             <div>
-              <label>Thời Lượng (Giây)</label>
+              <label>Thời lượng (giây)</label>
               <input id="bgmDurInput" type="number" value="30" />
             </div>
             <div>
-              <label>Nhịp Độ (`BPM`)</label>
+              <label>Nhịp độ (BPM)</label>
               <input id="bgmBpmInput" type="number" value="116" />
             </div>
           </div>
-          <label>Tên File Nhạc WAV Xuất Ra</label>
+          <label>Tên tệp WAV</label>
           <input id="bgmOutName" value="lyria_bgm_stereo_48khz.wav" />
-          <button class="btn" style="margin-top:14px; width:100%;" onclick="generateStandaloneBGM()">
-            <svg class="sf-icon"><use href="#sf-play"/></svg> Sáng Tác Nhạc Nền Lyria (`48kHz WAV`)
+          <button class="btn" onclick="generateStandaloneBGM(this)">
+            <svg class="sf-icon"><use href="#sf-play"/></svg> Sáng tác nhạc nền
           </button>
-          <div id="bgmAudioResult" style="margin-top:12px;"></div>
+        </div>
+        <div class="panel audio-results">
+          <div class="panel-header"><h2 class="panel-title">Nghe thử & tải WAV</h2></div>
+          <div class="audio-results-grid">
+            <div class="audio-result-card"><div class="audio-result-heading"><h3>Giọng đọc</h3><span class="chip">1-Take</span></div><div id="voAudioResult" aria-live="polite"><p class="media-hint">Chưa có bản thu.</p></div></div>
+            <div class="audio-result-card"><div class="audio-result-heading"><h3>Nhạc nền</h3><span class="chip">48 kHz</span></div><div id="bgmAudioResult" aria-live="polite"><p class="media-hint">Chưa có bản nhạc.</p></div></div>
+          </div>
+          <div class="audio-saved">
+            <label for="savedAudioSelect">WAV đã lưu</label>
+            <select id="savedAudioSelect" onchange="previewSavedAudio()" disabled>
+              <option value="">Chọn một bản WAV</option>
+            </select>
+            <div class="audio-saved-player" id="savedAudioPlayer" aria-live="polite"></div>
+          </div>
         </div>
       </div>
     </section>
@@ -754,60 +744,50 @@ Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng k�
     <!-- TAB 4: OUTPUTS GALLERY -->
     <section id="tab-gallery" class="tab-pane">
       <div class="panel">
-        <div class="panel-header">
-          <h2 class="panel-title">
-            <svg class="sf-icon sf-icon-lg"><use href="#sf-folder"/></svg>
-            Kho Media Đã Xuất Trên Máy Chủ (`/outputs`)
-          </h2>
-          <button class="btn btn-ghost btn-xs" onclick="loadGallery()">
-            <svg class="sf-icon"><use href="#sf-refresh"/></svg> Làm Mới
-          </button>
-        </div>
-        <div id="galleryContainer" class="gallery-grid"></div>
+          <div class="panel-header">
+            <h2 class="panel-title"><svg class="sf-icon sf-icon-lg" aria-hidden="true"><use href="#sf-folder"/></svg> Tệp đã xuất</h2>
+            <button class="btn btn-ghost btn-xs" id="galleryRefresh" onclick="loadGallery()">
+              <svg class="sf-icon" aria-hidden="true"><use href="#sf-refresh"/></svg> Làm mới
+            </button>
+          </div>
+          <div class="library-toolbar">
+            <input id="gallerySearch" type="search" aria-label="Tìm theo tên tệp" placeholder="Tìm theo tên tệp…" oninput="renderGallery()" />
+            <select id="galleryFilter" aria-label="Loại tệp" onchange="renderGallery()">
+              <option value="">Tất cả loại tệp</option><option value="mp4">Video · MP4</option><option value="wav">Âm thanh · WAV</option><option value="json">Dữ liệu · JSON</option>
+            </select>
+          </div>
+          <p id="galleryCount" class="media-hint library-count" role="status"></p>
+          <div id="galleryContainer" class="library-grid" onclick="playGalleryFile(event)"></div>
       </div>
     </section>
 
     <!-- TAB 5: SESSION & COOKIE MANAGER -->
     <section id="tab-session" class="tab-pane">
+      <div class="session-metrics" aria-label="Trạng thái kết nối">
+        <div class="session-metric"><strong>Google Vids</strong><span class="chip" id="sessionVidsStatus">Đang kiểm tra…</span></div>
+        <div class="session-metric"><strong>Gemini TTS & Lyria</strong><span class="chip" id="sessionAudioStatus">Đang kiểm tra…</span></div>
+        <div class="session-metric"><strong>Làm mới phiên</strong><span class="chip" id="sessionRotateStatus">Đang kiểm tra…</span></div>
+      </div>
       <div class="layout-2col">
         <div class="panel">
-          <div class="panel-header">
-            <h2 class="panel-title">
-              <svg class="sf-icon sf-icon-lg"><use href="#sf-shield"/></svg>
-              Quản Lý Phiên `vids.new` & Tự Động Xoay Vòng Cookie 24/7
-            </h2>
-          </div>
-          <div id="sessionDetailBox" style="margin-bottom:10px;"></div>
-          <label>Chuỗi Cookie (`SID=...; __Secure-1PSIDTS=...`) Hoặc Lệnh `curl`</label>
-          <textarea id="sessCookieInput" style="min-height:95px;" placeholder="Dán chuỗi Cookie hoặc lệnh cURL từ vids.new vào đây..."></textarea>
+          <div class="panel-header"><h2 class="panel-title">Tài khoản & kết nối</h2></div>
+          <label for="sessCookieInput">Cookie, cURL hoặc JSON phiên</label>
+          <textarea id="sessCookieInput" placeholder="Dán thông tin phiên Google Vids" autocomplete="off" spellcheck="false"></textarea>
           <div class="field-grid">
-            <div>
-              <label>Google Vids `doc_id`</label>
-              <input id="sessDocId" placeholder="1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc" />
-            </div>
-            <div>
-              <label>Tài Khoản `authuser`</label>
-              <input id="sessAuthuser" value="0" />
-            </div>
+            <div><label for="sessDocId">Google Vids · Doc ID</label><input id="sessDocId" placeholder="ID tài liệu" /></div>
+            <div><label for="sessAuthuser">Chỉ số tài khoản (authuser)</label><input id="sessAuthuser" inputmode="numeric" value="0" /></div>
           </div>
-          <label>`GEMINI_API_KEY` (Cho Gemini 3.8 TTS & Google Lyria RealTime)</label>
-          <input id="sessApiKey" placeholder="AIzaSy..." />
-          <div style="display:flex; gap:8px; margin-top:14px;">
-            <button class="btn" onclick="saveSessionConfig()">Lưu Cấu Hình</button>
-            <button class="btn btn-ghost" onclick="triggerCookieRotate()">
-              <svg class="sf-icon"><use href="#sf-refresh"/></svg> Xoay Vòng Cookie (`RotateCookies`)
-            </button>
+          <label for="sessApiKey">Khóa Gemini API</label>
+          <input id="sessApiKey" type="password" autocomplete="off" placeholder="Nhập khóa mới để cập nhật" />
+          <div class="utility-actions">
+            <button class="btn" onclick="saveSessionConfig(this)">Lưu cấu hình</button>
+            <button class="btn btn-ghost" onclick="triggerCookieRotate(this)"><svg class="sf-icon" aria-hidden="true"><use href="#sf-refresh"/></svg> Làm mới kết nối</button>
           </div>
+          <p id="sessionActionMessage" class="utility-message" role="status"></p>
         </div>
-
         <div class="panel">
-          <div class="panel-header">
-            <h2 class="panel-title">
-              <svg class="sf-icon sf-icon-lg"><use href="#sf-nodes"/></svg>
-              Tài Liệu Kết Nối REST API Chuẩn JSON
-            </h2>
-          </div>
-          <pre class="apple-console" style="max-height:360px;"># 1. Kiểm tra trạng thái Cookie & Auto-Rotate
+          <div class="panel-header"><h2 class="panel-title">Tài liệu REST API</h2></div>
+          <pre class="apple-console"># 1. Kiểm tra trạng thái Cookie & Auto-Rotate
 GET /api/session/status
 
 # 2. Tạo 1 cảnh video 15s kèm ảnh Thành phần (StructuredImage)
@@ -830,76 +810,35 @@ POST /api/produce-commercial
   "scale": "MINOR",
   "scenes": [ ... ]
 }</pre>
+          <details class="utility-details"><summary>Chi tiết trạng thái phiên (JSON)</summary><pre class="apple-console" id="sessionDetailBox"></pre></details>
         </div>
       </div>
     </section>
 
-    <!-- TAB 6: MCP AGENT PIPELINE HUB -->
     <section id="tab-mcp" class="tab-pane">
-      <div class="panel" style="margin-bottom:16px;">
-        <div class="panel-header">
-          <h2 class="panel-title">
-            <svg class="sf-icon sf-icon-lg"><use href="#sf-nodes"/></svg>
-            Hệ Thống Luồng MCP Cho AI Agent (`omni-flash-video-studio-mcp v2.0` • `15s Engine`)
-          </h2>
-          <span class="chip ok"><span class="dot"></span> 8 MCP Tools Active (`stdio` & `HTTP /mcp`)</span>
-        </div>
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px;">
-          <div style="background:var(--bg-grouped); border:1px solid var(--border-hairline); border-radius:10px; padding:12px;">
-            <div style="color:var(--apple-blue); font-weight:600; font-size:12px;">LUỒNG 1 • PHIÊN & KEEP-ALIVE</div>
-            <div style="font-size:11.5px; color:var(--text-primary); margin-top:4px;"><code>omni_session_status</code> · <code>omni_session_update</code></div>
-            <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Xoay vòng <code>__Secure-1PSIDTS</code> 24/7 qua <code>RotateCookies</code>.</div>
-          </div>
-          <div style="background:var(--bg-grouped); border:1px solid var(--border-hairline); border-radius:10px; padding:12px;">
-            <div style="color:var(--apple-blue); font-weight:600; font-size:12px;">LUỒNG 2 • VIDEO 15S & THÀNH PHẦN</div>
-            <div style="font-size:11.5px; color:var(--text-primary); margin-top:4px;"><code>omni_generate_scene</code></div>
-            <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Sinh clip <code>15s</code>/<code>10s</code> + nạp ảnh <code>StructuredImage (Node[11])</code>.</div>
-          </div>
-          <div style="background:var(--bg-grouped); border:1px solid var(--border-hairline); border-radius:10px; padding:12px;">
-            <div style="color:var(--apple-blue); font-weight:600; font-size:12px;">LUỒNG 3 • GIỌNG 1-TAKE & NHẠC</div>
-            <div style="font-size:11.5px; color:var(--text-primary); margin-top:4px;"><code>omni_synthesize_1take_vo</code> · <code>omni_generate_lyria_bgm</code></div>
-            <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Thu âm 1-Take <code>gemini-3.8-flash-tts</code> (`1.00x`) + nhạc <code>Lyria 48kHz</code>.</div>
-          </div>
-          <div style="background:var(--bg-grouped); border:1px solid var(--border-hairline); border-radius:10px; padding:12px;">
-            <div style="color:var(--apple-blue); font-weight:600; font-size:12px;">LUỒNG 4 • MASTERING TVC 1080P</div>
-            <div style="font-size:11.5px; color:var(--text-primary); margin-top:4px;"><code>omni_produce_commercial</code> · <code>omni_job_status</code></div>
-            <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Clean Audio Bus + Spectral Carve + Sidechain 6:1 + ASS HUD.</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="layout-2col">
+      <div class="mcp-layout">
         <div class="panel">
-          <div class="panel-header">
-            <h2 class="panel-title">
-              <svg class="sf-icon sf-icon-lg"><use href="#sf-play"/></svg>
-              Test Trực Tiếp Công Cụ MCP (`POST /mcp` JSON-RPC 2.0)
-            </h2>
-          </div>
-          <label>Chọn Tool MCP Trong Luồng</label>
-          <select id="mcpToolSelect" onchange="populateMcpSampleArgs()"></select>
-          <div id="mcpToolDesc" style="font-size:11.5px; color:var(--text-secondary); margin-top:6px; line-height:1.4;"></div>
-          <label>Tham Số (`arguments` JSON)</label>
-          <textarea id="mcpArgsInput" style="min-height:145px; font-family:'SF Mono', Consolas, monospace;"></textarea>
-          <button class="btn" style="margin-top:12px; width:100%;" onclick="invokeMcpToolLive()">
-            <svg class="sf-icon"><use href="#sf-play"/></svg> Gọi Tool MCP Ngay (`POST /mcp`)
-          </button>
-          <pre class="apple-console" id="mcpCallResult">Kết quả JSON-RPC 2.0 sẽ hiển thị tại đây...</pre>
-        </div>
-
-        <div class="panel">
-          <div class="panel-header">
-            <h2 class="panel-title">
-              <svg class="sf-icon sf-icon-lg"><use href="#sf-apple"/></svg>
-              Cấu Hình Kết Nối Cho Claude Code / Antigravity / Cursor
-            </h2>
-          </div>
-          <label>1. Lệnh gắn nhanh vào Claude Code CLI</label>
-          <pre class="apple-console" style="max-height:90px;">claude mcp add --transport http omni-flash-studio http://localhost:8765/mcp
+          <div class="panel-header"><h2 class="panel-title">Danh mục công cụ</h2><span class="chip" id="mcpToolCount">Đang tải…</span></div>
+          <div class="mcp-catalog" id="mcpToolsCatalog" onclick="selectMcpTool(event)"></div>
+          <details class="utility-details"><summary>Kết nối từ Claude Code</summary><pre class="apple-console">claude mcp add --transport http omni-flash-studio http://localhost:8765/mcp
 # Hoặc chế độ stdio:
-claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
-          <label>2. Danh Mục 8 Công Cụ MCP Trên Máy Chủ</label>
-          <div id="mcpToolsCatalog" style="max-height:260px; overflow-y:auto; margin-top:6px;"></div>
+claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre></details>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><h2 class="panel-title">Chạy thử công cụ</h2><span class="chip">POST /mcp</span></div>
+          <label for="mcpToolSelect">Công cụ</label>
+          <select id="mcpToolSelect" onchange="populateMcpSampleArgs()"></select>
+          <p id="mcpToolDesc" class="utility-message"></p>
+          <label for="mcpArgsInput">Tham số JSON</label>
+          <textarea id="mcpArgsInput" class="json-editor" spellcheck="false"></textarea>
+          <div class="utility-actions">
+            <button class="btn" id="mcpRunButton" onclick="invokeMcpToolLive()" disabled>Chạy công cụ</button>
+            <button class="btn btn-ghost" onclick="populateMcpSampleArgs()">Nạp mẫu</button>
+          </div>
+        </div>
+        <div class="panel mcp-result">
+          <div class="panel-header"><h2 class="panel-title">Kết quả</h2><span class="chip" id="mcpCallStatus" role="status">Chưa chạy</span></div>
+          <pre class="apple-console" id="mcpCallResult">Kết quả JSON-RPC sẽ hiển thị ở đây.</pre>
         </div>
       </div>
     </section>
@@ -959,17 +898,78 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
     ];
 
     let storyboardScenes = [];
+    let expandedScenes = new Set([0]);
+    let commercialJobPending = false;
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function connectFieldLabels(root = document) {
+      root.querySelectorAll('label:not([for])').forEach((label, index) => {
+        const next = label.nextElementSibling;
+        const field = next?.matches('input,select,textarea') ? next : next?.querySelector('input,select,textarea');
+        if (!field) return;
+        if (!field.id) field.id = 'field-' + (root.id || 'studio') + '-' + index;
+        label.htmlFor = field.id;
+      });
+      root.querySelectorAll('input[type=file]').forEach(field => {
+        if (!field.hasAttribute('aria-label')) field.setAttribute('aria-label', 'Tải lên ảnh tham chiếu');
+      });
+    }
 
     function switchTab(tabId, btn) {
       document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
       document.getElementById(tabId).classList.add('active');
-      if (btn) btn.classList.add('active');
+      btn.classList.add('active');
+      document.querySelectorAll('.seg-btn').forEach(b => {
+        if (b.classList.contains('active')) b.setAttribute('aria-current', 'page');
+        else b.removeAttribute('aria-current');
+      });
+      document.getElementById('pageTitle').textContent = btn.textContent.trim();
+      document.getElementById('projectStats').hidden = tabId !== 'tab-commercial';
+      if (tabId === 'tab-scene') loadQuickVideos();
+      if (tabId === 'tab-audio') {
+        updateVoiceScriptCount();
+        loadSavedAudio();
+      }
     }
 
     function toggleSceneCard(idx) {
       const el = document.getElementById('sceneCard_' + idx);
-      if (el) el.classList.toggle('collapsed');
+      if (el) {
+        if (expandedScenes.has(idx)) expandedScenes.delete(idx);
+        else expandedScenes.add(idx);
+        el.classList.toggle('collapsed', !expandedScenes.has(idx));
+        el.querySelectorAll('[aria-expanded]').forEach(b => b.setAttribute('aria-expanded', String(expandedScenes.has(idx))));
+        updateTimeline();
+      }
+    }
+
+    function selectTimelineScene(idx) {
+      expandedScenes.add(idx);
+      const card = document.getElementById('sceneCard_' + idx);
+      if (!card) return;
+      card.classList.remove('collapsed');
+      card.querySelectorAll('[aria-expanded]').forEach(b => b.setAttribute('aria-expanded', 'true'));
+      card.scrollIntoView({block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
+      card.querySelector('.scene-bar-left').focus({preventScroll: true});
+      updateTimeline();
+    }
+
+    function updateTimeline() {
+      const count = storyboardScenes.length;
+      const duration = Number(document.getElementById('tvcSceneDur').value);
+      const total = count * duration;
+      document.getElementById('sceneCount').textContent = count;
+      document.getElementById('totalDuration').textContent = total + 's';
+      document.getElementById('monitorDuration').textContent = '00:00 / ' + String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+      document.getElementById('produceButton').disabled = !count || commercialJobPending;
+      document.getElementById('timelineTrack').innerHTML = storyboardScenes.map((sc, i) => `
+        <button class="timeline-clip" onclick="selectTimelineScene(${i})" aria-label="Chỉnh sửa cảnh ${i + 1}: ${escapeHtml(sc.badge)}" aria-pressed="${expandedScenes.has(i)}" title="${escapeHtml(sc.badge)}">
+          <span>Cảnh ${i + 1}</span><span>${i * duration}–${(i + 1) * duration}s</span>
+        </button>`).join('');
     }
 
     function renderStoryboard() {
@@ -979,58 +979,63 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
       storyboardScenes.forEach((sc, i) => {
         const div = document.createElement('div');
         div.id = 'sceneCard_' + i;
-        div.className = 'scene-card' + (i > 1 ? ' collapsed' : '');
+        div.className = 'scene-card' + (expandedScenes.has(i) ? '' : ' collapsed');
         div.innerHTML = `
-          <div class="scene-bar" onclick="toggleSceneCard(${i})">
-            <div class="scene-bar-left">
-              <span class="scene-pill">Cảnh ${i + 1} · ${i * scDur}s–${(i + 1) * scDur}s</span>
-              <span class="scene-summary">${sc.badge}</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px;" onclick="event.stopPropagation()">
+          <div class="scene-bar">
+            <button class="scene-bar-left" onclick="toggleSceneCard(${i})" aria-expanded="${expandedScenes.has(i)}" aria-controls="sceneBody_${i}">
+              <span class="scene-number">${String(i + 1).padStart(2, '0')}</span>
+              <span class="scene-heading"><span class="scene-summary">${escapeHtml(sc.badge.replace(/^\d+\s*\/\/\s*/, ''))}</span>
+              <span class="scene-pill">${i * scDur}s – ${(i + 1) * scDur}s · ${scDur} giây${i === 0 ? ' · Cảnh gốc' : ''}</span></span>
+            </button>
+            <div class="scene-actions">
               <button class="btn btn-danger" onclick="removeScene(${i})" title="Xóa cảnh">
                 <svg class="sf-icon"><use href="#sf-trash"/></svg>
               </button>
-              <button class="btn btn-ghost btn-xs" onclick="toggleSceneCard(${i})" style="padding:3px 7px;">
+              <button class="btn btn-ghost btn-xs scene-toggle" onclick="toggleSceneCard(${i})" aria-label="Thu gọn hoặc mở cảnh ${i + 1}" aria-expanded="${expandedScenes.has(i)}" aria-controls="sceneBody_${i}" style="padding:3px 7px;">
                 <svg class="sf-icon"><use href="#sf-chevron"/></svg>
               </button>
             </div>
           </div>
-          <div class="scene-body">
+          <div class="scene-body" id="sceneBody_${i}">
             <div class="field-grid">
               <div>
-                <label>Badge HUD</label>
-                <input value="${sc.badge}" onchange="storyboardScenes[${i}].badge = this.value; renderStoryboard();" />
+                <label>Tên phân cảnh</label>
+                <input value="${escapeHtml(sc.badge)}" onchange="storyboardScenes[${i}].badge = this.value; renderStoryboard();" />
               </div>
               <div>
-                <label>Ảnh Thành Phần (` + '`StructuredImage`' + `)</label>
-                <div style="display:flex; gap:5px;">
-                  <input id="scImg_${i}" value="${sc.image}" onchange="storyboardScenes[${i}].image = this.value" />
-                  <input type="file" accept="image/*" style="max-width:105px; padding:4px;" onchange="uploadSceneImg(this, ${i})" />
+                <label>Ảnh tham chiếu</label>
+                <div class="scene-upload">
+                  <input id="scImg_${i}" value="${escapeHtml(sc.image)}" onchange="storyboardScenes[${i}].image = this.value" />
+                  <input type="file" accept="image/*" onchange="uploadSceneImg(this, ${i})" />
                 </div>
               </div>
             </div>
-            <label>Visual Prompt (` + '`gemini-omni-1.1-flash`' + `)</label>
-            <textarea onchange="storyboardScenes[${i}].prompt = this.value">${sc.prompt}</textarea>
-            <label>Lời Thoại Giọng Đọc Cảm Xúc (` + '`1-Take Gemini 3.8 TTS`' + `)</label>
-            <input value="${sc.vo}" onchange="storyboardScenes[${i}].vo = this.value" />
+            <label>Mô tả cảnh quay</label>
+            <textarea onchange="storyboardScenes[${i}].prompt = this.value">${escapeHtml(sc.prompt)}</textarea>
+            <label>Lời thoại</label>
+            <textarea class="scene-voiceover" onchange="storyboardScenes[${i}].vo = this.value">${escapeHtml(sc.vo)}</textarea>
             <div class="field-grid">
               <div>
-                <label>Phụ đề Vế 1</label>
-                <input value="${sc.sub_1}" onchange="storyboardScenes[${i}].sub_1 = this.value" />
+                <label>Phụ đề · Vế 1</label>
+                <input value="${escapeHtml(sc.sub_1)}" onchange="storyboardScenes[${i}].sub_1 = this.value" />
               </div>
               <div>
-                <label>Phụ đề Vế 2</label>
-                <input value="${sc.sub_2}" onchange="storyboardScenes[${i}].sub_2 = this.value" />
+                <label>Phụ đề · Vế 2</label>
+                <input value="${escapeHtml(sc.sub_2)}" onchange="storyboardScenes[${i}].sub_2 = this.value" />
               </div>
             </div>
           </div>
         `;
         container.appendChild(div);
       });
+      if (!storyboardScenes.length) container.innerHTML = '<div class="empty-state"><svg class="sf-icon"><use href="#sf-film"/></svg><strong>Bắt đầu câu chuyện của bạn</strong>Thêm cảnh đầu tiên hoặc chọn một mẫu phía trên.</div>';
+      connectFieldLabels(container);
+      updateTimeline();
     }
 
     function loadPresetStoryboard(count, sceneDur = 15) {
       const durSel = document.getElementById('tvcSceneDur');
+      expandedScenes = new Set([0]);
       if (durSel) durSel.value = String(sceneDur);
       if (count === 2) {
         storyboardScenes = [
@@ -1063,11 +1068,14 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
         sub_1: "Phụ đề vế thứ nhất...",
         sub_2: "...phụ đề vế thứ hai!"
       });
+      expandedScenes = new Set([idx - 1]);
       renderStoryboard();
+      document.getElementById('sceneCard_' + (idx - 1)).scrollIntoView({block: 'nearest'});
     }
 
     function removeScene(idx) {
       storyboardScenes.splice(idx, 1);
+      expandedScenes = new Set([...expandedScenes].filter(i => i !== idx).map(i => i > idx ? i - 1 : i));
       renderStoryboard();
     }
 
@@ -1099,27 +1107,31 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
         const pills = document.getElementById('topStatusPills');
         pills.innerHTML = `
           <span class="chip ${d.session_ready ? 'ok' : 'warn'}">
-            <span class="dot"></span> ${d.session_ready ? 'Vids RPC Ready' : 'Thiếu Cookie'}
+            <span class="dot"></span><span class="status-full">${d.session_ready ? 'Vids sẵn sàng' : 'Thiếu cookie'}</span><span class="status-short" aria-hidden="true">Vids</span>
           </span>
           <span class="chip ${d.gemini_api_key_configured ? 'ok' : 'warn'}">
-            <span class="dot"></span> ${d.gemini_api_key_configured ? '3.8 TTS & Lyria' : 'Thiếu API Key'}
+            <span class="dot"></span><span class="status-full">${d.gemini_api_key_configured ? '3.8 TTS & Lyria' : 'Thiếu API Key'}</span><span class="status-short" aria-hidden="true">Audio</span>
           </span>
-          <span class="chip">Rotate: ${d.rotate_count}</span>
+          <span class="chip"><span class="status-full">Làm mới:</span> ${d.rotate_count}</span>
         `;
-        const detail = document.getElementById('sessionDetailBox');
-        if (detail) {
-          detail.innerHTML = `<pre class="apple-console" style="margin:0;">${JSON.stringify(d, null, 2)}</pre>`;
-        }
-        if (d.doc_id && !document.getElementById('sessDocId').value) {
-          document.getElementById('sessDocId').value = d.doc_id;
-        }
-        document.getElementById('sessAuthuser').value = d.authuser || '0';
+        const vids = document.getElementById('sessionVidsStatus');
+        vids.className = 'chip ' + (d.session_ready ? 'ok' : 'warn');
+        vids.textContent = d.session_ready ? 'Sẵn sàng' : 'Cần cấu hình phiên';
+        const audio = document.getElementById('sessionAudioStatus');
+        audio.className = 'chip ' + (d.gemini_api_key_configured ? 'ok' : 'warn');
+        audio.textContent = d.gemini_api_key_configured ? 'Đã cấu hình khóa API' : 'Thiếu khóa API';
+        document.getElementById('sessionRotateStatus').textContent = (d.rotate_count || 0) + ' lần thành công';
+        document.getElementById('sessionDetailBox').textContent = JSON.stringify(d, null, 2);
+        const doc = document.getElementById('sessDocId');
+        const account = document.getElementById('sessAuthuser');
+        if (doc.value === doc.defaultValue && document.activeElement !== doc) doc.defaultValue = d.doc_id || '';
+        if (account.value === account.defaultValue && document.activeElement !== account) account.defaultValue = d.authuser || '0';
       } catch (e) {
         console.error(e);
       }
     }
 
-    async function saveSessionConfig() {
+    async function saveSessionConfig(button) {
       const raw = document.getElementById('sessCookieInput').value.trim();
       const payload = {
         doc_id: document.getElementById('sessDocId').value.trim(),
@@ -1127,27 +1139,54 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
         gemini_api_key: document.getElementById('sessApiKey').value.trim()
       };
       if (raw.startsWith('curl ')) payload.curl = raw;
-      else if (raw.startsWith('{')) payload.vids_session = JSON.parse(raw);
+      else if (raw.startsWith('{')) {
+        try {
+          payload.vids_session = JSON.parse(raw);
+        } catch {
+          document.getElementById('sessionActionMessage').textContent = 'JSON phiên chưa đúng cú pháp.';
+          return;
+        }
+      }
       else if (raw) payload.cookie = raw;
 
-      const r = await fetch('/api/session', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-      });
-      const d = await r.json();
-      alert('Đã lưu cấu hình: ' + JSON.stringify(d));
-      refreshStatus();
+      await runSessionAction(button, '/api/session', payload, 'Đã lưu cấu hình.');
     }
 
-    async function triggerCookieRotate() {
-      const r = await fetch('/api/session/rotate', { method: 'POST' });
-      const d = await r.json();
-      alert('Xoay vòng Cookie thành công: ' + JSON.stringify(d));
-      refreshStatus();
+    async function triggerCookieRotate(button) {
+      await runSessionAction(button, '/api/session/rotate', {}, 'Đã làm mới kết nối.');
+    }
+
+    async function runSessionAction(button, endpoint, payload, successMessage) {
+      const message = document.getElementById('sessionActionMessage');
+      button.disabled = true;
+      message.textContent = 'Đang xử lý…';
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok || data.status !== 'ok') throw new Error(data.message || 'Không thực hiện được yêu cầu.');
+        message.textContent = successMessage;
+        refreshStatus();
+      } catch (error) {
+        message.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
     }
 
     async function submitCommercialJob() {
+      if (commercialJobPending || !storyboardScenes.length) return;
+      commercialJobPending = true;
+      const button = document.getElementById('produceButton');
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      const originalLabel = button.innerHTML;
+      button.textContent = 'Đang gửi yêu cầu...';
+      document.getElementById('tvcProgressDetails').open = true;
+      document.getElementById('tvcDownloadBar').style.display = 'none';
       const payload = {
         scenes: storyboardScenes,
         scene_duration: parseInt((document.getElementById('tvcSceneDur') || {}).value || '15', 10),
@@ -1157,13 +1196,27 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
         bgm_prompt: document.getElementById('tvcBgmPrompt').value.trim(),
         output_filename: document.getElementById('tvcOutputName').value.trim()
       };
-      const r = await fetch('/api/produce-commercial', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-      });
-      const d = await r.json();
-      monitorJob(d.job_id, 'tvcConsole', 'tvcJobBadge', 'tvcVideoStage', 'tvcDownloadBar', 'tvcDownloadLink');
+      const restoreButton = () => {
+        commercialJobPending = false;
+        button.innerHTML = originalLabel;
+        button.removeAttribute('aria-busy');
+        updateTimeline();
+      };
+      try {
+        const r = await fetch('/api/produce-commercial', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+        });
+        const d = await r.json();
+        if (!r.ok || !d.job_id) throw new Error(d.error || 'Không thể bắt đầu sản xuất. Vui lòng thử lại.');
+        button.textContent = 'Đang sản xuất phim...';
+        monitorJob(d.job_id, 'tvcConsole', 'tvcJobBadge', 'tvcVideoStage', 'tvcDownloadBar', 'tvcDownloadLink', restoreButton);
+      } catch (error) {
+        document.getElementById('tvcConsole').textContent = error.message;
+        const badge = document.getElementById('tvcJobBadge');
+        badge.className = 'chip warn';
+        badge.textContent = 'Chưa thể tạo phim';
+        restoreButton();
+      }
     }
 
     async function submitQuickScene() {
@@ -1182,16 +1235,18 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
         body: JSON.stringify(payload)
       });
       const d = await r.json();
-      monitorJob(d.job_id, 'scConsole', 'scJobBadge', 'scVideoStage', null, null);
+      monitorJob(d.job_id, 'scConsole', 'scJobBadge', 'scVideoStage', null, null, loadQuickVideos);
     }
 
-    function monitorJob(jobId, consoleId, badgeId, stageId, dlBarId, dlLinkId) {
+    function monitorJob(jobId, consoleId, badgeId, stageId, dlBarId, dlLinkId, onFinished) {
       const con = document.getElementById(consoleId);
       const badge = document.getElementById(badgeId);
       badge.className = 'chip warn';
       badge.innerHTML = '<span class="dot"></span> Đang xử lý #' + jobId;
       const timer = setInterval(async () => {
+        try {
         const r = await fetch('/api/jobs/' + jobId);
+        if (!r.ok) throw new Error('Không thể lấy tiến trình. Vui lòng kiểm tra kết nối studio.');
         const d = await r.json();
         con.textContent = (d.logs || []).join('\n') + (d.error ? '\nERROR: ' + d.error : '');
         con.scrollTop = con.scrollHeight;
@@ -1205,96 +1260,322 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
             document.getElementById(dlBarId).style.display = 'block';
             document.getElementById(dlLinkId).href = d.download_url;
           }
+          if (onFinished) onFinished();
         } else if (d.status === 'failed') {
           clearInterval(timer);
           badge.className = 'chip warn';
           badge.innerHTML = '<span class="dot"></span> Lỗi tiến trình';
+          if (onFinished) onFinished();
+        }
+        } catch (error) {
+          con.textContent = error.message;
+          badge.className = 'chip warn';
+          badge.textContent = 'Mất kết nối tiến trình';
+          // A connection failure does not mean the server-side job stopped.
+          // Keep the active job locked and continue polling to avoid duplicates.
         }
       }, 2200);
     }
 
-    async function generateStandaloneVO() {
-      const box = document.getElementById('voAudioResult');
-      box.innerHTML = '<span class="chip warn"><span class="dot"></span> Đang thu âm 1-Take qua gemini-3.8-flash-tts...</span>';
+    const MUSIC_PRESETS = {
+      cinematic: 'Cinematic instrumental score with spacious strings, warm low synths and a gradual emotional build. Leave room for voiceover. No vocals.',
+      technology: 'Modern electronic instrumental with restrained synth pulses, warm bass and clean percussion. Confident and precise, with room for voiceover. No vocals.',
+      acoustic: 'Warm acoustic instrumental with fingerpicked guitar, soft piano and gentle percussion. Light, intimate and unhurried. No vocals.'
+    };
+
+    function applyMusicPreset(preset) {
+      const prompt = document.getElementById('bgmPromptInput');
+      prompt.value = MUSIC_PRESETS[preset];
+      prompt.focus();
+    }
+
+    function updateVoiceScriptCount() {
+      const script = document.getElementById('voTextInput').value.trim();
+      const paragraphs = script ? script.split(/\n[^\S\n]*\n+/).length : 0;
+      const format = new Intl.NumberFormat('vi');
+      document.getElementById('voiceScriptCount').textContent = format.format(paragraphs) + ' đoạn · ' + format.format([...script].length) + ' ký tự';
+    }
+
+    async function loadSavedAudio() {
+      const select = document.getElementById('savedAudioSelect');
+      const option = new Option('Đang tải bản WAV…', '');
+      if (!select.options.length || select.disabled) select.replaceChildren(option);
+      try {
+        const response = await fetch('/api/outputs');
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        const files = (data.files || []).filter(file => /\.wav$/i.test(file.name));
+        const selected = select.value;
+        select.replaceChildren(
+          new Option(files.length ? 'Chọn một bản WAV' : 'Chưa có bản WAV', ''),
+          ...files.map(file => new Option(file.name, file.name))
+        );
+        select.disabled = !files.length;
+        if (files.some(file => file.name === selected)) select.value = selected;
+        else document.getElementById('savedAudioPlayer').replaceChildren();
+      } catch {
+        if (select.disabled) select.replaceChildren(new Option('Không tải được danh sách WAV', ''));
+      }
+    }
+
+    function previewSavedAudio() {
+      const file = document.getElementById('savedAudioSelect').value;
+      const player = document.getElementById('savedAudioPlayer');
+      if (!file) {
+        player.replaceChildren();
+        return;
+      }
+      showAudioPlayer(player, '/outputs/' + encodeURIComponent(file), 'Tải WAV', file);
+    }
+
+    function showAudioPlayer(result, url, downloadLabel, name, cacheBust = false) {
+      const audio = document.createElement('audio');
+      audio.controls = true;
+      audio.preload = 'metadata';
+      audio.src = cacheBust ? url + '?t=' + Date.now() : url;
+      audio.setAttribute('aria-label', name || 'Nghe thử âm thanh');
+      audio.addEventListener('play', () => {
+        document.querySelectorAll('#tab-audio audio').forEach(player => {
+          if (player !== audio) player.pause();
+        });
+      });
+      const download = document.createElement('a');
+      download.className = 'apple-link';
+      download.href = url;
+      download.download = '';
+      download.textContent = downloadLabel;
+      result.replaceChildren(audio, download);
+    }
+
+    function generateStandaloneVO(button) {
+      const text = document.getElementById('voTextInput').value.trim();
       const payload = {
-        text: document.getElementById('voTextInput').value.trim(),
+        text,
         voice: document.getElementById('voVoiceSelect').value,
         style: document.getElementById('voStyleInput').value.trim(),
         output_filename: document.getElementById('voOutName').value.trim()
       };
-      const r = await fetch('/api/tts-preview', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-      });
-      const d = await r.json();
-      if (d.download_url) {
-        box.innerHTML = `
-          <audio src="${d.download_url}?t=${Date.now()}" controls autoplay style="width:100%;"></audio>
-          <div style="margin-top:6px;"><a class="apple-link" href="${d.download_url}" download><svg class="sf-icon"><use href="#sf-download"/></svg> Tải file WAV (${d.duration_sec}s)</a></div>
-        `;
-      } else {
-        box.innerHTML = `<pre class="apple-console">${JSON.stringify(d, null, 2)}</pre>`;
-      }
+      return generateAudioPreview(button, 'voAudioResult', '/api/tts-preview', payload, text, 'Nhập lời thoại trước khi tạo giọng đọc.', 'Đang tạo giọng đọc…');
     }
 
-    async function generateStandaloneBGM() {
-      const box = document.getElementById('bgmAudioResult');
-      box.innerHTML = '<span class="chip warn"><span class="dot"></span> Đang sáng tác nhạc nền qua Google Lyria RealTime...</span>';
+    function generateStandaloneBGM(button) {
+      const prompt = document.getElementById('bgmPromptInput').value.trim();
       const payload = {
-        prompt: document.getElementById('bgmPromptInput').value.trim(),
+        prompt,
         duration: parseInt(document.getElementById('bgmDurInput').value || '30', 10),
         bpm: parseInt(document.getElementById('bgmBpmInput').value || '116', 10),
         output_filename: document.getElementById('bgmOutName').value.trim()
       };
-      const r = await fetch('/api/bgm-preview', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-      });
-      const d = await r.json();
-      if (d.download_url) {
-        box.innerHTML = `
-          <audio src="${d.download_url}?t=${Date.now()}" controls autoplay style="width:100%;"></audio>
-          <div style="margin-top:6px;"><a class="apple-link" href="${d.download_url}" download><svg class="sf-icon"><use href="#sf-download"/></svg> Tải file Nhạc Nền 48kHz WAV</a></div>
-        `;
-      } else {
-        box.innerHTML = `<pre class="apple-console">${JSON.stringify(d, null, 2)}</pre>`;
+      return generateAudioPreview(button, 'bgmAudioResult', '/api/bgm-preview', payload, prompt, 'Nhập mô tả trước khi tạo nhạc nền.', 'Đang sáng tác nhạc nền…');
+    }
+
+    async function generateAudioPreview(button, resultId, endpoint, payload, input, emptyMessage, pendingMessage) {
+      const result = document.getElementById(resultId);
+      if (!input) {
+        result.textContent = emptyMessage;
+        return;
+      }
+      button.disabled = true;
+      result.textContent = pendingMessage;
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok || !data.download_url) throw new Error(data.error || 'Không tạo được âm thanh. Vui lòng thử lại.');
+        const label = data.duration_sec ? 'Tải WAV · ' + data.duration_sec + ' giây' : 'Tải WAV';
+        showAudioPlayer(result, data.download_url, label, payload.output_filename, true);
+        loadSavedAudio();
+      } catch (error) {
+        result.textContent = error.message;
+      } finally {
+        button.disabled = false;
       }
     }
 
-    async function loadGallery() {
-      const r = await fetch('/api/outputs');
-      const d = await r.json();
-      const grid = document.getElementById('galleryContainer');
-      if (!d.files || d.files.length === 0) {
-        grid.innerHTML = '<div style="color:var(--text-tertiary);">Chưa có file nào trong thư mục /outputs.</div>';
-        return;
-      }
-      grid.innerHTML = d.files.map(f => {
-        const isVideo = f.name.endsWith('.mp4');
-        const isAudio = f.name.endsWith('.wav');
-        const mediaTag = isVideo
-          ? `<video src="${f.url}" controls preload="metadata"></video>`
-          : (isAudio ? `<audio src="${f.url}" controls></audio>` : '');
-        return `
-          <div class="media-tile">
-            ${mediaTag}
-            <div style="font-weight:600; font-size:12px; margin-bottom:4px; word-break:break-all;">${f.name}</div>
-            <div class="media-meta">
-              <span>${f.size_mb} MB</span>
-              <a class="apple-link" href="${f.url}" download>
-                <svg class="sf-icon"><use href="#sf-download"/></svg> Tải xuống
-              </a>
+    async function loadQuickVideos() {
+      const list = document.getElementById('quickVideos');
+      list.setAttribute('aria-busy', 'true');
+      if (!list.textContent.trim()) list.textContent = 'Đang tải video…';
+      try {
+        const response = await fetch('/api/outputs');
+        if (!response.ok) throw new Error('Không tải được thư viện');
+        const { files } = await response.json();
+        const videos = (files || []).filter(file => file.name.endsWith('.mp4')).slice(0, 6);
+        list.innerHTML = videos.length ? videos.map(file => `
+          <div class="quick-video">
+            <svg class="sf-icon" aria-hidden="true"><use href="#sf-film"/></svg>
+            <div class="quick-video-info">
+              <span class="quick-video-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
+              <span class="quick-video-size">MP4 · ${escapeHtml(file.size_mb)} MB</span>
             </div>
-          </div>
-        `;
-      }).join('');
+            <a href="/outputs/${escapeHtml(encodeURIComponent(file.name))}" data-video-name="${escapeHtml(file.name)}" aria-label="Xem video ${escapeHtml(file.name)}">Xem</a>
+          </div>`).join('') : '<span class="quick-videos-message">Video đã tạo sẽ xuất hiện ở đây.</span>';
+      } catch {
+        list.innerHTML = '<span class="quick-videos-message">Không tải được video. <button class="btn btn-ghost btn-xs" onclick="loadQuickVideos()">Thử lại</button></span>';
+      } finally {
+        list.removeAttribute('aria-busy');
+      }
+    }
+
+    function previewSavedVideo(event) {
+      const link = event.target.closest('a[data-video-name]');
+      if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      const video = document.createElement('video');
+      video.src = link.href;
+      video.controls = true;
+      video.playsInline = true;
+      video.setAttribute('aria-label', link.dataset.videoName);
+      const stage = document.getElementById('scVideoStage');
+      stage.replaceChildren(video);
+      video.focus({ preventScroll: true });
+      stage.scrollIntoView({ block: 'nearest' });
+    }
+
+    let galleryFiles = null;
+
+    async function loadGallery() {
+      const refresh = document.getElementById('galleryRefresh');
+      if (refresh.disabled) return;
+      refresh.disabled = true;
+      document.getElementById('galleryCount').textContent = 'Đang tải thư viện…';
+      try {
+        const response = await fetch('/api/outputs');
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        galleryFiles = data.files || [];
+        renderGallery();
+      } catch {
+        document.getElementById('galleryCount').textContent = 'Không tải được thư viện. Bấm Làm mới để thử lại.';
+      } finally {
+        refresh.disabled = false;
+      }
+    }
+
+    function galleryFileType(file) {
+      return file.name.split('.').pop().toLowerCase();
+    }
+
+    function renderGallery() {
+      if (!galleryFiles) return;
+      const query = document.getElementById('gallerySearch').value.trim().toLocaleLowerCase('vi');
+      const format = document.getElementById('galleryFilter').value;
+      const results = galleryFiles.filter(file => (!format || galleryFileType(file) === format) && file.name.toLocaleLowerCase('vi').includes(query));
+      document.getElementById('galleryCount').textContent = results.length + ' / ' + galleryFiles.length + ' tệp';
+      document.getElementById('galleryContainer').innerHTML = results.map(file => {
+        const name = escapeHtml(file.name);
+        const type = galleryFileType(file);
+        const isImg = ['png', 'jpg', 'jpeg', 'webp'].includes(type);
+        const icon = type === 'mp4' ? 'sf-film' : type === 'wav' ? 'sf-waveform' : isImg ? 'sf-photo' : 'sf-nodes';
+        const url = '/outputs/' + escapeHtml(encodeURIComponent(file.name));
+        const label = type === 'mp4' ? 'Xem video' : type === 'wav' ? 'Nghe âm thanh' : isImg ? 'Xem ảnh' : 'Mở tệp';
+        const action = '<svg class="sf-icon" aria-hidden="true"><use href="#' + icon + '"/></svg><span>' + label + '</span>';
+        const preview = isImg
+          ? '<img src="' + url + '" alt="' + name + '" style="width:100%; height:100%; object-fit:cover;" />'
+          : (type === 'mp4' || type === 'wav'
+            ? '<button type="button" class="library-action" data-file="' + name + '" aria-label="' + label + ': ' + name + '">' + action + '</button>'
+            : '<a class="library-action" href="' + url + '" target="_blank" rel="noopener" aria-label="' + label + ': ' + name + ' (tab mới)">' + action + '</a>');
+        return `
+          <article class="library-card" data-type="${escapeHtml(type)}">
+            <div class="library-stage">${preview}</div>
+            <div class="library-card-footer">
+              <div class="quick-video-info">
+                <span class="quick-video-name" title="${name}">${name}</span>
+                <span class="quick-video-size">${escapeHtml(type.toUpperCase())} · ${escapeHtml(file.size_mb)} MB</span>
+              </div>
+              <a class="library-download" href="${url}" aria-label="Tải xuống ${name}" download><svg class="sf-icon" aria-hidden="true"><use href="#sf-download"/></svg></a>
+            </div>
+          </article>`;
+      }).join('') || '<p class="empty-state">Không có tệp phù hợp.</p>';
+    }
+
+    let lastGeneratedCookieImagePath = '';
+
+    async function submitCookieImageGen() {
+      const btn = document.getElementById('generateImageBtn');
+      const badge = document.getElementById('imgJobBadge');
+      const con = document.getElementById('imgConsole');
+      const stage = document.getElementById('imgPreviewStage');
+      const actionRow = document.getElementById('imgActionRow');
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.textContent = 'Đang tạo ảnh qua Cookie...';
+      badge.className = 'chip warn';
+      badge.innerHTML = '<span class="dot"></span> Đang xử lý';
+      con.textContent = 'Đang gửi yêu cầu tạo ảnh qua Cookie lên Google Vids RPC (UC 141)...';
+      try {
+        const payload = {
+          prompt: document.getElementById('imgPromptInput').value.trim(),
+          aspect_ratio: document.getElementById('imgAspectRatio').value,
+          style: document.getElementById('imgStyleSelect').value,
+          num_images: parseInt(document.getElementById('imgCountSelect').value || '1', 10),
+          output_filename: document.getElementById('imgOutName').value.trim()
+        };
+        const r = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(d.error || 'Không thể tạo ảnh qua Cookie');
+        lastGeneratedCookieImagePath = d.relative_path || '';
+        badge.className = 'chip ok';
+        badge.innerHTML = '<span class="dot"></span> Hoàn tất';
+        stage.innerHTML = `<img src="${d.download_url}?t=${Date.now()}" alt="Generated AI Image" style="width:100%; height:100%; object-fit:contain; position:relative; z-index:2;" />`;
+        actionRow.style.display = 'flex';
+        document.getElementById('imgDownloadLink').href = d.download_url;
+        con.textContent = JSON.stringify(d, null, 2);
+      } catch (err) {
+        badge.className = 'chip warn';
+        badge.innerHTML = '<span class="dot"></span> Lỗi tạo ảnh';
+        con.textContent = 'Lỗi: ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+
+    function useCookieImageForQuickScene() {
+      if (!lastGeneratedCookieImagePath) return;
+      document.getElementById('scImagePath').value = lastGeneratedCookieImagePath;
+      const navBtns = document.querySelectorAll('.seg-btn');
+      if (navBtns[1]) switchTab('tab-scene', navBtns[1]);
+    }
+
+    function useCookieImageForScene1() {
+      if (!lastGeneratedCookieImagePath || !storyboardScenes.length) return;
+      storyboardScenes[0].image = lastGeneratedCookieImagePath;
+      renderStoryboard();
+      const navBtns = document.querySelectorAll('.seg-btn');
+      if (navBtns[0]) switchTab('tab-commercial', navBtns[0]);
+    }
+
+    function playGalleryFile(event) {
+      const button = event.target.closest('button.library-action');
+      if (!button) return;
+      const file = galleryFiles.find(item => item.name === button.dataset.file);
+      if (!file) return;
+      const media = document.createElement(galleryFileType(file) === 'mp4' ? 'video' : 'audio');
+      media.src = '/outputs/' + encodeURIComponent(file.name);
+      media.controls = true;
+      media.playsInline = true;
+      media.setAttribute('aria-label', file.name);
+      media.addEventListener('play', () => {
+        document.querySelectorAll('.library-stage video, .library-stage audio').forEach(player => {
+          if (player !== media) player.pause();
+        });
+      });
+      button.replaceWith(media);
+      media.focus({ preventScroll: true });
+      media.play().catch(() => { /* The native controls remain available if autoplay is blocked. */ });
     }
 
     let mcpToolsList = [];
     const MCP_SAMPLE_ARGS = {
-      omni_session_status: { rotate_now: true },
+      omni_session_status: {},
       omni_session_update: {
         doc_id: "1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc",
         authuser: "0"
@@ -1306,6 +1587,13 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
         output_filename: "mcp_scene1_15s_1080p.mp4",
         upscale_1080p: true,
         wait: false
+      },
+      omni_generate_image: {
+        prompt: "A sleek futuristic dark-emerald glass executive office with a large frameless ultrawide glass monitor displaying a modern multi-channel CRM dashboard, warm cinematic studio lighting, 4k photorealistic",
+        aspect_ratio: "16:9",
+        style: "PHOTOGRAPHY",
+        num_images: 1,
+        output_filename: "mcp_cookie_image_1080p.png"
       },
       omni_synthesize_1take_vo: {
         text: "Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập... Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!\n\nĐó là lúc Hebum xuất hiện! Gom trọn mọi hội thoại về một màn hình Live Chat, phản hồi khách tức thì!",
@@ -1336,37 +1624,57 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
     };
 
     async function loadMcpTools() {
-      const r = await fetch('/api/mcp/tools');
-      const d = await r.json();
-      mcpToolsList = d.tools || [];
-      const sel = document.getElementById('mcpToolSelect');
-      sel.innerHTML = mcpToolsList.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+      if (mcpToolsList.length) return;
+      const count = document.getElementById('mcpToolCount');
       const cat = document.getElementById('mcpToolsCatalog');
-      cat.innerHTML = mcpToolsList.map(t => `
-        <div style="background:var(--bg-grouped); border:1px solid var(--border-hairline); border-radius:8px; padding:9px 11px; margin-bottom:7px;">
-          <div style="color:var(--apple-blue); font-weight:600; font-size:12px;"><code>${t.name}</code></div>
-          <div style="font-size:11.5px; color:var(--text-secondary); margin-top:3px;">${t.description}</div>
-        </div>
-      `).join('');
+      try {
+        const response = await fetch('/api/mcp/tools');
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        mcpToolsList = data.tools || [];
+        document.getElementById('mcpToolSelect').replaceChildren(...mcpToolsList.map(tool => new Option(tool.name, tool.name)));
+        cat.innerHTML = mcpToolsList.map(tool => `
+          <button type="button" class="mcp-tool" data-tool="${escapeHtml(tool.name)}" aria-pressed="false"><code>${escapeHtml(tool.name)}</code></button>
+        `).join('');
+        count.textContent = mcpToolsList.length + ' công cụ';
+        document.getElementById('mcpRunButton').disabled = !mcpToolsList.length;
+        populateMcpSampleArgs();
+      } catch {
+        count.textContent = 'Không tải được';
+        cat.innerHTML = '<button class="btn btn-ghost btn-xs" onclick="loadMcpTools()">Thử lại</button>';
+      }
+    }
+
+    function selectMcpTool(event) {
+      const button = event.target.closest('button[data-tool]');
+      if (!button) return;
+      document.getElementById('mcpToolSelect').value = button.dataset.tool;
       populateMcpSampleArgs();
     }
 
     function populateMcpSampleArgs() {
       const name = document.getElementById('mcpToolSelect').value;
       const tool = mcpToolsList.find(t => t.name === name);
+      document.querySelectorAll('#mcpToolsCatalog [data-tool]').forEach(button =>
+        button.setAttribute('aria-pressed', String(button.dataset.tool === name)));
       document.getElementById('mcpToolDesc').textContent = tool ? tool.description : '';
       document.getElementById('mcpArgsInput').value = JSON.stringify(MCP_SAMPLE_ARGS[name] || {}, null, 2);
     }
 
     async function invokeMcpToolLive() {
       const name = document.getElementById('mcpToolSelect').value;
+      const button = document.getElementById('mcpRunButton');
+      if (!name || button.disabled) return;
       const outBox = document.getElementById('mcpCallResult');
-      outBox.textContent = 'Đang thực thi JSON-RPC 2.0 tools/call -> ' + name + '...';
+      const status = document.getElementById('mcpCallStatus');
       let args = {};
       try {
         args = JSON.parse(document.getElementById('mcpArgsInput').value || '{}');
+        if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Tham số phải là một đối tượng JSON.');
       } catch (e) {
-        outBox.textContent = 'Lỗi cú pháp JSON: ' + e;
+        status.className = 'chip warn';
+        status.textContent = 'JSON chưa hợp lệ';
+        outBox.textContent = e.message;
         return;
       }
       const rpcReq = {
@@ -1375,18 +1683,34 @@ claude mcp add omni-flash-studio -- python3 $(pwd)/omni_mcp_server.py</pre>
         method: "tools/call",
         params: { name, arguments: args }
       };
-      const r = await fetch('/mcp', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(rpcReq)
-      });
-      const d = await r.json();
-      outBox.textContent = JSON.stringify(d, null, 2);
-      refreshStatus();
+      button.disabled = true;
+      status.className = 'chip';
+      status.textContent = 'Đang chạy';
+      outBox.textContent = name;
+      try {
+        const response = await fetch('/mcp', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(rpcReq)
+        });
+        const data = await response.json();
+        const failed = !response.ok || data.error || data.result?.isError;
+        status.className = 'chip ' + (failed ? 'warn' : 'ok');
+        status.textContent = failed ? 'Có lỗi' : 'Hoàn tất';
+        outBox.textContent = JSON.stringify(data, null, 2);
+        refreshStatus();
+      } catch (error) {
+        status.className = 'chip warn';
+        status.textContent = 'Có lỗi';
+        outBox.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
     }
 
+    connectFieldLabels();
+    document.querySelector('.seg-btn.active').setAttribute('aria-current', 'page');
     loadPresetStoryboard(4, 15);
-    loadMcpTools();
     refreshStatus();
     setInterval(refreshStatus, 15000);
   </script>

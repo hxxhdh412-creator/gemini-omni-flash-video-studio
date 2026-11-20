@@ -25,6 +25,7 @@ from omni_server import (
     get_session_status,
     rotate_google_cookies_headless,
     run_vids_rpc_edit_or_generate,
+    run_vids_rpc_generate_image,
     update_session_payload,
 )
 
@@ -56,6 +57,14 @@ def main():
     p_sc.add_argument("--duration", type=int, default=15, help="Duration in seconds (3-15, supports 10s or 15s; default: 15)")
     p_sc.add_argument("--no-upscale", action="store_true", help="Keep raw 720p instead of upscaling to 1080p")
     p_sc.add_argument("--output", "-o", required=True, help="Output MP4 file path")
+
+    # 4b. image
+    p_img = sub.add_parser("image", help="Generate AI image(s) directly via Google Vids Cookie (UC 141)")
+    p_img.add_argument("--prompt", "-p", required=True, help="Image generation prompt")
+    p_img.add_argument("--aspect-ratio", "-ar", default="16:9", choices=["16:9", "1:1", "9:16"], help="Aspect ratio (16:9, 1:1, 9:16)")
+    p_img.add_argument("--style", "-s", default="PHOTOGRAPHY", help="Style (PHOTOGRAPHY, VECTOR_ART, ILLUSTRATION, BACKGROUND, WATERCOLOR, CYBERPUNK, FLATLAY, LANDSCAPE)")
+    p_img.add_argument("--num-images", "-n", type=int, default=1, help="Number of images to save (1-4)")
+    p_img.add_argument("--output", "-o", default="outputs/cookie_image.png", help="Output PNG file path")
 
     # 5. server
     p_srv = sub.add_parser("server", help="Start the HTTP REST API & Web Studio Server")
@@ -93,6 +102,17 @@ def main():
             duration_sec=args.duration,
             save_response_json=node_json,
             upscale_1080p=not args.no_upscale,
+        )
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+    elif args.cmd == "image":
+        out_abs = os.path.abspath(args.output)
+        res = run_vids_rpc_generate_image(
+            prompt_text=args.prompt,
+            output_path=out_abs,
+            aspect_ratio=args.aspect_ratio,
+            style=args.style,
+            num_images=args.num_images,
+            save_all=(args.num_images > 1),
         )
         print(json.dumps(res, indent=2, ensure_ascii=False))
     elif args.cmd == "server":

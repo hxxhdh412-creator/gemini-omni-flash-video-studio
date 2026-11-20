@@ -788,6 +788,221 @@ def run_vids_rpc_edit_or_generate(
     }
 
 
+VIDS_IMAGE_STYLES = {
+    "UNSPECIFIED": 0,
+    "NONE": 0,
+    "PHOTOGRAPHY": 1,
+    "ILLUSTRATION": 2,
+    "BACKGROUND": 3,
+    "LANDSCAPE": 4,
+    "FLATLAY": 5,
+    "CLIPART": 6,
+    "WATERCOLOR": 7,
+    "VECTOR_ART": 8,
+    "HANDICRAFT": 9,
+    "CYBERPUNK": 10,
+    "PIXEL_ART": 11,
+    "SURPRISE_ME": 12,
+    "VECTOR_ICON": 21,
+}
+
+VIDS_IMAGE_ASPECT_RATIOS = {
+    "1:1": 1,
+    "SQUARE": 1,
+    "16:9": 2,
+    "LANDSCAPE": 2,
+    "9:16": 5,
+    "PORTRAIT": 5,
+}
+
+
+def run_vids_rpc_generate_image(
+    prompt_text: str,
+    output_path: str = "outputs/omni_cookie_image.png",
+    aspect_ratio: str = "16:9",
+    style: str = "PHOTOGRAPHY",
+    num_images: int = 1,
+    session_path: str = DEFAULT_SESSION_PATH,
+    save_all: bool = False,
+) -> dict:
+    """
+    Generates high-resolution AI images via Google Vids Cookie RPC (/v1/genai/generate, UseCase 141 = Ndh(193)).
+    Supports aspect_ratio ('16:9', '1:1', '9:16') and style ('PHOTOGRAPHY', 'VECTOR_ART', 'ILLUSTRATION',
+    'BACKGROUND', 'WATERCOLOR', 'CYBERPUNK', 'FLATLAY', 'LANDSCAPE', 'UNSPECIFIED').
+    """
+    try:
+        refresh_session_from_cdp(session_path)
+    except Exception:
+        pass
+    session = load_vids_session(session_path)
+    req_id = str(uuid.uuid4())
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
+
+    style_key = str(style or "PHOTOGRAPHY").strip().upper()
+    style_code = VIDS_IMAGE_STYLES.get(style_key, int(style) if str(style).isdigit() else 1)
+
+    ar_key = str(aspect_ratio or "16:9").strip().upper()
+    ar_code = VIDS_IMAGE_ASPECT_RATIOS.get(ar_key, 2)
+
+    count = max(1, min(4, int(num_images or 1)))
+    clean_prompt = re.sub(r"#[0-9a-fA-F]{6}\b", "", (prompt_text or "").strip()).strip()
+
+    client_context = [
+        9,
+        None,
+        None,
+        None,
+        req_id,
+        None,
+        str(session.get("authuser", "0")),
+        None,
+        [
+            None,
+            None,
+            None,
+            [
+                [
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        [None, None, [[session["doc_id"], "application/vnd.google-apps.flix", None, None, 1]]],
+                    ]
+                ]
+            ],
+        ],
+        None,
+        None,
+        [24, 0],
+        None,
+        "en",
+        None,
+        None,
+        None,
+        None,
+        None,
+        1,
+    ]
+
+    # Ndh(193) -> 141 (Vids GenerateImagesUseCase); fallback to 103 (Ndh(154)) or 32 (Ndh(69)) if needed
+    use_cases_to_try = [141, 103, 32, 4]
+    text = None
+    last_err = None
+
+    with _VIDS_RPC_LOCK:
+        for uc in use_cases_to_try:
+            headers = {
+                "accept": "*/*",
+                "accept-language": "vi",
+                "authorization": make_sapisidhash(session["sapisid"], session["origin"]),
+                "content-type": "application/json+protobuf",
+                "cookie": session["cookie"],
+                "origin": session["origin"],
+                "priority": "u=1, i",
+                "referer": "https://docs.google.com/",
+                "user-agent": ua,
+                "x-goog-authuser": str(session.get("authuser", "0")),
+                "x-server-token": session["server_token"],
+            }
+            payload = [
+                uc,
+                None,
+                client_context,
+                [clean_prompt],
+                [[style_code, count, None, ar_code]],
+                None,
+                1,
+            ]
+            t0 = time.time()
+            req = urllib.request.Request(
+                session["api_url"],
+                data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            try:
+                log(
+                    f"[Vids Image RPC] Generating AI image via Cookie (uc={uc}, style={style_key}[{style_code}], aspect_ratio={ar_key}[{ar_code}], count={count})..."
+                )
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    raw_bytes = resp.read()
+                    if resp.headers.get("Content-Encoding") == "gzip":
+                        raw_bytes = gzip.decompress(raw_bytes)
+                    text = raw_bytes.decode("utf-8", errors="replace")
+                    log(f"[Vids Image RPC] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(text):,} chars)")
+                    break
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode("utf-8", errors="replace")
+                last_err = f"HTTP {e.code}: {err_body[:300]}"
+                log(f"[Vids Image RPC] uc={uc} returned {last_err}")
+
+    if not text:
+        raise RuntimeError(f"Google Vids Cookie Image RPC failed across use cases: {last_err}")
+
+    clean_text = text.lstrip()
+    if clean_text.startswith(")]}'"):
+        clean_text = clean_text.split("\n", 1)[-1]
+    parsed = json.loads(clean_text)
+    all_strs = extract_strings(parsed)
+    dl_urls = []
+    for s in all_strs:
+        if s.startswith("https://contribution-rt.usercontent.google.com/download") and s not in dl_urls:
+            dl_urls.append(s)
+
+    if not dl_urls:
+        raise RuntimeError("No image download URL returned from Google Vids Cookie Image RPC.")
+
+    session = load_vids_session(session_path)
+    authuser = str(session.get("authuser", "0"))
+    dl_cookie_parts = [
+        p.strip()
+        for p in session["cookie"].split(";")
+        if p.strip() and p.strip().split("=", 1)[0].strip() not in ("OSID", "__Secure-OSID", "COMPASS")
+    ]
+    dl_headers = {
+        "cookie": "; ".join(dl_cookie_parts),
+        "user-agent": ua,
+        "referer": "https://docs.google.com/",
+        "origin": session["origin"],
+        "x-goog-authuser": authuser,
+    }
+
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    saved_files = []
+    urls_to_download = dl_urls[:count] if save_all or count > 1 else [dl_urls[0]]
+    base_out, ext = os.path.splitext(output_path)
+    if not ext:
+        ext = ".png"
+
+    for idx, raw_url in enumerate(urls_to_download):
+        dl_url = raw_url
+        if "authuser=" not in dl_url:
+            sep = "&" if "?" in dl_url else "?"
+            dl_url = f"{dl_url}{sep}authuser={authuser}"
+        with urllib.request.urlopen(urllib.request.Request(dl_url, headers=dl_headers), timeout=60) as dl_resp:
+            img_bytes = dl_resp.read()
+        target_path = output_path if idx == 0 else f"{base_out}_{idx + 1}{ext}"
+        with open(target_path, "wb") as f:
+            f.write(img_bytes)
+        log(f"[Vids Image RPC] Downloaded image #{idx + 1} ({len(img_bytes):,} bytes) -> {target_path}")
+        saved_files.append(target_path)
+
+    return {
+        "backend": "vids_cookie_image",
+        "output_path": saved_files[0],
+        "images": saved_files,
+        "aspect_ratio": ar_key,
+        "style": style_key,
+    }
+
+
 def format_editing_prompt(
     prompt: str,
     mode: str = "edit",

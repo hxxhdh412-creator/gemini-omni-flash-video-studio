@@ -77,6 +77,7 @@ from edit_video import (
     log,
     refresh_session_from_cdp,
     run_vids_rpc_edit_or_generate,
+    run_vids_rpc_generate_image,
     update_session_from_curl,
 )
 
@@ -706,7 +707,7 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             if os.path.exists(OUTPUTS_DIR):
                 for fn in sorted(os.listdir(OUTPUTS_DIR), reverse=True):
                     fp = os.path.join(OUTPUTS_DIR, fn)
-                    if os.path.isfile(fp) and fn.endswith((".mp4", ".wav", ".json")):
+                    if os.path.isfile(fp) and fn.endswith((".mp4", ".wav", ".json", ".png", ".jpg", ".jpeg")):
                         items.append(
                             {
                                 "name": fn,
@@ -850,6 +851,52 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                 out_wav = os.path.join(OUTPUTS_DIR, out_name)
                 generate_bgm_track(output_wav=out_wav, duration_sec=dur, bgm_prompt=prompt, bpm=bpm)
                 self._send_json({"status": "ok", "download_url": f"/outputs/{out_name}", "duration_sec": dur})
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+            return
+
+        if path == "/api/generate-image":
+            try:
+                prompt = (body.get("prompt") or "").strip()
+                if not prompt:
+                    self._send_json({"error": "Missing image prompt"}, 400)
+                    return
+                aspect_ratio = body.get("aspect_ratio", "16:9")
+                style = body.get("style", "PHOTOGRAPHY")
+                num_images = max(1, min(4, int(body.get("num_images", 1))))
+                out_name = os.path.basename(body.get("output_filename") or f"cookie_img_{uuid.uuid4().hex[:6]}.png")
+                if not out_name.lower().endswith((".png", ".jpg", ".jpeg")):
+                    out_name += ".png"
+                out_path = os.path.join(OUTPUTS_DIR, out_name)
+                res = run_vids_rpc_generate_image(
+                    prompt_text=prompt,
+                    output_path=out_path,
+                    aspect_ratio=aspect_ratio,
+                    style=style,
+                    num_images=num_images,
+                    save_all=(num_images > 1),
+                )
+                imgs = []
+                for p in res.get("images", [res["output_path"]]):
+                    fn = os.path.basename(p)
+                    imgs.append(
+                        {
+                            "filename": fn,
+                            "relative_path": f"outputs/{fn}",
+                            "download_url": f"/outputs/{fn}",
+                        }
+                    )
+                self._send_json(
+                    {
+                        "status": "ok",
+                        "backend": "vids_cookie_image",
+                        "download_url": imgs[0]["download_url"],
+                        "relative_path": imgs[0]["relative_path"],
+                        "images": imgs,
+                        "aspect_ratio": res.get("aspect_ratio", aspect_ratio),
+                        "style": res.get("style", style),
+                    }
+                )
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
             return

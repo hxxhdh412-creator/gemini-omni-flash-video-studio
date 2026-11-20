@@ -138,6 +138,40 @@ MCP_TOOLS_SCHEMA = [
         },
     },
     {
+        "name": "omni_generate_image",
+        "description": (
+            "Generate high-resolution AI reference/ingredient images directly via the Google Vids (`vids.new`) session Cookie "
+            "(`appsgenaiserver-pa.clients6.google.com/v1/genai/generate`, UseCase `141`). "
+            "No API key quota required! Generated images are saved in `/outputs` and can be passed directly into `omni_generate_scene`'s `image` (`StructuredImage` / Node[11]) parameter."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "English visual prompt describing the image to generate (do not include hex color codes).",
+                },
+                "aspect_ratio": {
+                    "type": "string",
+                    "description": "Aspect ratio: `16:9` (Landscape), `1:1` (Square), or `9:16` (Portrait). Default: `16:9`.",
+                },
+                "style": {
+                    "type": "string",
+                    "description": "Image style preset: `PHOTOGRAPHY`, `VECTOR_ART`, `ILLUSTRATION`, `BACKGROUND`, `WATERCOLOR`, `CYBERPUNK`, `FLATLAY`, `LANDSCAPE`, `UNSPECIFIED`. Default: `PHOTOGRAPHY`.",
+                },
+                "num_images": {
+                    "type": "integer",
+                    "description": "Number of image variations to save (`1` to `4`). Default: `1`.",
+                },
+                "output_filename": {
+                    "type": "string",
+                    "description": "Output PNG filename inside `/outputs` (e.g. `cookie_ref_image.png`).",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
         "name": "omni_synthesize_1take_vo",
         "description": (
             "Stage 2 Pipeline Tool: Synthesize expressive, deeply emotional Vietnamese voiceover using flagship `gemini-3.8-flash-tts` in **Single-Pass 1-Take** mode. "
@@ -326,6 +360,48 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             t.start()
             return {"status": "queued", "job_id": job_id, "poll_tool": "omni_job_status"}
 
+    if tool_name == "omni_generate_image":
+        from edit_video import run_vids_rpc_generate_image
+
+        prompt = (args.get("prompt") or "").strip()
+        if not prompt:
+            raise ValueError("Missing required 'prompt' for omni_generate_image")
+        aspect_ratio = args.get("aspect_ratio", "16:9")
+        style = args.get("style", "PHOTOGRAPHY")
+        num_images = max(1, min(4, int(args.get("num_images", 1))))
+        out_name = os.path.basename(args.get("output_filename") or f"cookie_img_{uuid.uuid4().hex[:6]}.png")
+        if not out_name.lower().endswith((".png", ".jpg", ".jpeg")):
+            out_name += ".png"
+        out_path = os.path.join(OUTPUTS_DIR, out_name)
+        res = run_vids_rpc_generate_image(
+            prompt_text=prompt,
+            output_path=out_path,
+            aspect_ratio=aspect_ratio,
+            style=style,
+            num_images=num_images,
+            save_all=(num_images > 1),
+        )
+        imgs = []
+        for p in res.get("images", [res["output_path"]]):
+            fn = os.path.basename(p)
+            imgs.append(
+                {
+                    "filename": fn,
+                    "path": p,
+                    "relative_path": f"outputs/{fn}",
+                    "download_url": f"/outputs/{fn}",
+                }
+            )
+        return {
+            "status": "completed",
+            "backend": "vids_cookie_image",
+            "download_url": imgs[0]["download_url"],
+            "relative_path": imgs[0]["relative_path"],
+            "images": imgs,
+            "aspect_ratio": res.get("aspect_ratio", aspect_ratio),
+            "style": res.get("style", style),
+        }
+
     if tool_name == "omni_synthesize_1take_vo":
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
         if not api_key:
@@ -409,7 +485,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         if os.path.exists(OUTPUTS_DIR):
             for fn in sorted(os.listdir(OUTPUTS_DIR), reverse=True):
                 fp = os.path.join(OUTPUTS_DIR, fn)
-                if os.path.isfile(fp) and fn.endswith((".mp4", ".wav", ".json")):
+                if os.path.isfile(fp) and fn.endswith((".mp4", ".wav", ".json", ".png", ".jpg", ".jpeg")):
                     items.append(
                         {
                             "name": fn,
