@@ -2044,9 +2044,42 @@ def run_vids_rpc_generate_image(
     if not ext:
         ext = ".png"
 
-    # Tier 2 & 3 Fallback: If UC 141 (espresso-pa) returned REQUEST_REFUSED on this Workspace doc,
-    # synthesize high-resolution 1080p still frame(s) directly via Google Vids Cookie UC 374 (gemini-omni-1.1-flash)!
+    # If UC 205 failed with 401 SESSION_COOKIE_INVALID or 429, or if reference images were attached,
+    # automatically failover to ChatGPT Plus Web Image Engine if available before trying UC 374 video still!
     if not text:
+        is_cookie_401 = last_err and ("401" in last_err or "SESSION_COOKIE_INVALID" in last_err)
+        try:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+            if repo_root not in sys.path:
+                sys.path.insert(0, repo_root)
+            from chatgpt_image_backend import generate_chatgpt_image, get_chatgpt_account_info
+
+            if get_chatgpt_account_info(force=False).get("logged_in"):
+                log(
+                    f"[Vids Image RPC -> ChatGPT Plus Failover] Google Vids Image RPC unavailable ({last_err or 'ref_image'}); "
+                    f"auto-failing over to ChatGPT Plus Web Image Engine (aspect_ratio={ar_key})..."
+                )
+                cgpt_res = generate_chatgpt_image(
+                    prompt=clean_prompt,
+                    output_path=output_path,
+                    aspect_ratio=ar_key,
+                    image_files=valid_ref_images,
+                )
+                return {
+                    "backend": "chatgpt_web_image_failover",
+                    "output_path": cgpt_res["output_path"],
+                    "images": cgpt_res.get("images", [cgpt_res["output_path"]]),
+                    "aspect_ratio": ar_key,
+                    "style": style_key,
+                    "chatgpt_conversation_id": cgpt_res.get("chatgpt_conversation_id", ""),
+                }
+        except Exception as cgpt_err:
+            log(f"[Vids Image RPC -> ChatGPT Failover Warning] {cgpt_err}")
+        if is_cookie_401:
+            raise RuntimeError(
+                "Phiên Cookie Google Vids đã hết hạn (401 SESSION_COOKIE_INVALID). "
+                "Vui lòng dán cURL Google Vids mới trong tab Kết nối hoặc chọn engine ChatGPT Plus."
+            )
         style_descriptors = {
             "PHOTOGRAPHY": "Photorealistic studio photography style",
             "VECTOR_ART": "Clean flat modern vector art style",
