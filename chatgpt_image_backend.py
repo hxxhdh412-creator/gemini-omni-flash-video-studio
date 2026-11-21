@@ -61,6 +61,34 @@ ASPECT_RATIO_HINTS = {
     "2:3": "2:3 vertical portrait aspect ratio",
 }
 
+CREATIVE_LAYOUT_ARCHETYPES: dict[str, str] = {
+    "HERO_PRODUCT_3D": (
+        "Creative Layout Archetype [HERO_PRODUCT_3D]: Centerpiece 3D commercial product/subject showcase on rich natural terrain "
+        "with glowing nutrient/action elements at the base, dynamic curved ribbon sub-header, and balanced circular icon callouts."
+    ),
+    "EDITORIAL_GLASS_CARDS": (
+        "Creative Layout Archetype [EDITORIAL_GLASS_CARDS]: Modern magazine editorial photography with low-angle cinematic perspective, "
+        "sleek translucent frosted-glass (glassmorphism) info cards with subtle light borders, and refined asymmetrical rule-of-thirds typography."
+    ),
+    "MAGNIFIER_ZOOM_INSIGHT": (
+        "Creative Layout Archetype [MAGNIFIER_ZOOM_INSIGHT]: Wide atmospheric scene paired with a glowing circular macro magnifier inset lens "
+        "highlighting the key biological/technical detail (root system, water level, leaf texture, or grain quality) connected by clean callout lines."
+    ),
+    "STEP_TIMELINE_FLOW": (
+        "Creative Layout Archetype [STEP_TIMELINE_FLOW]: Dynamic horizontal or diagonal step-by-step visual journey (1 -> 2 -> 3 connected by "
+        "a glowing golden flow line) integrated seamlessly over a panoramic depth-of-field scene."
+    ),
+    "RADIAL_HUB_INFOGRAPHIC": (
+        "Creative Layout Archetype [RADIAL_HUB_INFOGRAPHIC]: Hero central subject surrounded by a balanced radial constellation of floating "
+        "3D icon badges and concise benefit labels with warm golden rim lighting."
+    ),
+    "CINEMATIC_STORY_POSTER": (
+        "Creative Layout Archetype [CINEMATIC_STORY_POSTER]: Dramatic movie-poster composition with shallow depth-of-field foreground bokeh, "
+        "expressive human/nature focal point, bold top-aligned editorial title, and sleek floating bottom dock for key takeaways and CTA."
+    ),
+}
+ARCHETYPE_ROTATION_ORDER = list(CREATIVE_LAYOUT_ARCHETYPES.keys())
+
 _IMAGE_LOCK = threading.Lock()
 _EP_CACHE: dict[str, Any] = {"at": 0.0, "value": ""}
 _ACCOUNT_CACHE: dict[str, Any] = {"at": 0.0, "value": None}
@@ -1094,16 +1122,69 @@ def _record_session_mapping(conv_id: str, output_path: str, saved_paths: list[st
     _save_sessions_map(smap)
 
 
+def _pick_creative_archetype(prompt: str, requested_archetype: str = "AUTO_ROTATE", is_continuation: bool = False) -> tuple[str, str]:
+    """
+    Selects a distinct visual layout archetype so consecutive banners never look like repetitive clones.
+    If `is_continuation=True`, preserves the current layout without injecting a new archetype.
+    """
+    if is_continuation:
+        return "", ""
+    req = str(requested_archetype or "AUTO_ROTATE").strip().upper()
+    if req in ("NONE", "OFF", "RAW"):
+        return "", ""
+    if req in CREATIVE_LAYOUT_ARCHETYPES:
+        return req, CREATIVE_LAYOUT_ARCHETYPES[req]
+
+    smap = _load_sessions_map()
+    last_idx = int(smap.get("last_archetype_idx", -1))
+    lower = (prompt or "").lower()
+
+    # Smart intent-aware starting suggestion, then guaranteed rotation so consecutive runs always vary
+    preferred_idx = (last_idx + 1) % len(ARCHETYPE_ROTATION_ORDER)
+    if any(k in lower for k in ("bao phân", "bao bì", "chai", "gói", "sản phẩm", "npk", "25kg", "50kg", "packshot")):
+        cand = ARCHETYPE_ROTATION_ORDER.index("HERO_PRODUCT_3D")
+        if cand != last_idx:
+            preferred_idx = cand
+    elif any(k in lower for k in ("rễ", "cận cảnh", "kiểm tra", "soi", "bệnh", "sâu", "vi lượng", "magnif")):
+        cand = ARCHETYPE_ROTATION_ORDER.index("MAGNIFIER_ZOOM_INSIGHT")
+        if cand != last_idx:
+            preferred_idx = cand
+    elif any(k in lower for k in ("bước 1", "1.", "giai đoạn", "quy trình", "từ mạ đến")):
+        candidates = [
+            ARCHETYPE_ROTATION_ORDER.index("EDITORIAL_GLASS_CARDS"),
+            ARCHETYPE_ROTATION_ORDER.index("STEP_TIMELINE_FLOW"),
+            ARCHETYPE_ROTATION_ORDER.index("CINEMATIC_STORY_POSTER"),
+        ]
+        for c in candidates:
+            if c != last_idx:
+                preferred_idx = c
+                break
+
+    smap["last_archetype_idx"] = preferred_idx
+    _save_sessions_map(smap)
+    chosen_key = ARCHETYPE_ROTATION_ORDER[preferred_idx]
+    return chosen_key, CREATIVE_LAYOUT_ARCHETYPES[chosen_key]
+
+
 def _build_image_prompt(
     prompt: str,
     aspect_ratio: str = "16:9",
     has_refs: bool = False,
     is_continuation: bool = False,
+    layout_archetype: str = "AUTO_ROTATE",
 ) -> str:
     clean = re.sub(r"^\s*/(anh|ảnh|image)\b\s*", "", str(prompt or ""), flags=re.I).strip()
     clean = clean[:MAX_PROMPT_CHARS]
     if not clean:
         raise ChatGPTWebError("Missing required prompt for ChatGPT Web image generation.", 400)
+
+    # Strip legacy anti-patterns if an external agent still sends them
+    clean = re.sub(r"\bblank upper-left\b[,\s]*", "", clean, flags=re.I)
+    clean = re.sub(r"\bsweeping gold arc\b[,\s]*", "", clean, flags=re.I)
+
+    _, archetype_hint = _pick_creative_archetype(clean, requested_archetype=layout_archetype, is_continuation=is_continuation)
+    if archetype_hint and "Creative Layout Archetype" not in clean:
+        clean = f"{clean}\n\n{archetype_hint}"
 
     ratio_key = str(aspect_ratio or "").strip()
     ratio_hint = ASPECT_RATIO_HINTS.get(ratio_key, "")
@@ -1138,13 +1219,15 @@ def generate_chatgpt_image(
     image_files: list[str] | None = None,
     conversation_id: str = "",
     new_session: bool = False,
+    layout_archetype: str = "AUTO_ROTATE",
     timeout_sec: float = DEFAULT_TIMEOUT_SEC,
     on_status: Callable[[str, str], None] | None = None,
 ) -> dict[str, Any]:
     """
     Generates an image using the live ChatGPT Web browser session via CDP and saves
     the result to `output_path` (creating parent directories as needed).
-    Supports Smart Session Continuity for iterative banner/product refinements.
+    Supports Smart Session Continuity for iterative banner/product refinements
+    and automatic Creative Layout Archetype rotation so designs never look repetitive.
     """
     def _emit(stage: str, msg: str) -> None:
         if callable(on_status):
@@ -1164,6 +1247,14 @@ def generate_chatgpt_image(
     ref_data_urls: list[str] = []
     for p in effective_refs[:3]:
         if p and os.path.isfile(p):
+            # Guard against tiny low-res layout thumbnails (<35KB & <400px) that degrade output quality unless explicitly continuing
+            try:
+                fsize = os.path.getsize(p)
+                if fsize < 32000 and "ingredient_" in os.path.basename(p).lower():
+                    _emit("filter", f"Skipped low-res 20KB layout thumbnail ({os.path.basename(p)}) to preserve 1254x1254 agency quality.")
+                    continue
+            except Exception:
+                pass
             ref_data_urls.append(_file_to_data_url(p))
 
     full_prompt = _build_image_prompt(
@@ -1171,6 +1262,7 @@ def generate_chatgpt_image(
         aspect_ratio=aspect_ratio,
         has_refs=bool(ref_data_urls),
         is_continuation=is_continuation,
+        layout_archetype=layout_archetype,
     )
 
     with _IMAGE_LOCK:

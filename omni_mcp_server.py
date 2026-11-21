@@ -334,6 +334,31 @@ MCP_TOOLS_SCHEMA = [
                     "default": False,
                     "description": "If true, forces a brand-new ChatGPT conversation instead of auto-continuing the current banner/project session. Default: `false`.",
                 },
+                "layout_archetype": {
+                    "type": "string",
+                    "enum": [
+                        "AUTO_ROTATE",
+                        "HERO_PRODUCT_3D",
+                        "EDITORIAL_GLASS_CARDS",
+                        "MAGNIFIER_ZOOM_INSIGHT",
+                        "STEP_TIMELINE_FLOW",
+                        "RADIAL_HUB_INFOGRAPHIC",
+                        "CINEMATIC_STORY_POSTER",
+                        "NONE",
+                    ],
+                    "default": "AUTO_ROTATE",
+                    "description": (
+                        "Creative layout archetype to prevent repetitive clone banners: "
+                        "`AUTO_ROTATE` (default — automatically rotates across 6 distinct agency layouts so consecutive banners never look identical), "
+                        "`HERO_PRODUCT_3D` (3D center product/packshot with glowing elements & curved ribbon), "
+                        "`EDITORIAL_GLASS_CARDS` (magazine photography with translucent frosted-glass cards), "
+                        "`MAGNIFIER_ZOOM_INSIGHT` (wide scene + glowing circular macro zoom lens highlighting roots/water/detail), "
+                        "`STEP_TIMELINE_FLOW` (connected 1 -> 2 -> 3 glowing flow line journey), "
+                        "`RADIAL_HUB_INFOGRAPHIC` (central focal point with radial floating 3D icon badges), "
+                        "`CINEMATIC_STORY_POSTER` (movie-poster foreground bokeh with sleek bottom dock), "
+                        "`NONE` (use raw prompt layout only)."
+                    ),
+                },
             },
             "required": ["prompt"],
         },
@@ -388,6 +413,21 @@ MCP_TOOLS_SCHEMA = [
                     "type": "boolean",
                     "default": False,
                     "description": "If true, forces a brand-new ChatGPT conversation session instead of continuing the active banner/project thread. Default: `false`.",
+                },
+                "layout_archetype": {
+                    "type": "string",
+                    "enum": [
+                        "AUTO_ROTATE",
+                        "HERO_PRODUCT_3D",
+                        "EDITORIAL_GLASS_CARDS",
+                        "MAGNIFIER_ZOOM_INSIGHT",
+                        "STEP_TIMELINE_FLOW",
+                        "RADIAL_HUB_INFOGRAPHIC",
+                        "CINEMATIC_STORY_POSTER",
+                        "NONE",
+                    ],
+                    "default": "AUTO_ROTATE",
+                    "description": "Creative layout archetype (`AUTO_ROTATE` automatically rotates across 6 distinct agency layouts so consecutive banners never look repetitive). Default: `AUTO_ROTATE`.",
                 },
                 "output_filename": {
                     "type": "string",
@@ -775,6 +815,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         ref_imgs: list[str],
         conversation_id: str = "",
         new_session: bool = False,
+        layout_archetype: str = "AUTO_ROTATE",
         fallback_to_omni_on_error: bool = False,
         style: str = "PHOTOGRAPHY",
         num_images: int = 1,
@@ -806,6 +847,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                     image_files=ref_imgs,
                     conversation_id=conversation_id,
                     new_session=new_session,
+                    layout_archetype=layout_archetype,
                     on_status=_on_status,
                 )
                 imgs = []
@@ -923,6 +965,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             ref_imgs=ref_imgs,
             conversation_id=conversation_id,
             new_session=new_session,
+            layout_archetype=str(args.get("layout_archetype") or "AUTO_ROTATE"),
         )
 
     if tool_name == "omni_generate_image":
@@ -969,6 +1012,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                 ref_imgs=ref_imgs,
                 conversation_id=conversation_id,
                 new_session=new_session,
+                layout_archetype=str(args.get("layout_archetype") or "AUTO_ROTATE"),
                 fallback_to_omni_on_error=(engine == "auto"),
                 style=style,
                 num_images=num_images,
