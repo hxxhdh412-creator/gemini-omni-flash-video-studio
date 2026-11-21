@@ -911,6 +911,8 @@ Bắt đầu hành trình kiến tạo thương hiệu đột phá ngay hôm nay
           <div class="utility-actions">
             <button class="btn" onclick="saveSessionConfig(this)">Lưu cấu hình</button>
             <button class="btn btn-ghost" onclick="triggerCookieRotate(this)"><svg class="sf-icon" aria-hidden="true"><use href="#sf-refresh"/></svg> Làm mới kết nối</button>
+            <button class="btn btn-ghost" onclick="addPoolAccount(this)">➕ Thêm tài khoản (Pool xoay vòng)</button>
+            <button class="btn btn-ghost" onclick="rotatePoolAccount(this)">🔀 Đổi tài khoản ngay</button>
           </div>
           <p id="sessionActionMessage" class="utility-message" role="status"></p>
         </div>
@@ -1432,7 +1434,15 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
     }
 
     async function triggerCookieRotate(button) {
-      await runSessionAction(button, '/api/session/rotate', {}, 'Đã làm mới kết nối.');
+      await runSessionAction(button, '/api/session/rotate', {}, 'Đã làm mới kết nối & đồng bộ Pool.');
+    }
+
+    async function addPoolAccount(button) {
+      await runSessionAction(button, '/api/pool/add-account', {}, 'Đã mở cửa sổ đăng nhập Google -> vids.new. Đăng nhập tài khoản mới để tự động thêm vào Pool xoay vòng 24/7!');
+    }
+
+    async function rotatePoolAccount(button) {
+      await runSessionAction(button, '/api/pool/rotate-account', {}, 'Đã chuyển sang tài khoản khỏe mạnh tiếp theo trong Pool.');
     }
 
     async function runSessionAction(button, endpoint, payload, successMessage) {

@@ -220,12 +220,10 @@ def refresh_session_from_cdp(
             except Exception:
                 pass
 
-        # If the CDP tab is still on the exhausted authuser=1 doc, force authuser=0 and the active doc_id
+        # Determine active authuser & doc_id, preferring a healthy (non-exhausted) account from the rotation pool
         target_doc_id = detected_doc_id or existing.get("doc_id", DEFAULT_DOC_ID)
-        target_authuser = detected_authuser if detected_authuser is not None else existing.get("authuser", "0")
-        if target_doc_id == "1mDUqA-M92XDyGEMJ_dUbxx56nobvbPK9L7mLwGWfSqQ" or str(target_authuser) == "1":
-            target_doc_id = DEFAULT_DOC_ID
-            target_authuser = "0"
+        target_authuser = str(detected_authuser if detected_authuser is not None else existing.get("authuser", "0"))
+        cookie_joined = "; ".join(f"{k}={v}" for k, v in cookie_map.items())
 
         session_data = {
             "api_url": existing.get("api_url", DEFAULT_API_URL),
@@ -234,8 +232,21 @@ def refresh_session_from_cdp(
             "authuser": target_authuser,
             "sapisid": sapisid,
             "server_token": detected_server_token or existing.get("server_token", DEFAULT_SERVER_TOKEN),
-            "cookie": "; ".join(f"{k}={v}" for k, v in cookie_map.items()),
+            "cookie": cookie_joined,
         }
+        register_account_in_pool(session_data, source="cdp")
+
+        # If the currently active account is marked quota-exhausted in the pool, auto-select a healthy one!
+        if is_account_exhausted(session_data.get("authuser", "0"), session_data.get("sapisid", "")):
+            alt = select_next_healthy_account(
+                exclude_authuser=session_data.get("authuser", "0"),
+                exclude_sapisid=session_data.get("sapisid", ""),
+                live_cookie=cookie_joined,
+                live_sapisid=sapisid,
+            )
+            if alt:
+                session_data.update(alt)
+
         try:
             os.makedirs(os.path.dirname(os.path.abspath(session_path)), exist_ok=True)
             with open(session_path, "w", encoding="utf-8") as f:
@@ -245,6 +256,234 @@ def refresh_session_from_cdp(
         return session_data
     except Exception:
         return None
+
+
+ACCOUNT_POOL_PATH = os.path.join(os.path.dirname(DEFAULT_SESSION_PATH), "vids_accounts_pool.json")
+_POOL_LOCK = threading.Lock()
+
+
+def _acct_key(authuser: str, sapisid: str) -> str:
+    return f"{str(sapisid or '')[:16]}::u{str(authuser or '0')}"
+
+
+def load_account_pool() -> dict:
+    if os.path.exists(ACCOUNT_POOL_PATH):
+        try:
+            with open(ACCOUNT_POOL_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict) and isinstance(data.get("accounts"), dict):
+                return data
+        except Exception:
+            pass
+    return {"accounts": {}, "active_key": None, "updated_at": None}
+
+
+def save_account_pool(pool: dict):
+    pool["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    os.makedirs(os.path.dirname(os.path.abspath(ACCOUNT_POOL_PATH)), exist_ok=True)
+    with open(ACCOUNT_POOL_PATH, "w", encoding="utf-8") as f:
+        json.dump(pool, f, indent=2)
+
+
+def register_account_in_pool(sess: dict, source: str = "manual", label: str = "") -> str:
+    with _POOL_LOCK:
+        pool = load_account_pool()
+        au = str(sess.get("authuser", "0"))
+        sap = str(sess.get("sapisid", ""))
+        key = _acct_key(au, sap)
+        prev = pool["accounts"].get(key, {})
+        entry = {
+            "key": key,
+            "authuser": au,
+            "doc_id": sess.get("doc_id") or prev.get("doc_id") or DEFAULT_DOC_ID,
+            "sapisid": sap or prev.get("sapisid", ""),
+            "server_token": sess.get("server_token") or prev.get("server_token") or DEFAULT_SERVER_TOKEN,
+            "api_url": sess.get("api_url") or prev.get("api_url") or DEFAULT_API_URL,
+            "origin": sess.get("origin") or prev.get("origin") or DEFAULT_ORIGIN,
+            "cookie": sess.get("cookie") or prev.get("cookie", ""),
+            "source": source or prev.get("source", "cdp"),
+            "label": label or prev.get("label") or f"authuser={au}",
+            "exhausted_until": prev.get("exhausted_until", 0),
+            "last_seen_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        pool["accounts"][key] = entry
+        if not pool.get("active_key"):
+            pool["active_key"] = key
+        save_account_pool(pool)
+        return key
+
+
+def is_account_exhausted(authuser: str, sapisid: str) -> bool:
+    with _POOL_LOCK:
+        pool = load_account_pool()
+        entry = pool["accounts"].get(_acct_key(authuser, sapisid))
+        if not entry:
+            return False
+        return float(entry.get("exhausted_until", 0) or 0) > time.time()
+
+
+def mark_account_exhausted(authuser: str, sapisid: str, reset_ts: int | None = None, reason: str = "429_quota"):
+    with _POOL_LOCK:
+        pool = load_account_pool()
+        key = _acct_key(authuser, sapisid)
+        entry = pool["accounts"].get(key) or {"key": key, "authuser": str(authuser), "sapisid": str(sapisid)}
+        # Default cooldown 6 hours if no reset timestamp provided
+        until_ts = int(reset_ts) if (reset_ts and int(reset_ts) > int(time.time())) else int(time.time() + 21600)
+        entry["exhausted_until"] = until_ts
+        entry["last_error"] = reason
+        entry["exhausted_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        pool["accounts"][key] = entry
+        save_account_pool(pool)
+        log(f"[Account Pool] Marked {key} as quota-exhausted until epoch {until_ts} ({reason}).")
+
+
+def select_next_healthy_account(
+    exclude_authuser: str = "",
+    exclude_sapisid: str = "",
+    live_cookie: str = "",
+    live_sapisid: str = "",
+) -> dict | None:
+    now = time.time()
+    excl_key = _acct_key(exclude_authuser, exclude_sapisid) if exclude_sapisid else ""
+    with _POOL_LOCK:
+        pool = load_account_pool()
+        candidates = []
+        for k, entry in pool["accounts"].items():
+            if k == excl_key:
+                continue
+            if float(entry.get("exhausted_until", 0) or 0) > now:
+                continue
+            if not entry.get("cookie") and not (live_cookie and entry.get("sapisid") == live_sapisid):
+                continue
+            candidates.append(entry)
+
+        if not candidates:
+            return None
+
+        # Prefer newest/highest authuser (newly added accounts first!)
+        candidates.sort(key=lambda e: (e.get("source") == "cdp", int(e.get("authuser", "0")) if str(e.get("authuser", "0")).isdigit() else 99), reverse=True)
+        chosen = dict(candidates[0])
+        if live_cookie and chosen.get("sapisid") == live_sapisid:
+            chosen["cookie"] = live_cookie
+        pool["active_key"] = chosen["key"]
+        save_account_pool(pool)
+        log(f"[Account Pool] Auto-rotated to healthy account: {chosen['key']} (doc_id={chosen.get('doc_id')})")
+        return {
+            "api_url": chosen.get("api_url", DEFAULT_API_URL),
+            "origin": chosen.get("origin", DEFAULT_ORIGIN),
+            "doc_id": chosen.get("doc_id", DEFAULT_DOC_ID),
+            "authuser": str(chosen.get("authuser", "0")),
+            "sapisid": chosen.get("sapisid", ""),
+            "server_token": chosen.get("server_token", DEFAULT_SERVER_TOKEN),
+            "cookie": chosen.get("cookie", ""),
+        }
+
+
+def get_account_pool_summary() -> dict:
+    now = time.time()
+    with _POOL_LOCK:
+        pool = load_account_pool()
+        items = []
+        healthy_count = 0
+        for k, e in pool["accounts"].items():
+            ex_until = float(e.get("exhausted_until", 0) or 0)
+            healthy = ex_until <= now
+            if healthy:
+                healthy_count += 1
+            items.append(
+                {
+                    "key": k,
+                    "authuser": e.get("authuser"),
+                    "doc_id": e.get("doc_id"),
+                    "label": e.get("label"),
+                    "source": e.get("source"),
+                    "healthy": healthy,
+                    "exhausted_until": int(ex_until) if not healthy else 0,
+                    "last_seen_at": e.get("last_seen_at"),
+                }
+            )
+        return {
+            "total_accounts": len(items),
+            "healthy_accounts": healthy_count,
+            "active_key": pool.get("active_key"),
+            "accounts": items,
+        }
+
+
+def sync_all_cdp_tabs_to_pool(cdp_port: int = 9222) -> dict:
+    """Scans all open Google Vids tabs in Chrome CDP (port 9222) and registers every signed-in authuser into vids_accounts_pool.json."""
+    try:
+        import websockets
+
+        tabs_raw = urllib.request.urlopen(f"http://127.0.0.1:{cdp_port}/json/list", timeout=2).read().decode("utf-8")
+        tabs = json.loads(tabs_raw)
+
+        async def _scan():
+            ver = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{cdp_port}/json/version", timeout=2).read().decode("utf-8"))
+            async with websockets.connect(ver["webSocketDebuggerUrl"], max_size=50_000_000) as ws:
+                await ws.send(json.dumps({"id": 1, "method": "Storage.getCookies"}))
+                resp = json.loads(await ws.recv())
+                cookies = resp.get("result", {}).get("cookies", [])
+
+            cookie_map = {}
+            sapisid = ""
+            allowed = (".google.com", "google.com", "appsgenaiserver-pa.clients6.google.com", ".clients6.google.com", ".docs.google.com", "docs.google.com", ".googleusercontent.com")
+            for c in cookies:
+                dom, name, val = c.get("domain", ""), c.get("name", ""), c.get("value", "")
+                if "play.google.com" in dom or name in ("OSID", "__Secure-OSID"):
+                    continue
+                if any(dom == wd or dom.endswith(wd) for wd in allowed):
+                    cookie_map[name] = val
+                    if name == "SAPISID":
+                        sapisid = val
+            cookie_str = "; ".join(f"{k}={v}" for k, v in cookie_map.items())
+
+            found = []
+            for t in tabs:
+                if t.get("type") != "page":
+                    continue
+                t_url = t.get("url", "")
+                m = re.search(r"docs\.google\.com/videos/(?:u/(\d+)/)?d/([a-zA-Z0-9_-]{25,60})", t_url)
+                if not m:
+                    continue
+                au = m.group(1) or "0"
+                doc_id = m.group(2)
+                est = DEFAULT_SERVER_TOKEN
+                email = ""
+                try:
+                    async with websockets.connect(t["webSocketDebuggerUrl"], max_size=50_000_000) as tws:
+                        expr = "JSON.stringify({est:(window._docs_flag_initialData||{})['docs-est']||null,au:(window._docs_flag_initialData||{})['gaia_session_id'],ci:(window._docs_flag_initialData||{})['docs-ci']||null,em:(window._docs_flag_initialData||{})['docs-ey']||''})"
+                        await tws.send(json.dumps({"id": 77, "method": "Runtime.evaluate", "params": {"expression": expr, "returnByValue": True}}))
+                        tr = json.loads(await asyncio.wait_for(tws.recv(), timeout=2.5))
+                        vs = tr.get("result", {}).get("result", {}).get("value")
+                        if vs:
+                            inf = json.loads(vs)
+                            if inf.get("est"):
+                                est = inf["est"]
+                            if inf.get("au") is not None:
+                                au = str(inf["au"])
+                            if inf.get("ci"):
+                                doc_id = inf["ci"]
+                            email = inf.get("em") or ""
+                except Exception:
+                    pass
+                sess_obj = {
+                    "api_url": DEFAULT_API_URL,
+                    "origin": DEFAULT_ORIGIN,
+                    "doc_id": doc_id,
+                    "authuser": au,
+                    "sapisid": sapisid,
+                    "server_token": est,
+                    "cookie": cookie_str,
+                }
+                register_account_in_pool(sess_obj, source="cdp", label=email or f"authuser={au}")
+                found.append({"authuser": au, "doc_id": doc_id, "email": email})
+            return found
+
+        found_list = asyncio.run(_scan())
+        return {"status": "ok", "synced": found_list, "pool": get_account_pool_summary()}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 
 def load_vids_session(session_path: str = DEFAULT_SESSION_PATH) -> dict:
@@ -1310,46 +1549,91 @@ def run_vids_rpc_edit_or_generate(
         1,
     ]
 
-    def _send_payload(pl_obj: list, label: str) -> str:
-        t0 = time.time()
+    def _patch_payload_account(pl_obj: list, new_au: str, new_doc_id: str) -> list:
+        """Updates authuser (index 6) and doc_id inside Google Vids protobuf client_context before retrying on a rotated account."""
+        raw_s = json.dumps(pl_obj, separators=(",", ":"))
+        old_doc = session.get("doc_id")
+        if old_doc and new_doc_id and old_doc != new_doc_id:
+            raw_s = raw_s.replace(old_doc, new_doc_id)
+        patched = json.loads(raw_s)
         try:
-            req = urllib.request.Request(
-                session["api_url"],
-                data=json.dumps(pl_obj, separators=(",", ":")).encode("utf-8"),
-                headers=headers,
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=240) as resp:
-                raw_bytes = resp.read()
-                if resp.headers.get("Content-Encoding") == "gzip":
-                    raw_bytes = gzip.decompress(raw_bytes)
-                txt = raw_bytes.decode("utf-8", errors="replace")
-                log(f"[Vids RPC {label}] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(txt):,} chars)")
-                return txt
-        except urllib.error.HTTPError as he:
-            if he.code == 401:
-                log(f"[Vids RPC {label}] HTTP 401 SESSION_COOKIE_INVALID -> auto-refreshing live cookie from Chrome CDP and retrying...")
-                fresh = refresh_session_from_cdp(session_path=session_path, auto_launch=True)
-                if fresh and fresh.get("cookie"):
-                    session.update(fresh)
-                    headers["cookie"] = fresh["cookie"]
-                    headers["authorization"] = make_sapisidhash(fresh["sapisid"], fresh["origin"])
-                    headers["x-goog-authuser"] = str(fresh.get("authuser", "0"))
-                    headers["x-server-token"] = fresh.get("server_token", session["server_token"])
-                    req2 = urllib.request.Request(
-                        session["api_url"],
-                        data=json.dumps(pl_obj, separators=(",", ":")).encode("utf-8"),
-                        headers=headers,
-                        method="POST",
+            if isinstance(patched, list) and len(patched) > 2 and isinstance(patched[2], list) and len(patched[2]) > 6:
+                patched[2][6] = str(new_au)
+        except Exception:
+            pass
+        return patched
+
+    def _send_payload(pl_obj: list, label: str, max_rotations: int = 6) -> str:
+        t0 = time.time()
+        cur_pl = pl_obj
+        for attempt in range(max_rotations + 1):
+            try:
+                req = urllib.request.Request(
+                    session["api_url"],
+                    data=json.dumps(cur_pl, separators=(",", ":")).encode("utf-8"),
+                    headers=headers,
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=240) as resp:
+                    raw_bytes = resp.read()
+                    if resp.headers.get("Content-Encoding") == "gzip":
+                        raw_bytes = gzip.decompress(raw_bytes)
+                    txt = raw_bytes.decode("utf-8", errors="replace")
+                    log(f"[Vids RPC {label}] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(txt):,} chars) [authuser={headers.get('x-goog-authuser')}]")
+                    return txt
+            except urllib.error.HTTPError as he:
+                if he.code == 401 and attempt < max_rotations:
+                    log(f"[Vids RPC {label}] HTTP 401 SESSION_COOKIE_INVALID -> auto-refreshing live cookie from Chrome CDP and retrying...")
+                    fresh = refresh_session_from_cdp(session_path=session_path, auto_launch=True)
+                    if fresh and fresh.get("cookie"):
+                        cur_pl = _patch_payload_account(cur_pl, fresh.get("authuser", "0"), fresh.get("doc_id", session["doc_id"]))
+                        session.update(fresh)
+                        headers["cookie"] = fresh["cookie"]
+                        headers["authorization"] = make_sapisidhash(fresh["sapisid"], fresh["origin"])
+                        headers["x-goog-authuser"] = str(fresh.get("authuser", "0"))
+                        headers["x-server-token"] = fresh.get("server_token", session["server_token"])
+                        continue
+                if he.code == 429 and attempt < max_rotations:
+                    err_body = ""
+                    try:
+                        err_body = he.read().decode("utf-8", errors="replace")
+                    except Exception:
+                        pass
+                    # Parse Google GetQuotaSummaryResponse reset epoch if present (e.g. ["1796112000"])
+                    reset_ts = None
+                    m_ts = re.search(r'\["(17\d{8}|18\d{8})"\]', err_body)
+                    if m_ts:
+                        try:
+                            reset_ts = int(m_ts.group(1))
+                        except Exception:
+                            pass
+                    cur_au = str(headers.get("x-goog-authuser", session.get("authuser", "0")))
+                    cur_sap = str(session.get("sapisid", ""))
+                    mark_account_exhausted(cur_au, cur_sap, reset_ts=reset_ts, reason="HTTP 429 USER_GENAI_QUOTA_EXHAUSTED")
+                    # Sync any newly opened CDP tabs into the pool before picking the next healthy account
+                    sync_all_cdp_tabs_to_pool()
+                    nxt = select_next_healthy_account(
+                        exclude_authuser=cur_au,
+                        exclude_sapisid=cur_sap,
+                        live_cookie=session.get("cookie", ""),
+                        live_sapisid=cur_sap,
                     )
-                    with urllib.request.urlopen(req2, timeout=240) as resp2:
-                        raw_bytes = resp2.read()
-                        if resp2.headers.get("Content-Encoding") == "gzip":
-                            raw_bytes = gzip.decompress(raw_bytes)
-                        txt = raw_bytes.decode("utf-8", errors="replace")
-                        log(f"[Vids RPC {label} (After 401 Auto-Refresh)] HTTP {resp2.status} in {time.time() - t0:.1f}s ({len(txt):,} chars)")
-                        return txt
-            raise
+                    if nxt:
+                        log(f"[Vids RPC {label}] HTTP 429 on authuser={cur_au} -> Auto-rotating to healthy account authuser={nxt['authuser']} (doc_id={nxt['doc_id']}) and retrying...")
+                        cur_pl = _patch_payload_account(cur_pl, nxt["authuser"], nxt["doc_id"])
+                        session.update(nxt)
+                        headers["cookie"] = nxt["cookie"]
+                        headers["authorization"] = make_sapisidhash(nxt["sapisid"], nxt["origin"])
+                        headers["x-goog-authuser"] = str(nxt["authuser"])
+                        headers["x-server-token"] = nxt.get("server_token", session["server_token"])
+                        try:
+                            with open(session_path, "w", encoding="utf-8") as sf:
+                                json.dump(session, sf, indent=2)
+                        except Exception:
+                            pass
+                        continue
+                    log(f"[Vids RPC {label}] HTTP 429 and no healthy backup accounts left in pool. Add a new Google account via /api/pool/add-account.")
+                raise
 
     def _do_rpc():
         # Whenever reference images are provided, use native UseCase 376 (Ingredients/Reference-to-Video r2v) -> retry safe R2V -> UseCase 375 (First-Frame I2V)!

@@ -73,14 +73,19 @@ from edit_video import (
     DEFAULT_SESSION_PATH,
     describe_image_subject_for_omni,
     detect_image_mime_and_dimensions,
+    ensure_chrome_cdp_running,
     ensure_png_or_jpeg_image_file,
     format_editing_prompt,
+    get_account_pool_summary,
     get_ffmpeg_exe,
     load_vids_session,
     log,
     refresh_session_from_cdp,
+    register_account_in_pool,
     run_vids_rpc_edit_or_generate,
     run_vids_rpc_generate_image,
+    select_next_healthy_account,
+    sync_all_cdp_tabs_to_pool,
     update_session_from_curl,
 )
 
@@ -311,6 +316,7 @@ def update_session_payload(body: dict) -> dict:
 
     if body.get("curl"):
         sess = update_session_from_curl(body["curl"], DEFAULT_SESSION_PATH)
+        register_account_in_pool(sess, source="curl", label=body.get("label") or f"authuser={sess.get('authuser', '0')}")
         return {"status": "ok", "source": "curl", "doc_id": sess.get("doc_id"), "authuser": sess.get("authuser")}
 
     if body.get("vids_session") and isinstance(body["vids_session"], dict):
@@ -318,6 +324,7 @@ def update_session_payload(body: dict) -> dict:
         os.makedirs(os.path.dirname(DEFAULT_SESSION_PATH), exist_ok=True)
         with open(DEFAULT_SESSION_PATH, "w", encoding="utf-8") as f:
             json.dump(sess, f, indent=2)
+        register_account_in_pool(sess, source="vids_session", label=body.get("label") or f"authuser={sess.get('authuser', '0')}")
         return {"status": "ok", "source": "vids_session", "doc_id": sess.get("doc_id"), "authuser": sess.get("authuser")}
 
     if body.get("cookie"):
@@ -354,6 +361,7 @@ def update_session_payload(body: dict) -> dict:
         os.makedirs(os.path.dirname(DEFAULT_SESSION_PATH), exist_ok=True)
         with open(DEFAULT_SESSION_PATH, "w", encoding="utf-8") as f:
             json.dump(sess, f, indent=2)
+        register_account_in_pool(sess, source="cookie", label=body.get("label") or f"authuser={sess.get('authuser', '0')}")
         return {"status": "ok", "source": "cookie", "doc_id": sess.get("doc_id"), "authuser": sess.get("authuser")}
 
     return {"status": "ok", "message": "Updated API key only"}
@@ -373,6 +381,7 @@ def get_session_status() -> dict:
     has_sapisid = bool(sess.get("sapisid")) or ("SAPISID=" in cookie_str)
     session_ready = bool(has_file and has_1psidts and has_sapisid)
     gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+    pool_info = get_account_pool_summary()
     return {
         "session_ready": session_ready,
         "doc_id": sess.get("doc_id"),
@@ -385,6 +394,7 @@ def get_session_status() -> dict:
         "last_rotated_at": SESSION_META["last_rotated_at"],
         "last_rotate_status": SESSION_META["last_rotate_status"],
         "rotate_count": SESSION_META["rotate_count"],
+        "account_pool": pool_info,
     }
 
 
@@ -1126,6 +1136,10 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             self._send_json(get_session_status())
             return
 
+        if path == "/api/pool/status":
+            self._send_json(get_account_pool_summary())
+            return
+
         if path == "/api/jobs":
             with JOBS_LOCK:
                 self._send_json({"jobs": list(JOBS.values())})
@@ -1204,7 +1218,48 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
 
         if path == "/api/session/rotate":
             res = rotate_google_cookies_headless(DEFAULT_SESSION_PATH)
+            sync_all_cdp_tabs_to_pool()
             self._send_json(res)
+            return
+
+        if path == "/api/pool/sync":
+            self._send_json(sync_all_cdp_tabs_to_pool())
+            return
+
+        if path == "/api/pool/add-account":
+            ensure_chrome_cdp_running(
+                cdp_port=9222,
+                headless=False,
+                start_url="https://accounts.google.com/AddSession?continue=https://vids.new",
+            )
+            self._send_json(
+                {
+                    "status": "ok",
+                    "message": "Opened Google AddSession -> vids.new in Chrome CDP (port 9222). Sign in to your new account; it will auto-sync into the 24/7 rotation pool.",
+                }
+            )
+            return
+
+        if path == "/api/pool/rotate-account":
+            sync_all_cdp_tabs_to_pool()
+            cur = {}
+            if os.path.exists(DEFAULT_SESSION_PATH):
+                try:
+                    cur = json.load(open(DEFAULT_SESSION_PATH, "r", encoding="utf-8"))
+                except Exception:
+                    pass
+            nxt = select_next_healthy_account(
+                exclude_authuser=str(cur.get("authuser", "")),
+                exclude_sapisid=str(cur.get("sapisid", "")),
+                live_cookie=cur.get("cookie", ""),
+                live_sapisid=cur.get("sapisid", ""),
+            )
+            if not nxt:
+                self._send_json({"status": "exhausted", "message": "No healthy backup account in pool. Call POST /api/pool/add-account to sign in to a new account.", "pool": get_account_pool_summary()}, 429)
+                return
+            with open(DEFAULT_SESSION_PATH, "w", encoding="utf-8") as f:
+                json.dump(nxt, f, indent=2)
+            self._send_json({"status": "ok", "active_authuser": nxt["authuser"], "active_doc_id": nxt["doc_id"], "pool": get_account_pool_summary()})
             return
 
         if path == "/api/tts-preview":
