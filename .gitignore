@@ -22,3 +22,5 @@ media/
 *.mkv
 *.wav
 *.pcm
+
+vids_accounts_pool.json
