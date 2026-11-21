@@ -1674,9 +1674,12 @@ def run_vids_rpc_edit_or_generate(
                     return txt
             except urllib.error.HTTPError as he:
                 if he.code == 401 and attempt < max_rotations:
-                    log(f"[Vids RPC {label}] HTTP 401 SESSION_COOKIE_INVALID -> auto-refreshing live cookie from Chrome CDP and retrying...")
-                    fresh = refresh_session_from_cdp(session_path=session_path, auto_launch=True)
-                    if fresh and fresh.get("cookie"):
+                    cur_au = str(headers.get("x-goog-authuser", session.get("authuser", "0")))
+                    cur_sap = str(session.get("sapisid", ""))
+                    old_ck = headers.get("cookie", "")
+                    log(f"[Vids RPC {label}] HTTP 401 SESSION_COOKIE_INVALID on authuser={cur_au} -> checking for fresh session...")
+                    fresh = refresh_session_from_cdp(session_path=session_path, auto_launch=False)
+                    if fresh and fresh.get("cookie") and fresh.get("cookie") != old_ck and not is_account_exhausted(fresh.get("authuser", "0"), fresh.get("sapisid", "")):
                         cur_pl = _patch_payload_account(cur_pl, fresh.get("authuser", "0"), fresh.get("doc_id", session["doc_id"]))
                         session.update(fresh)
                         headers["cookie"] = fresh["cookie"]
@@ -1684,6 +1687,20 @@ def run_vids_rpc_edit_or_generate(
                         headers["x-goog-authuser"] = str(fresh.get("authuser", "0"))
                         headers["x-server-token"] = fresh.get("server_token", session["server_token"])
                         continue
+                    nxt = select_next_healthy_account(exclude_authuser=cur_au, exclude_sapisid=cur_sap)
+                    if nxt and nxt.get("cookie") and nxt.get("cookie") != old_ck:
+                        log(f"[Vids RPC {label}] Switching from expired 401 account to backup account {nxt.get('doc_id')}...")
+                        cur_pl = _patch_payload_account(cur_pl, nxt["authuser"], nxt["doc_id"])
+                        session.update(nxt)
+                        headers["cookie"] = nxt["cookie"]
+                        headers["authorization"] = make_sapisidhash(nxt["sapisid"], nxt["origin"])
+                        headers["x-goog-authuser"] = str(nxt["authuser"])
+                        headers["x-server-token"] = nxt.get("server_token", session["server_token"])
+                        continue
+                    raise RuntimeError(
+                        f"HTTP 401 SESSION_COOKIE_INVALID: Phiên Cookie tài khoản '{session.get('doc_id')}' đã hết hạn __Secure-1PSIDTS (sau ~2 giờ). "
+                        "Hãy dán cURL mới ở Tab 5 trên https://omni.mcpads.win/ hoặc đăng nhập trực tiếp vào trình duyệt Studio (AddSession) để gia hạn vĩnh viễn 24/7."
+                    ) from he
                 if he.code == 429 and attempt < max_rotations:
                     err_body = ""
                     try:
@@ -1881,12 +1898,6 @@ def run_vids_rpc_generate_image(
     aspect_ratio ('16:9', '1:1', '9:16'), and style ('PHOTOGRAPHY', 'VECTOR_ART', 'ILLUSTRATION',
     'BACKGROUND', 'WATERCOLOR', 'CYBERPUNK', 'FLATLAY', 'LANDSCAPE', 'UNSPECIFIED').
     """
-    try:
-        # Only poll Chrome CDP if vids_session.json is missing or older than 10 minutes (saves 3-6s per scene)
-        if not os.path.exists(session_path) or (time.time() - os.path.getmtime(session_path) > 600):
-            refresh_session_from_cdp(session_path)
-    except Exception:
-        pass
     session = load_vids_session(session_path)
     req_id = str(uuid.uuid4())
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
@@ -1899,7 +1910,14 @@ def run_vids_rpc_generate_image(
 
     count = max(1, min(4, int(num_images or 1)))
     clean_prompt = re.sub(r"#[0-9a-fA-F]{6}\b", "", (prompt_text or "").strip()).strip()
-    if any(ord(ch) > 127 for ch in clean_prompt):
+    # Preserve Vietnamese text when the prompt explicitly requests Vietnamese typography/posters/quoted text
+    has_quoted_or_explicit_vi = (
+        "exact vietnamese" in clean_prompt.lower()
+        or "diacritics" in clean_prompt.lower()
+        or "'" in clean_prompt
+        or '"' in clean_prompt
+    )
+    if any(ord(ch) > 127 for ch in clean_prompt) and not has_quoted_or_explicit_vi:
         clean_prompt = _translate_vi_music_prompt_to_en(clean_prompt)
 
     valid_ref_images = [p for p in (image_files or []) if p and os.path.exists(p)]
