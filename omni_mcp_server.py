@@ -55,7 +55,9 @@ MCP_INSTRUCTIONS = (
     "Standard workflow for AI Agents: "
     "(1) Call omni_session_status to verify studio service readiness (session_ready=true). "
     "(2) If the user provides a reference image (local path, URL, or base64), pass it directly to the `image` parameter of omni_generate_scene / omni_generate_image / omni_produce_commercial, or call omni_upload_image first to normalize and analyze the subject. "
-    "(3) To generate high-resolution AI images (or variations from a reference image), call omni_generate_image (supports 16:9, 1:1, 9:16 and 9 visual styles). "
+    "(3) To generate high-resolution AI images, banners, posters, or product/character variations, call omni_generate_image: "
+    "omit `image` for Text-to-Image, or pass `image`/`images` for Reference-to-Image consistency; choose `aspect_ratio` (`16:9` landscape/web/YouTube, `1:1` square Facebook/Instagram Ads, `9:16` vertical TikTok/Reels/Story) and one of 14 `style` presets (default `PHOTOGRAPHY`). "
+    "For Vietnamese posters/banners with on-image text, wrap exact Vietnamese text in quotes (`\"...\"`) and specify `'exact Vietnamese text with diacritics'` so it is preserved verbatim; never use `#RRGGBB` hex codes. "
     "(4) To generate a 3s–15s video clip (default 15s, 16:9 or 9:16), call omni_generate_scene: "
     "set `input_mode='reference'` and pass `image` for Reference-to-Video (preserves 100% of the person's appearance, product, or UI screenshot); "
     "set `input_mode='text'` (or omit `image`) for pure Text-to-Video generation; "
@@ -214,40 +216,94 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_generate_image",
         "description": (
-            "Generate high-resolution AI images (or transform a reference image) via the Omni Studio Image Generation API. "
-            "Generated images are saved in `/outputs` and can be passed directly into `omni_generate_scene`'s `image` parameter."
+            "Generate high-resolution AI images, ad banners, posters, product visuals, or reference-guided variations via the Omni Studio Image Generation API. "
+            "HOW TO USE: "
+            "(1) Mode: Omit `image`/`images` for pure Text-to-Image, or pass 1–3 reference images (`image`/`images`) for Reference-to-Image to preserve exact product, logo, or character appearance. "
+            "(2) Prompting: Describe subject, setting, lighting, camera angle, and composition clearly; describe colors in natural words (never use `#RRGGBB` hex codes). "
+            "(3) Vietnamese Typography on Banners/Posters: Wrap any exact Vietnamese headline/CTA in quotes (e.g., `\"GIẢM 30% HÔM NAY\"`) and include `'exact Vietnamese text with diacritics'` in the prompt so Vietnamese text is rendered accurately without auto-translation. "
+            "(4) Aspect Ratio & Style: Pick `aspect_ratio` (`16:9`, `1:1`, or `9:16`) matching the target channel and choose from 14 visual `style` presets. "
+            "(5) Async Retrieval: If the response returns `status='running'` with a `job_id`, poll `omni_job_status(job_id=...)` until `status='completed'` to get `public_download_url` and `images[]`. "
+            "Generated PNGs in `/outputs` can be passed directly into `omni_generate_scene`'s `image` parameter."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "English or Vietnamese visual prompt describing the image to generate (do not include hex color codes).",
+                    "description": (
+                        "Detailed English or Vietnamese visual prompt (subject, composition, lighting, mood, camera angle). "
+                        "Rules: Do NOT include `#RRGGBB` hex color codes (use natural color names like 'deep emerald green', 'warm ivory cream'). "
+                        "To render exact Vietnamese text on banners/posters, wrap the exact text in quotes (`\"...\"`) and add `'exact Vietnamese text with diacritics'`."
+                    ),
                 },
                 "image": {
                     "type": "string",
-                    "description": "Optional reference image (local path, `outputs/...`, `file:///`, `https://` URL, or base64) to guide character/product/style consistency.",
+                    "description": "Optional single reference image (local path, `outputs/...`, `file:///`, `https://` URL, or base64) for Reference-to-Image mode to preserve character, product, or brand consistency. Omit for pure Text-to-Image.",
                 },
                 "images": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Optional list of reference images.",
+                    "description": "Optional list of multiple reference images (up to 3) to combine character, product, and logo/background references.",
                 },
                 "aspect_ratio": {
                     "type": "string",
-                    "description": "Aspect ratio: `16:9` (Landscape), `1:1` (Square), or `9:16` (Portrait). Default: `16:9`.",
+                    "enum": ["16:9", "1:1", "9:16"],
+                    "default": "16:9",
+                    "description": (
+                        "Output aspect ratio (3 native formats): "
+                        "`16:9` (Landscape widescreen — YouTube thumbnails, website hero banners, presentation slides, horizontal 16:9 video frames); "
+                        "`1:1` (Square — Facebook/Instagram Feed posts, e-commerce product cards, social ad banners); "
+                        "`9:16` (Vertical portrait — TikTok, Instagram Reels, YouTube Shorts, Facebook Stories, vertical 9:16 video frames). "
+                        "For 4:5 social feeds, generate `1:1` or `9:16` with safe central framing. Default: `16:9`."
+                    ),
                 },
                 "style": {
                     "type": "string",
-                    "description": "Image style preset: `PHOTOGRAPHY`, `VECTOR_ART`, `ILLUSTRATION`, `BACKGROUND`, `WATERCOLOR`, `CYBERPUNK`, `FLATLAY`, `LANDSCAPE`, `UNSPECIFIED`. Default: `PHOTOGRAPHY`.",
+                    "enum": [
+                        "PHOTOGRAPHY",
+                        "ILLUSTRATION",
+                        "BACKGROUND",
+                        "LANDSCAPE",
+                        "FLATLAY",
+                        "CLIPART",
+                        "WATERCOLOR",
+                        "VECTOR_ART",
+                        "HANDICRAFT",
+                        "CYBERPUNK",
+                        "PIXEL_ART",
+                        "SURPRISE_ME",
+                        "VECTOR_ICON",
+                        "UNSPECIFIED",
+                    ],
+                    "default": "PHOTOGRAPHY",
+                    "description": (
+                        "Visual style preset (14 supported styles): "
+                        "`PHOTOGRAPHY` (Photorealistic studio/commercial/portrait — best default for ads & real products), "
+                        "`FLATLAY` (Top-down overhead product/food/cosmetics layout), "
+                        "`BACKGROUND` (Clean uncluttered backdrop/texture for banners & text overlay), "
+                        "`LANDSCAPE` (Scenic wide-angle outdoor/architecture vistas), "
+                        "`ILLUSTRATION` (Editorial/storytelling digital art), "
+                        "`VECTOR_ART` (Clean scalable flat/modern graphic illustration), "
+                        "`VECTOR_ICON` (Minimalist badge, emblem, or UI icon graphic), "
+                        "`WATERCOLOR` (Soft painterly watercolor aesthetic), "
+                        "`CLIPART` (Simple isolated graphic sticker/cutout), "
+                        "`HANDICRAFT` (Paper-cut, clay, felt, or handmade tactile craft look), "
+                        "`CYBERPUNK` (Neon futuristic sci-fi lighting), "
+                        "`PIXEL_ART` (Retro 8-bit/16-bit pixel game art), "
+                        "`SURPRISE_ME` (Creative automatic style selection), "
+                        "`UNSPECIFIED` (Neutral style driven purely by prompt). Default: `PHOTOGRAPHY`."
+                    ),
                 },
                 "num_images": {
                     "type": "integer",
-                    "description": "Number of image variations to save (`1` to `4`). Default: `1`.",
+                    "minimum": 1,
+                    "maximum": 4,
+                    "default": 1,
+                    "description": "Number of image variations to generate and save (`1` to `4`). Use `2`–`4` when exploring creative concepts. Default: `1`.",
                 },
                 "output_filename": {
                     "type": "string",
-                    "description": "Output PNG filename inside `/outputs` (e.g. `studio_ref_image.png`).",
+                    "description": "Output PNG filename inside `/outputs` (e.g. `promo_banner_1x1.png`). Auto-generated if omitted.",
                 },
             },
             "required": ["prompt"],
@@ -422,13 +478,13 @@ MCP_TOOLS_SCHEMA = [
     },
     {
         "name": "omni_job_status",
-        "description": "Check the real-time status (`queued`, `running`, `completed`, `failed`), logs, instant 720p `preview_url`, and `/outputs/<filename>.mp4` `download_url` (`public_download_url`) of a pipeline job.",
+        "description": "Check the real-time status (`queued`, `running`, `completed`, `failed`), logs, instant 720p `preview_url`, and `/outputs/<filename>` `download_url` (`public_download_url`) of any async pipeline job (`omni_generate_image`, `omni_generate_scene`, `omni_synthesize_1take_vo`, `omni_generate_lyria_bgm`, or `omni_produce_commercial`).",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "job_id": {
                     "type": "string",
-                    "description": "Job ID returned by `omni_generate_scene` or `omni_produce_commercial`. Omit to list all recent jobs.",
+                    "description": "Job ID returned by `omni_generate_image`, `omni_generate_scene`, `omni_synthesize_1take_vo`, `omni_generate_lyria_bgm`, or `omni_produce_commercial`. Omit to list all recent jobs.",
                 },
                 "wait_seconds": {
                     "type": "integer",
