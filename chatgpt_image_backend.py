@@ -1156,14 +1156,16 @@ def generate_chatgpt_image(
                 except Exception:
                     pass
 
-            # Wait for send button to become enabled (also allows reference upload to complete)
-            wait_iters = 35 if ref_data_urls else 12
+            # Wait for send button to become enabled AND any attachment upload spinner to finish
+            wait_iters = 75 if ref_data_urls else 15
             for _ in range(wait_iters):
                 try:
                     ready = s.evaluate(
                         f"""(() => {{
                           const el = {COMPOSER_JS};
                           const form = el?.closest('form') || document;
+                          const uploading = !!form.querySelector('[role="progressbar"], [aria-busy="true"], [data-testid*="loading" i], [data-testid*="upload" i] svg.animate-spin');
+                          if (uploading) return false;
                           const btn = form.querySelector('[data-testid="send-button"], button[type="submit"], #composer-submit-button')
                             || document.querySelector({json.dumps(SEND_SEL_SHARED)});
                           return !!(btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true');
@@ -1175,7 +1177,7 @@ def generate_chatgpt_image(
                         break
                 except Exception:
                     pass
-                time.sleep(0.15 if ref_data_urls else 0.08)
+                time.sleep(0.2 if ref_data_urls else 0.08)
 
             def _trigger_submit() -> None:
                 clicked = False

@@ -416,6 +416,12 @@ def save_base64_image_if_needed(img_spec: str, job_dir: str, idx: int) -> str:
             clean_spec = clean_spec[1:]
     elif clean_spec.lower().startswith("file://"):
         clean_spec = urllib.parse.unquote(clean_spec[7:])
+    if clean_spec.lower().startswith("https://omni.mcpads.win/outputs/"):
+        local_rel = "outputs/" + clean_spec.split("/outputs/", 1)[1].split("?", 1)[0]
+        local_cand = os.path.join(REPO_ROOT, local_rel)
+        if os.path.exists(local_cand):
+            norm_p, _, _, _, _ = ensure_png_or_jpeg_image_file(os.path.abspath(local_cand))
+            return norm_p
     if clean_spec.startswith("/outputs/"):
         clean_spec = clean_spec.lstrip("/")
     if os.path.exists(clean_spec):

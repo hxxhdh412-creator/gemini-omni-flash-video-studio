@@ -827,11 +827,16 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         if not out_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
             out_name += ".png"
         out_path = os.path.join(OUTPUTS_DIR, out_name)
-        ref_imgs = []
+        raw_refs = []
         if args.get("image"):
-            ref_imgs.append(srv.save_base64_image_if_needed(args["image"], OUTPUTS_DIR, 1))
-        for i, im in enumerate(args.get("images") or []):
-            ref_imgs.append(srv.save_base64_image_if_needed(im, OUTPUTS_DIR, i + 1))
+            raw_refs.append(args["image"])
+        for im in args.get("images") or []:
+            if im and im not in raw_refs:
+                raw_refs.append(im)
+        ref_imgs = [
+            srv.save_base64_image_if_needed(im, OUTPUTS_DIR, f"cgpt_{uuid.uuid4().hex[:5]}_{idx + 1}")
+            for idx, im in enumerate(raw_refs[:3])
+        ]
         ref_imgs = [p for p in ref_imgs if p]
         return _run_chatgpt_image_job(
             prompt=prompt,
@@ -853,11 +858,16 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         if not out_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
             out_name += ".png"
         out_path = os.path.join(OUTPUTS_DIR, out_name)
-        ref_imgs = []
+        raw_refs = []
         if args.get("image"):
-            ref_imgs.append(srv.save_base64_image_if_needed(args["image"], OUTPUTS_DIR, 1))
-        for i, im in enumerate(args.get("images") or []):
-            ref_imgs.append(srv.save_base64_image_if_needed(im, OUTPUTS_DIR, i + 1))
+            raw_refs.append(args["image"])
+        for im in args.get("images") or []:
+            if im and im not in raw_refs:
+                raw_refs.append(im)
+        ref_imgs = [
+            srv.save_base64_image_if_needed(im, OUTPUTS_DIR, f"cgpt_{uuid.uuid4().hex[:5]}_{idx + 1}")
+            for idx, im in enumerate(raw_refs[:3])
+        ]
         ref_imgs = [p for p in ref_imgs if p]
 
         if engine == "chatgpt":
