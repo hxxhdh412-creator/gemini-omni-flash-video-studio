@@ -124,7 +124,34 @@ USER_SEL_SHARED = (
     '[data-message-author-role="user"]'
 )
 
-BUSY_JS = f"!!document.querySelector({json.dumps(STOP_SEL_SHARED)})"
+ASST_DONE_SEL = (
+    'button[data-testid="copy-turn-action-button"], '
+    'button[data-testid="good-response-turn-action-button"], '
+    'button[data-testid="bad-response-turn-action-button"], '
+    'button[aria-label="Rate response" i], '
+    'button[aria-label="Read aloud" i], '
+    'button[aria-label="Regenerate response" i], '
+    'button[aria-label="Copy" i], '
+    'button[aria-label="Good response" i]'
+)
+
+BUSY_JS = f"""(() => {{
+  const stops = [...document.querySelectorAll({json.dumps(STOP_SEL_SHARED)})].filter(el => {{
+    if (el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    for (let n = el; n; n = n.parentElement) {{
+      const st = getComputedStyle(n);
+      if (n.hidden || st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0') return false;
+    }}
+    return true;
+  }});
+  if (!stops.length) return false;
+  const turns = [...document.querySelectorAll({json.dumps(TURN_SEL_SHARED)})];
+  const lastTurn = turns[turns.length - 1];
+  if (lastTurn && lastTurn.querySelector({json.dumps(ASST_DONE_SEL)})) return false;
+  return true;
+}})()"""
 
 LIST_IMAGES_EXPR = """(() => {
   const imgs = [...document.querySelectorAll('img')];
@@ -1222,6 +1249,7 @@ def generate_chatgpt_image(
             _emit("drawing", "ChatGPT Web is generating the image (typically 20–50 seconds)...")
             deadline = time.monotonic() + max(30.0, float(timeout_sec))
             text_only_idle = 0
+            ready_img_ticks = 0
             captured_conv_id = target_conv_id
             last_status = ""
 
@@ -1267,10 +1295,16 @@ def generate_chatgpt_image(
                     and im.get("src")
                     and str(im["src"]) not in known_srcs
                     and im.get("complete")
-                    and (int(im.get("w") or 0) >= 128 or str(im.get("alt") or "").startswith("Generated image"))
+                    and (int(im.get("w") or 0) >= 256 or str(im.get("alt") or "").startswith("Generated image"))
                 ]
 
-                if new_imgs and not st.get("busy"):
+                full_res_ready = any(int(im.get("w") or 0) >= 512 and im.get("complete") for im in new_imgs)
+                if full_res_ready:
+                    ready_img_ticks += 1
+                else:
+                    ready_img_ticks = 0
+
+                if new_imgs and (not st.get("busy") or ready_img_ticks >= 2):
                     _emit("download", "Image generated, downloading full-resolution output...")
                     saved_paths: list[str] = []
                     primary_mime = "image/png"
