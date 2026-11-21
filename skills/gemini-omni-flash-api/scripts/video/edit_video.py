@@ -486,8 +486,99 @@ def sync_all_cdp_tabs_to_pool(cdp_port: int = 9222) -> dict:
         return {"status": "error", "error": str(e)}
 
 
+def set_active_pool_account(key: str, session_path: str = DEFAULT_SESSION_PATH) -> dict | None:
+    with _POOL_LOCK:
+        pool = load_account_pool()
+        entry = pool["accounts"].get(key)
+        if not entry:
+            return None
+        pool["active_key"] = key
+        save_account_pool(pool)
+        sess_data = {
+            "api_url": entry.get("api_url", DEFAULT_API_URL),
+            "origin": entry.get("origin", DEFAULT_ORIGIN),
+            "doc_id": entry.get("doc_id", DEFAULT_DOC_ID),
+            "authuser": str(entry.get("authuser", "0")),
+            "sapisid": entry.get("sapisid", ""),
+            "server_token": entry.get("server_token", DEFAULT_SERVER_TOKEN),
+            "cookie": entry.get("cookie", ""),
+        }
+    os.makedirs(os.path.dirname(os.path.abspath(session_path)), exist_ok=True)
+    with open(session_path, "w", encoding="utf-8") as f:
+        json.dump(sess_data, f, indent=2)
+    return sess_data
+
+
+def remove_pool_account(key: str) -> bool:
+    with _POOL_LOCK:
+        pool = load_account_pool()
+        if key not in pool["accounts"]:
+            return False
+        del pool["accounts"][key]
+        if pool.get("active_key") == key:
+            pool["active_key"] = next(iter(pool["accounts"].keys()), None)
+        save_account_pool(pool)
+        return True
+
+
+def reset_pool_account_quota(key: str) -> bool:
+    with _POOL_LOCK:
+        pool = load_account_pool()
+        if key not in pool["accounts"]:
+            return False
+        pool["accounts"][key]["exhausted_until"] = 0
+        pool["accounts"][key].pop("last_error", None)
+        save_account_pool(pool)
+        return True
+
+
+def update_pool_account_cookie(key: str, new_cookie: str, session_path: str = DEFAULT_SESSION_PATH):
+    with _POOL_LOCK:
+        pool = load_account_pool()
+        entry = pool["accounts"].get(key)
+        if not entry:
+            return
+        entry["cookie"] = new_cookie
+        entry["last_seen_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        is_active = pool.get("active_key") == key
+        save_account_pool(pool)
+    if is_active and os.path.exists(session_path):
+        try:
+            with open(session_path, "r", encoding="utf-8") as f:
+                s = json.load(f)
+            if _acct_key(s.get("authuser", "0"), s.get("sapisid", "")) == key:
+                s["cookie"] = new_cookie
+                with open(session_path, "w", encoding="utf-8") as f:
+                    json.dump(s, f, indent=2)
+        except Exception:
+            pass
+
+
 def load_vids_session(session_path: str = DEFAULT_SESSION_PATH) -> dict:
-    """Loads Google Vids RPC session, automatically refreshing from Chrome CDP (port 9222) if available."""
+    """Loads active healthy Google Vids RPC session, preferring active pool account over stale/exhausted CDP."""
+    if os.path.exists(session_path):
+        try:
+            with open(session_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if data.get("cookie") and data.get("sapisid"):
+                if not is_account_exhausted(data.get("authuser", "0"), data.get("sapisid", "")):
+                    data.setdefault("api_url", DEFAULT_API_URL)
+                    data.setdefault("origin", DEFAULT_ORIGIN)
+                    data.setdefault("doc_id", DEFAULT_DOC_ID)
+                    data.setdefault("server_token", DEFAULT_SERVER_TOKEN)
+                    return data
+                # Current active session is exhausted -> auto-pick next healthy account from pool
+                alt = select_next_healthy_account(
+                    exclude_authuser=str(data.get("authuser", "0")),
+                    exclude_sapisid=str(data.get("sapisid", "")),
+                )
+                if alt:
+                    with open(session_path, "w", encoding="utf-8") as sf:
+                        json.dump(alt, sf, indent=2)
+                    return alt
+        except Exception:
+            pass
+
     live = refresh_session_from_cdp(session_path=session_path)
     if live:
         return live
@@ -495,7 +586,7 @@ def load_vids_session(session_path: str = DEFAULT_SESSION_PATH) -> dict:
     if not os.path.exists(session_path):
         raise FileNotFoundError(
             f"Google Vids session file not found at '{session_path}'. "
-            "Run with --update-session-from-curl <curl_file> or open Chrome CDP on port 9222."
+            "Run with --update-session-from-curl <curl_file> or add an account in Web Studio Tab 5."
         )
     with open(session_path, "r", encoding="utf-8") as f:
         data = json.load(f)

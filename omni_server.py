@@ -78,14 +78,19 @@ from edit_video import (
     format_editing_prompt,
     get_account_pool_summary,
     get_ffmpeg_exe,
+    load_account_pool,
     load_vids_session,
     log,
     refresh_session_from_cdp,
     register_account_in_pool,
+    remove_pool_account,
+    reset_pool_account_quota,
     run_vids_rpc_edit_or_generate,
     run_vids_rpc_generate_image,
     select_next_healthy_account,
+    set_active_pool_account,
     sync_all_cdp_tabs_to_pool,
+    update_pool_account_cookie,
     update_session_from_curl,
 )
 
@@ -163,50 +168,21 @@ def bootstrap_session_from_env():
     log(f"[Server Bootstrap] Initialized vids_session.json from OMNI_COOKIE env (doc_id={sess['doc_id']}, authuser={sess['authuser']})")
 
 
-def rotate_google_cookies_headless(session_path: str = DEFAULT_SESSION_PATH) -> dict:
-    """
-    Headless Pure-Python Cookie Rotator for Linux/Cloud Servers:
-    1. First checks if local Chrome CDP (port 9222) is running; if so, pulls live rotated cookies.
-    2. Otherwise, calls Google's `https://accounts.google.com/RotateCookies` endpoint directly over HTTPS
-       using the current cookie jar (`SID`, `HSID`, `SSID`, `SAPISID`, `__Secure-1PSID`, `__Secure-1PSIDRTS`)
-       and updates `__Secure-1PSIDTS`, `__Secure-3PSIDTS`, `SIDCC`, `__Secure-1PSIDCC`, `__Secure-3PSIDCC`
-       in `vids_session.json` so the session stays alive on headless servers!
-    """
-    # Try CDP first (auto-launches background Chrome CDP if installed on host)
-    try:
-        cdp_sess = refresh_session_from_cdp(session_path=session_path, auto_launch=True)
-        if cdp_sess:
-            SESSION_META["last_rotated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            SESSION_META["last_rotate_status"] = "ok_cdp"
-            SESSION_META["rotate_count"] += 1
-            return {"status": "ok", "method": "cdp", "authuser": cdp_sess.get("authuser"), "doc_id": cdp_sess.get("doc_id")}
-    except Exception:
-        pass
-
-    if not os.path.exists(session_path):
-        return {"status": "error", "message": "vids_session.json not found"}
-
-    with open(session_path, "r", encoding="utf-8") as f:
-        sess = json.load(f)
-
-    cookie_str = sess.get("cookie", "")
-    if not cookie_str:
-        return {"status": "error", "message": "Empty cookie in vids_session.json"}
-
+def _rotate_single_cookie_http(cookie_str: str, sapisid: str, doc_id: str, authuser: str) -> tuple[str, list[str]]:
+    """Renews Google Vids session cookies via RotateCookies (og_pid=682) + docs.google.com keep-alive ping."""
     cookie_map = {}
-    for item in cookie_str.split(";"):
+    for item in (cookie_str or "").split(";"):
         item = item.strip()
         if "=" in item:
             k, v = item.split("=", 1)
             cookie_map[k.strip()] = v.strip()
 
-    sapisid = sess.get("sapisid") or cookie_map.get("SAPISID") or cookie_map.get("__Secure-1PAPISID") or ""
+    sap = sapisid or cookie_map.get("SAPISID") or cookie_map.get("__Secure-1PAPISID") or ""
     origin = "https://accounts.google.com"
     now_ts = int(time.time())
-    sapisid_hash = hashlib.sha1(f"{now_ts} {sapisid} {origin}".encode("utf-8")).hexdigest()
+    sapisid_hash = hashlib.sha1(f"{now_ts} {sap} {origin}".encode("utf-8")).hexdigest()
 
-    # Google RotateCookies payload: [658, "<random_or_timestamp>"]
-    payload = json.dumps([658, f"-{now_ts}000"]).encode("utf-8")
+    payload = json.dumps([682, f"-{now_ts}000"]).encode("utf-8")
     req = urllib.request.Request(
         "https://accounts.google.com/RotateCookies",
         data=payload,
@@ -214,9 +190,9 @@ def rotate_google_cookies_headless(session_path: str = DEFAULT_SESSION_PATH) -> 
             "Content-Type": "application/json",
             "Cookie": cookie_str,
             "Origin": origin,
-            "Referer": "https://accounts.google.com/",
+            "Referer": "https://accounts.google.com/RotateCookiesPage?og_pid=682&rot=3&origin=https%3A%2F%2Fdocs.google.com&exp_id=0",
             "Authorization": f"SAPISIDHASH {now_ts}_{sapisid_hash}",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
         },
         method="POST",
     )
@@ -244,42 +220,68 @@ def rotate_google_cookies_headless(session_path: str = DEFAULT_SESSION_PATH) -> 
                 if k not in ("OSID", "__Secure-OSID") and v:
                     cookie_map[k] = v
                     updated_keys.append(k)
-
-    # Also ping docs.google.com/videos/d/<doc_id>/edit to pick up fresh COMPASS / SIDCC cookies
-    doc_id = sess.get("doc_id", DEFAULT_DOC_ID)
-    authuser = sess.get("authuser", "0")
-    try:
-        ping_req = urllib.request.Request(
-            f"https://docs.google.com/videos/u/{authuser}/d/{doc_id}/edit?authuser={authuser}",
-            headers={
-                "Cookie": "; ".join(f"{k}={v}" for k, v in cookie_map.items()),
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            },
-            method="GET",
-        )
-        with urllib.request.urlopen(ping_req, timeout=15, context=ctx) as resp:
-            for sc_header in resp.headers.get_all("Set-Cookie") or []:
-                first_pair = sc_header.split(";", 1)[0].strip()
-                if "=" in first_pair:
-                    k, v = first_pair.split("=", 1)
-                    k, v = k.strip(), v.strip()
-                    if k not in ("OSID", "__Secure-OSID") and v:
-                        cookie_map[k] = v
-                        updated_keys.append(k)
     except Exception:
         pass
 
-    sess["cookie"] = "; ".join(f"{k}={v}" for k, v in cookie_map.items())
-    with open(session_path, "w", encoding="utf-8") as f:
-        json.dump(sess, f, indent=2)
+    return "; ".join(f"{k}={v}" for k, v in cookie_map.items()), updated_keys
 
+
+def rotate_google_cookies_headless(session_path: str = DEFAULT_SESSION_PATH) -> dict:
+    """
+    24/7 Multi-Account Cookie Auto-Renewer:
+    1. Renews EVERY account in vids_accounts_pool.json via RotateCookies (og_pid=682) so backup accounts never expire.
+    2. Never lets a stale/exhausted Chrome CDP profile overwrite an active manually-added cURL/Cookie session.
+    """
+    pool = load_account_pool()
+    accounts = pool.get("accounts") or {}
+    rotated_summary = {}
+    all_updated_keys = []
+
+    for key, entry in list(accounts.items()):
+        ck = entry.get("cookie", "")
+        if not ck:
+            continue
+        new_ck, upd = _rotate_single_cookie_http(
+            cookie_str=ck,
+            sapisid=entry.get("sapisid", ""),
+            doc_id=entry.get("doc_id", DEFAULT_DOC_ID),
+            authuser=str(entry.get("authuser", "0")),
+        )
+        if upd:
+            update_pool_account_cookie(key, new_ck, session_path=session_path)
+            all_updated_keys.extend(upd)
+        rotated_summary[key] = upd
+
+    # Also renew vids_session.json directly if not yet in pool
+    if os.path.exists(session_path):
+        try:
+            with open(session_path, "r", encoding="utf-8") as f:
+                sess = json.load(f)
+            ck = sess.get("cookie", "")
+            if ck:
+                new_ck, upd = _rotate_single_cookie_http(
+                    cookie_str=ck,
+                    sapisid=sess.get("sapisid", ""),
+                    doc_id=sess.get("doc_id", DEFAULT_DOC_ID),
+                    authuser=str(sess.get("authuser", "0")),
+                )
+                if upd:
+                    sess["cookie"] = new_ck
+                    with open(session_path, "w", encoding="utf-8") as f:
+                        json.dump(sess, f, indent=2)
+                    all_updated_keys.extend(upd)
+        except Exception:
+            pass
+
+    uniq_keys = list(dict.fromkeys(all_updated_keys))
     SESSION_META["last_rotated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    SESSION_META["last_rotate_status"] = f"ok_http (updated: {','.join(updated_keys) or 'keepalive'})"
+    SESSION_META["last_rotate_status"] = f"ok_pool_http ({len(accounts)} accts, updated: {','.join(uniq_keys) or 'keepalive'})"
     SESSION_META["rotate_count"] += 1
     return {
         "status": "ok",
-        "method": "http_rotate",
-        "updated_cookies": updated_keys,
+        "method": "multi_account_http_rotate",
+        "accounts_rotated": len(rotated_summary),
+        "updated_cookies": uniq_keys,
         "last_rotated_at": SESSION_META["last_rotated_at"],
     }
 
@@ -1241,7 +1243,6 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/pool/rotate-account":
-            sync_all_cdp_tabs_to_pool()
             cur = {}
             if os.path.exists(DEFAULT_SESSION_PATH):
                 try:
@@ -1255,11 +1256,32 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                 live_sapisid=cur.get("sapisid", ""),
             )
             if not nxt:
-                self._send_json({"status": "exhausted", "message": "No healthy backup account in pool. Call POST /api/pool/add-account to sign in to a new account.", "pool": get_account_pool_summary()}, 429)
+                self._send_json({"status": "exhausted", "message": "Không còn tài khoản dự phòng nào còn hạn mức trong Pool. Hãy dán thêm cURL/Cookie tài khoản mới!", "pool": get_account_pool_summary()}, 429)
                 return
             with open(DEFAULT_SESSION_PATH, "w", encoding="utf-8") as f:
                 json.dump(nxt, f, indent=2)
             self._send_json({"status": "ok", "active_authuser": nxt["authuser"], "active_doc_id": nxt["doc_id"], "pool": get_account_pool_summary()})
+            return
+
+        if path == "/api/pool/activate":
+            key = str(body.get("key") or "").strip()
+            sess = set_active_pool_account(key, session_path=DEFAULT_SESSION_PATH)
+            if not sess:
+                self._send_json({"status": "error", "message": f"Không tìm thấy tài khoản '{key}'"}, 404)
+                return
+            self._send_json({"status": "ok", "active_key": key, "doc_id": sess["doc_id"], "pool": get_account_pool_summary()})
+            return
+
+        if path == "/api/pool/reset-quota":
+            key = str(body.get("key") or "").strip()
+            ok = reset_pool_account_quota(key)
+            self._send_json({"status": "ok" if ok else "error", "pool": get_account_pool_summary()})
+            return
+
+        if path == "/api/pool/delete":
+            key = str(body.get("key") or "").strip()
+            ok = remove_pool_account(key)
+            self._send_json({"status": "ok" if ok else "error", "pool": get_account_pool_summary()})
             return
 
         if path == "/api/tts-preview":
@@ -1478,7 +1500,7 @@ def main():
     parser = argparse.ArgumentParser(description="Omni 1.1 Flash Video Studio — Cloud Server & REST API")
     parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"), help="Bind host (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8765")), help="Bind port (default: 8765)")
-    parser.add_argument("--rotate-interval", type=int, default=480, help="Cookie keep-alive rotation interval in seconds (default: 480)")
+    parser.add_argument("--rotate-interval", type=int, default=180, help="Cookie keep-alive rotation interval in seconds (default: 180)")
     args = parser.parse_args()
 
     # Single-instance guard: if port is already bound by an active omni_server.py, exit immediately

@@ -899,27 +899,37 @@ Bắt đầu hành trình kiến tạo thương hiệu đột phá ngay hôm nay
       </div>
       <div class="layout-2col">
         <div class="panel">
-          <div class="panel-header"><h2 class="panel-title"><svg class="sf-icon sf-icon-lg" aria-hidden="true"><use href="#sf-shield"/></svg> Tài khoản & kết nối</h2></div>
-          <label for="sessCookieInput">Cookie, cURL hoặc JSON phiên</label>
-          <textarea id="sessCookieInput" placeholder="Dán thông tin phiên Google Vids" autocomplete="off" spellcheck="false"></textarea>
+          <div class="panel-header"><h2 class="panel-title"><svg class="sf-icon sf-icon-lg" aria-hidden="true"><use href="#sf-shield"/></svg> Thêm tài khoản vào Pool xoay vòng</h2></div>
+          <label for="sessAccountLabel">Tên gợi nhớ tài khoản (tùy chọn — ví dụ: Gmail 1, Acc dự phòng 2)</label>
+          <input id="sessAccountLabel" placeholder="Ví dụ: Acc 1 - hgun65991@gmail.com" autocomplete="off" />
+          <label for="sessCookieInput">Dán lệnh cURL (dòng POST xhr `generate`) hoặc chuỗi Cookie / JSON</label>
+          <textarea id="sessCookieInput" placeholder="Dán toàn bộ Copy as cURL (cmd hoặc bash) của dòng generate (Type: xhr) vào đây..." autocomplete="off" spellcheck="false"></textarea>
           <div class="field-grid">
-            <div><label for="sessDocId">Google Vids · Doc ID</label><input id="sessDocId" placeholder="ID tài liệu" /></div>
+            <div><label for="sessDocId">Google Vids · Doc ID (tự tách nếu dán cURL)</label><input id="sessDocId" placeholder="ID tài liệu" /></div>
             <div><label for="sessAuthuser">Chỉ số tài khoản (authuser)</label><input id="sessAuthuser" inputmode="numeric" value="0" /></div>
           </div>
-          <label for="sessApiKey">Khóa Gemini API</label>
+          <label for="sessApiKey">Khóa Gemini API (tùy chọn)</label>
           <input id="sessApiKey" type="password" autocomplete="off" placeholder="Nhập khóa mới để cập nhật" />
           <div class="utility-actions">
-            <button class="btn" onclick="saveSessionConfig(this)">Lưu cấu hình</button>
-            <button class="btn btn-ghost" onclick="triggerCookieRotate(this)"><svg class="sf-icon" aria-hidden="true"><use href="#sf-refresh"/></svg> Làm mới kết nối</button>
-            <button class="btn btn-ghost" onclick="addPoolAccount(this)">➕ Thêm tài khoản (Pool xoay vòng)</button>
-            <button class="btn btn-ghost" onclick="rotatePoolAccount(this)">🔀 Đổi tài khoản ngay</button>
+            <button class="btn" onclick="saveSessionConfig(this)">➕ Thêm vào Pool & Kích hoạt</button>
+            <button class="btn btn-ghost" onclick="triggerCookieRotate(this)"><svg class="sf-icon" aria-hidden="true"><use href="#sf-refresh"/></svg> Gia hạn tất cả tài khoản</button>
+            <button class="btn btn-ghost" onclick="rotatePoolAccount(this)">🔀 Chuyển sang tài khoản dự phòng</button>
           </div>
           <p id="sessionActionMessage" class="utility-message" role="status"></p>
         </div>
         <div class="panel">
-          <div class="panel-header"><h2 class="panel-title"><svg class="sf-icon sf-icon-lg" aria-hidden="true"><use href="#sf-file"/></svg> Tài liệu REST API</h2></div>
-          <pre class="apple-console"># 1. Kiểm tra trạng thái Cookie & Auto-Rotate
+          <div class="panel-header">
+            <h2 class="panel-title"><svg class="sf-icon sf-icon-lg" aria-hidden="true"><use href="#sf-nodes"/></svg> Danh sách tài khoản đang xoay vòng 24/7</h2>
+            <span class="chip ok" id="poolCountBadge">0 / 0 sẵn sàng</span>
+          </div>
+          <p class="media-hint" style="margin-bottom:10px;">Hệ thống tự động gia hạn cookie mỗi 3 phút cho toàn bộ tài khoản bên dưới. Khi 1 tài khoản chạm trần 429 (15 video), máy chủ tự nhảy sang tài khoản kế tiếp mà không ngắt lệnh.</p>
+          <div id="accountPoolList" style="display:flex; flex-direction:column; gap:10px; max-height:360px; overflow-y:auto; margin-bottom:12px;">
+            <p class="media-hint">Đang tải danh sách tài khoản…</p>
+          </div>
+          <details class="utility-details"><summary>Tài liệu REST API & Trạng thái chi tiết (JSON)</summary>
+          <pre class="apple-console"># 1. Kiểm tra trạng thái Pool & Auto-Rotate
 GET /api/session/status
+GET /api/pool/status
 
 # 2. Tạo 1 cảnh video 15s (Reference-to-Video hoặc Text-to-Video)
 POST /api/generate-scene
@@ -929,19 +939,8 @@ POST /api/generate-scene
   "input_mode": "auto",
   "output_filename": "scene1_15s_1080p.mp4",
   "upscale_1080p": true
-}
-
-# 3. Sản xuất trọn gói TVC 30s/60s (15s/cảnh + 1-Take TTS + Lyria BGM)
-POST /api/produce-commercial
-{
-  "output_filename": "tvc_master_1080p.mp4",
-  "scene_duration": 15,
-  "voice": "Puck",
-  "bpm": 116,
-  "scale": "MINOR",
-  "scenes": [ ... ]
 }</pre>
-          <details class="utility-details"><summary>Chi tiết trạng thái phiên (JSON)</summary><pre class="apple-console" id="sessionDetailBox"></pre></details>
+          <pre class="apple-console" id="sessionDetailBox"></pre></details>
         </div>
       </div>
     </section>
@@ -1401,8 +1400,9 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
         const audio = document.getElementById('sessionAudioStatus');
         audio.className = 'chip ' + (d.gemini_api_key_configured ? 'ok' : 'warn');
         audio.textContent = d.gemini_api_key_configured ? 'Đã cấu hình khóa API' : 'Thiếu khóa API';
-        document.getElementById('sessionRotateStatus').textContent = (d.rotate_count || 0) + ' lần thành công';
+        document.getElementById('sessionRotateStatus').textContent = (d.rotate_count || 0) + ' lần (tự gia hạn mỗi 3p)';
         document.getElementById('sessionDetailBox').textContent = JSON.stringify(d, null, 2);
+        renderAccountPool(d.account_pool);
         const doc = document.getElementById('sessDocId');
         const account = document.getElementById('sessAuthuser');
         if (doc.value === doc.defaultValue && document.activeElement !== doc) doc.defaultValue = d.doc_id || '';
@@ -1412,9 +1412,50 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
       }
     }
 
+    function renderAccountPool(pool) {
+      const box = document.getElementById('accountPoolList');
+      const badge = document.getElementById('poolCountBadge');
+      if (!box || !pool) return;
+      const items = pool.accounts || [];
+      if (badge) {
+        badge.textContent = `${pool.healthy_accounts || 0} / ${pool.total_accounts || 0} sẵn sàng`;
+        badge.className = 'chip ' + ((pool.healthy_accounts || 0) > 0 ? 'ok' : 'warn');
+      }
+      if (!items.length) {
+        box.innerHTML = '<p class="media-hint">Chưa có tài khoản nào trong Pool. Hãy dán cURL/Cookie bên trái để thêm tài khoản đầu tiên.</p>';
+        return;
+      }
+      box.innerHTML = items.map(acc => {
+        const isActive = acc.key === pool.active_key;
+        const statusChip = !acc.healthy
+          ? '<span class="chip warn">🔴 Hết hạn mức 429</span>'
+          : (isActive ? '<span class="chip ok">🟢 Đang hoạt động</span>' : '<span class="chip ok">✅ Dự phòng sẵn sàng</span>');
+        const safeKey = escapeHtml(acc.key);
+        return `
+          <article class="job-card" style="${isActive ? 'border-color: var(--accent, #10b981);' : ''}">
+            <div class="job-card-heading">
+              <strong>${escapeHtml(acc.label || acc.key)}</strong>
+              ${statusChip}
+            </div>
+            <p class="media-hint">Mã: <code>${safeKey}</code> · Doc: <code>${escapeHtml((acc.doc_id || '').slice(0, 22))}…</code> · Gia hạn: ${escapeHtml(acc.last_seen_at || '—')}</p>
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">
+              ${!isActive ? `<button type="button" class="btn btn-ghost btn-xs" onclick="poolAccountAction('/api/pool/activate', '${safeKey}', this)">⚡ Dùng ngay</button>` : ''}
+              ${!acc.healthy ? `<button type="button" class="btn btn-ghost btn-xs" onclick="poolAccountAction('/api/pool/reset-quota', '${safeKey}', this)">🔓 Mở khóa 429</button>` : ''}
+              <button type="button" class="btn btn-danger btn-xs" onclick="poolAccountAction('/api/pool/delete', '${safeKey}', this)">🗑️ Xóa</button>
+            </div>
+          </article>`;
+      }).join('');
+    }
+
+    async function poolAccountAction(endpoint, key, button) {
+      await runSessionAction(button, endpoint, { key }, 'Đã cập nhật danh sách tài khoản trong Pool.');
+    }
+
     async function saveSessionConfig(button) {
       const raw = document.getElementById('sessCookieInput').value.trim();
+      const label = (document.getElementById('sessAccountLabel')?.value || '').trim();
       const payload = {
+        label,
         doc_id: document.getElementById('sessDocId').value.trim(),
         authuser: document.getElementById('sessAuthuser').value.trim(),
         gemini_api_key: document.getElementById('sessApiKey').value.trim()
@@ -1430,7 +1471,11 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
       }
       else if (raw) payload.cookie = raw;
 
-      await runSessionAction(button, '/api/session', payload, 'Đã lưu cấu hình.');
+      await runSessionAction(button, '/api/session', payload, '✅ Đã thêm tài khoản vào Pool xoay vòng & kích hoạt gia hạn tự động mỗi 3 phút!');
+      if (raw) {
+        document.getElementById('sessCookieInput').value = '';
+        if (document.getElementById('sessAccountLabel')) document.getElementById('sessAccountLabel').value = '';
+      }
     }
 
     async function triggerCookieRotate(button) {
