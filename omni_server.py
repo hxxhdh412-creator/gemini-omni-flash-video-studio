@@ -111,10 +111,19 @@ def load_dotenv_if_present():
 
 def bootstrap_session_from_env():
     """
-    If OMNI_COOKIE is set in environment/.env, automatically writes/updates vids_session.json
-    so cloud deployments can be configured purely via environment variables.
+    If vids_session.json does not exist yet and OMNI_COOKIE is set in environment/.env,
+    initializes vids_session.json so cloud deployments can be configured via environment variables.
+    Never overwrites an existing vids_session.json that was updated via Web UI / API / cURL.
     """
     load_dotenv_if_present()
+    if os.path.exists(DEFAULT_SESSION_PATH):
+        try:
+            with open(DEFAULT_SESSION_PATH, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+            if existing.get("cookie") and existing.get("doc_id"):
+                return
+        except Exception:
+            pass
     env_cookie = os.environ.get("OMNI_COOKIE", "").strip()
     if not env_cookie:
         return

@@ -220,6 +220,12 @@ def refresh_session_from_cdp(
             except Exception:
                 pass
 
+        # Prevent stale Chrome CDP profile from overwriting a manually configured session from a different Google account
+        if existing.get("sapisid") and existing.get("sapisid") != sapisid:
+            return None
+        if existing.get("manual_override") and existing.get("doc_id") and detected_doc_id and existing.get("doc_id") != detected_doc_id:
+            return None
+
         session_data = {
             "api_url": existing.get("api_url", DEFAULT_API_URL),
             "origin": existing.get("origin", DEFAULT_ORIGIN),
@@ -1634,7 +1640,7 @@ def run_vids_rpc_generate_image(
         style_prefix = style_descriptors.get(style_key, style_descriptors["PHOTOGRAPHY"])
         still_prompt = (
             f"{style_prefix}: {clean_prompt}. "
-            "Locked-off static camera tripod composition, crystal-clear visual detail, no spoken dialogue."
+            "Smooth studio camera framing, crystal-clear visual detail."
         )
         omni_ar = "9:16" if ar_code == 5 else "16:9"
         tmp_clip = f"{base_out}_uc374_tmp_{uuid.uuid4().hex[:5]}.mp4"
