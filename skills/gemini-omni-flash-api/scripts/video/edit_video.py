@@ -1909,16 +1909,11 @@ def run_vids_rpc_generate_image(
     ar_code = VIDS_IMAGE_ASPECT_RATIOS.get(ar_key, 2)
 
     count = max(1, min(4, int(num_images or 1)))
-    clean_prompt = re.sub(r"#[0-9a-fA-F]{6}\b", "", (prompt_text or "").strip()).strip()
-    # Preserve Vietnamese text when the prompt explicitly requests Vietnamese typography/posters/quoted text
-    has_quoted_or_explicit_vi = (
-        "exact vietnamese" in clean_prompt.lower()
-        or "diacritics" in clean_prompt.lower()
-        or "'" in clean_prompt
-        or '"' in clean_prompt
-    )
-    if any(ord(ch) > 127 for ch in clean_prompt) and not has_quoted_or_explicit_vi:
-        clean_prompt = _translate_vi_music_prompt_to_en(clean_prompt)
+    # Keep the user's original prompt 100% intact (never machine-translate via gtx, which degrades
+    # photography/design terminology and Vietnamese poster typography). Only strip raw #RRGGBB hex codes.
+    clean_prompt = re.sub(r"#[0-9a-fA-F]{6}\b", "", (prompt_text or "").strip())
+    clean_prompt = re.sub(r"[ \t]{2,}", " ", clean_prompt).strip()
+    prompt_locale = "vi" if any(ord(ch) > 127 for ch in clean_prompt) else "en"
 
     valid_ref_images = [p for p in (image_files or []) if p and os.path.exists(p)]
 
@@ -1954,7 +1949,7 @@ def run_vids_rpc_generate_image(
         None,
         [24, 0],
         None,
-        "en",
+        prompt_locale,
         None,
         None,
         None,
@@ -2026,21 +2021,28 @@ def run_vids_rpc_generate_image(
     # synthesize high-resolution 1080p still frame(s) directly via Google Vids Cookie UC 374 (gemini-omni-1.1-flash)!
     if not text:
         style_descriptors = {
-            "PHOTOGRAPHY": "Photorealistic 4K ultra-sharp commercial studio photography still shot, rich natural lighting, crisp focus",
-            "VECTOR_ART": "Clean flat modern vector art illustration graphic design, sharp geometric shapes, vibrant palette",
-            "ILLUSTRATION": "High-detail digital commercial editorial illustration, expressive brushwork and polished lighting",
-            "BACKGROUND": "Cinematic atmospheric background wallpaper with clean composition and spacious depth",
-            "WATERCOLOR": "Artistic hand-painted watercolor illustration with soft textured washes and delicate detail",
-            "CYBERPUNK": "High-tech futuristic cyberpunk neon digital artwork with dramatic reflections",
-            "FLATLAY": "Top-down overhead flat-lay studio photography with balanced commercial arrangement",
-            "LANDSCAPE": "Expansive cinematic wide-angle landscape photography with dramatic natural light",
-            "UNSPECIFIED": "High-resolution 4K commercial visual composition, sharp detail",
+            "PHOTOGRAPHY": "Photorealistic studio photography style",
+            "VECTOR_ART": "Clean flat modern vector art style",
+            "ILLUSTRATION": "Editorial digital illustration style",
+            "BACKGROUND": "Clean uncluttered background design style",
+            "WATERCOLOR": "Hand-painted watercolor illustration style",
+            "CYBERPUNK": "Futuristic cyberpunk neon artwork style",
+            "FLATLAY": "Top-down overhead flat-lay photography style",
+            "LANDSCAPE": "Wide-angle scenic landscape photography style",
+            "CLIPART": "Clean isolated clipart graphic style",
+            "HANDICRAFT": "Tactile handmade craft style",
+            "PIXEL_ART": "Retro pixel art style",
+            "VECTOR_ICON": "Minimalist flat vector icon style",
+            "SURPRISE_ME": "",
+            "UNSPECIFIED": "",
+            "NONE": "",
         }
-        style_prefix = style_descriptors.get(style_key, style_descriptors["PHOTOGRAPHY"])
-        still_prompt = (
-            f"{style_prefix}: {clean_prompt}. "
-            "Smooth studio camera framing, crystal-clear visual detail."
-        )
+        style_hint = style_descriptors.get(style_key, "")
+        # Keep the user's exact prompt front-and-center without diluting it with verbose boilerplate
+        if style_hint:
+            still_prompt = f"{clean_prompt}\n\nVisual style: {style_hint}. Static locked-off still image, zero camera motion, crisp sharp focus."
+        else:
+            still_prompt = f"{clean_prompt}\n\nStatic locked-off still image, zero camera motion, crisp sharp focus."
         omni_ar = "9:16" if ar_code == 5 else "16:9"
         tmp_clip = f"{base_out}_uc374_tmp_{uuid.uuid4().hex[:5]}.mp4"
         tmp_node = f"{base_out}_uc374_tmp_{uuid.uuid4().hex[:5]}_node.json"
