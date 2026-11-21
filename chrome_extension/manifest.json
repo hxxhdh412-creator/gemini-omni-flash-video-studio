@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Omni Studio Pro — 24/7 Cookie Auto-Sync",
+  "version": "1.0.0",
+  "description": "Automatically syncs fresh rotated Google Vids __Secure-1PSIDTS cookies to Omni Studio Pro every 5 minutes so sessions never expire (zero 401).",
+  "permissions": [
+    "cookies",
+    "tabs",
+    "alarms",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.google.com/*",
+    "http://127.0.0.1:8765/*",
+    "http://localhost:8765/*",
+    "https://omni.mcpads.win/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Omni Studio Auto-Sync"
+  }
+}

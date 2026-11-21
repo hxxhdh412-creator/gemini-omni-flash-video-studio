@@ -1218,6 +1218,58 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             self._send_json(res)
             return
 
+        if path == "/api/session/extension-sync":
+            raw_cookie = (body.get("cookie") or "").strip()
+            sapisid = (body.get("sapisid") or "").strip()
+            if not raw_cookie or not sapisid:
+                self._send_json({"status": "error", "message": "Missing cookie or sapisid"}, 400)
+                return
+            authuser = str(body.get("authuser", "0"))
+            existing = {}
+            if os.path.exists(DEFAULT_SESSION_PATH):
+                try:
+                    existing = json.load(open(DEFAULT_SESSION_PATH, "r", encoding="utf-8"))
+                except Exception:
+                    pass
+            doc_id = (body.get("doc_id") or "").strip()
+            if not doc_id:
+                # Preserve existing doc_id for this sapisid if present in pool or vids_session.json
+                pool = load_account_pool()
+                for e in (pool.get("accounts") or {}).values():
+                    if e.get("sapisid") == sapisid and e.get("doc_id"):
+                        doc_id = e["doc_id"]
+                        break
+            doc_id = doc_id or existing.get("doc_id") or DEFAULT_DOC_ID
+            sess_obj = {
+                "api_url": existing.get("api_url", DEFAULT_API_URL),
+                "origin": DEFAULT_ORIGIN,
+                "doc_id": doc_id,
+                "authuser": authuser,
+                "sapisid": sapisid,
+                "server_token": existing.get("server_token", DEFAULT_SERVER_TOKEN),
+                "cookie": raw_cookie,
+            }
+            key = register_account_in_pool(
+                sess_obj,
+                source="chrome_ext",
+                label=(body.get("label") or f"Chrome Auto-Sync ({doc_id[:8]})"),
+            )
+            # Update vids_session.json immediately if this is the active account or if current active account is missing/exhausted
+            pool_now = load_account_pool()
+            if (
+                not existing.get("cookie")
+                or existing.get("sapisid") == sapisid
+                or pool_now.get("active_key") == key
+                or not (pool_now.get("accounts") or {}).get(pool_now.get("active_key") or "", {}).get("cookie")
+            ):
+                set_active_pool_account(key, session_path=DEFAULT_SESSION_PATH)
+            SESSION_META["last_rotated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            SESSION_META["last_rotate_status"] = f"ok_chrome_ext ({key})"
+            SESSION_META["rotate_count"] += 1
+            log(f"[Chrome Extension Auto-Sync] Updated live __Secure-1PSIDTS for {key} (doc_id={doc_id}, trigger={body.get('trigger')})")
+            self._send_json({"status": "ok", "key": key, "doc_id": doc_id, "authuser": authuser})
+            return
+
         if path == "/api/session/rotate":
             res = rotate_google_cookies_headless(DEFAULT_SESSION_PATH)
             sync_all_cdp_tabs_to_pool()
