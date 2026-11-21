@@ -1877,6 +1877,9 @@ VIDS_IMAGE_ASPECT_RATIOS = {
     "SQUARE": 1,
     "16:9": 2,
     "LANDSCAPE": 2,
+    "4:3": 3,
+    "3:4": 4,
+    "4:5": 4,
     "9:16": 5,
     "PORTRAIT": 5,
 }
@@ -1899,8 +1902,8 @@ def run_vids_rpc_generate_image(
     'BACKGROUND', 'WATERCOLOR', 'CYBERPUNK', 'FLATLAY', 'LANDSCAPE', 'UNSPECIFIED').
     """
     session = load_vids_session(session_path)
-    req_id = str(uuid.uuid4())
-    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
+    req_id = f"goog_{uuid.uuid4().int % 2000000000}"
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36"
 
     style_key = str(style or "PHOTOGRAPHY").strip().upper()
     style_code = VIDS_IMAGE_STYLES.get(style_key, int(style) if str(style).isdigit() else 1)
@@ -1923,7 +1926,7 @@ def run_vids_rpc_generate_image(
         None,
         None,
         req_id,
-        None,
+        [[1, 0, None, "p"]],
         str(session.get("authuser", "0")),
         None,
         [
@@ -1940,14 +1943,14 @@ def run_vids_rpc_generate_image(
                         None,
                         None,
                         None,
-                        [None, None, [[session["doc_id"], "application/vnd.google-apps.flix", None, None, 1]]],
+                        [None, None, [[session["doc_id"], "application/vnd.google-apps.flix", 1, None, 1]]],
                     ]
                 ]
             ],
         ],
         None,
         None,
-        [24, 0],
+        [4, 0],
         None,
         prompt_locale,
         None,
@@ -1956,10 +1959,34 @@ def run_vids_rpc_generate_image(
         None,
         None,
         1,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        [],
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        "Asia/Bangkok",
+        None,
+        None,
+        None,
+        None,
+        None,
+        0,
+        None,
+        None,
+        [],
     ]
 
-    # Tier 1: Try Vids GenerateImagesUseCase (Ndh(193) -> 141) on espresso-pa if no reference image is attached
-    use_cases_to_try = [] if valid_ref_images else [141]
+    # Tier 1: Native Google Vids Imagen RPC (UseCase 205) — crisp full-res PNGs across 1:1, 16:9, 4:3, 3:4, 9:16
+    use_cases_to_try = [] if valid_ref_images else [205]
     text = None
     last_err = None
 
@@ -1982,9 +2009,9 @@ def run_vids_rpc_generate_image(
                 uc,
                 None,
                 client_context,
-                [clean_prompt],
-                [[style_code, None, None, ar_code]],
-                None,
+                [None, None, clean_prompt],
+                [[style_code, count, 0, ar_code]],
+                [1, None, [[None, "1", 1188]]],
                 1,
             ]
             t0 = time.time()
@@ -2117,7 +2144,14 @@ def run_vids_rpc_generate_image(
     all_strs = extract_strings(parsed)
     dl_urls = []
     for s in all_strs:
-        if s.startswith("https://contribution-rt.usercontent.google.com/download") and s not in dl_urls:
+        if (
+            s.startswith("https://lh")
+            and "googleusercontent.com/" in s
+            and s not in dl_urls
+        ) or (
+            s.startswith("https://contribution-rt.usercontent.google.com/download")
+            and s not in dl_urls
+        ):
             dl_urls.append(s)
 
     if not dl_urls:
@@ -2143,7 +2177,10 @@ def run_vids_rpc_generate_image(
 
     for idx, raw_url in enumerate(urls_to_download):
         dl_url = raw_url
-        if "authuser=" not in dl_url:
+        if "googleusercontent.com/gg-dl/" in dl_url:
+            if not re.search(r"=s\d+|=w\d+", dl_url):
+                dl_url = f"{dl_url}=s0"
+        elif "authuser=" not in dl_url:
             sep = "&" if "?" in dl_url else "?"
             dl_url = f"{dl_url}{sep}authuser={authuser}"
         with urllib.request.urlopen(urllib.request.Request(dl_url, headers=dl_headers), timeout=60) as dl_resp:
@@ -2151,11 +2188,12 @@ def run_vids_rpc_generate_image(
         target_path = output_path if idx == 0 else f"{base_out}_{idx + 1}{ext}"
         with open(target_path, "wb") as f:
             f.write(img_bytes)
-        log(f"[Vids Image RPC] Downloaded image #{idx + 1} ({len(img_bytes):,} bytes) -> {target_path}")
+        _, real_w, real_h = detect_image_mime_and_dimensions(img_bytes)
+        log(f"[Vids Image RPC UC=205] Downloaded native full-res image #{idx + 1} ({real_w}x{real_h}, {len(img_bytes):,} bytes) -> {target_path}")
         saved_files.append(target_path)
 
     return {
-        "backend": "vids_cookie_image",
+        "backend": "vids_cookie_image_uc205",
         "output_path": saved_files[0],
         "images": saved_files,
         "aspect_ratio": ar_key,

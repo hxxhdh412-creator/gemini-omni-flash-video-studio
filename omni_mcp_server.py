@@ -247,14 +247,16 @@ MCP_TOOLS_SCHEMA = [
                 },
                 "aspect_ratio": {
                     "type": "string",
-                    "enum": ["16:9", "1:1", "9:16"],
+                    "enum": ["16:9", "1:1", "9:16", "4:3", "3:4"],
                     "default": "16:9",
                     "description": (
-                        "Output aspect ratio (3 native formats): "
-                        "`16:9` (Landscape widescreen — YouTube thumbnails, website hero banners, presentation slides, horizontal 16:9 video frames); "
-                        "`1:1` (Square — Facebook/Instagram Feed posts, e-commerce product cards, social ad banners); "
-                        "`9:16` (Vertical portrait — TikTok, Instagram Reels, YouTube Shorts, Facebook Stories, vertical 9:16 video frames). "
-                        "For 4:5 social feeds, generate `1:1` or `9:16` with safe central framing. Default: `16:9`."
+                        "Output aspect ratio (5 native full-res PNG formats): "
+                        "`16:9` (1376x768 Landscape — YouTube thumbnails, website hero banners, slides, horizontal video frames); "
+                        "`1:1` (1024x1024 Square — Facebook/Instagram Feed posts, e-commerce product cards, square ad banners); "
+                        "`3:4` (896x1200 Vertical Feed — Facebook/Instagram vertical ads & posters, closest native ratio to 4:5); "
+                        "`4:3` (1200x896 Classic Landscape — presentations, editorial graphics); "
+                        "`9:16` (768x1376 Vertical Portrait — TikTok, Instagram Reels, YouTube Shorts, Stories, vertical video frames). "
+                        "Default: `16:9`."
                     ),
                 },
                 "style": {
