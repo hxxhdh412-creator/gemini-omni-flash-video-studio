@@ -168,7 +168,7 @@ LIST_IMAGES_EXPR = """(() => {
     const turnRoot = i.closest('[data-turn-key], [data-testid^="conversation-turn-"], article');
     if (turnRoot && turnRoot.querySelector('[data-message-author-role="user"], [data-user-message-bubble]') && !turnRoot.querySelector('[data-message-author-role="assistant"], [data-conversation-role="assistant"], [data-chatgpt-agent-turn-start]')) return false;
     const alt = (i.alt || '').trim();
-    if (/^(uploaded image|hình ảnh đã tải lên)/i.test(alt)) return false;
+    if (/^(uploaded image|user attachment|attachment|hình ảnh đã tải lên|tệp đính kèm)/i.test(alt)) return false;
     const inGenBox = !!i.closest('[class*="generated-image"]');
     const inAsstTurn = inGenBox || !!i.closest('[data-message-author-role="assistant"], [data-conversation-role="assistant"], [data-chatgpt-agent-turn-start], [data-turn-key]:has([data-conversation-role="assistant"], [data-chatgpt-agent-turn-start]), [data-testid^="conversation-turn-"]:has([data-message-author-role="assistant"])');
     return alt.startsWith('Generated image') || alt.includes('Đã tạo hình ảnh') || inGenBox || (inAsstTurn && (i.naturalWidth >= 256 || i.width >= 256));
