@@ -10,7 +10,7 @@ services:
       - OMNI_PUBLIC_URL=${OMNI_PUBLIC_URL:-http://localhost:8765}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OMNI_COOKIE=${OMNI_COOKIE:-}
-      - OMNI_DOC_ID=${OMNI_DOC_ID:-1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc}
+      - OMNI_DOC_ID=${OMNI_DOC_ID:-16IG7we3OjfyxE0-ipLpUOGu7mUXJ9jFc2zeTRi1lneY}
       - OMNI_AUTHUSER=${OMNI_AUTHUSER:-0}
     volumes:
       - ./outputs:/app/outputs

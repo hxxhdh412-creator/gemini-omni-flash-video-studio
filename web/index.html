@@ -150,6 +150,13 @@
     input:focus, select:focus, textarea:focus { border-color: var(--apple-blue); box-shadow: 0 0 0 3px #007aff18; background: white; }
     input[type=file] { padding: 8px; font-size: 12px; background: white; }
     input::file-selector-button { border: 0; border-radius: 5px; padding: 5px 7px; background: #edf3fc; color: var(--apple-blue); font: inherit; cursor: pointer; }
+    .reference-upload { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .reference-pick { position: relative; margin: 0; cursor: pointer; }
+    .reference-pick input { position: absolute; width: 1px; height: 1px; padding: 0; opacity: 0; pointer-events: none; }
+    .reference-pick:has(input:focus-visible) { outline: 2px solid var(--apple-blue); outline-offset: 2px; }
+    .reference-pick:has(input:disabled) { opacity: .6; cursor: wait; }
+    .reference-status { margin-top: 5px; overflow-wrap: anywhere; }
+    .reference-preview { width: 100%; height: 100%; object-fit: contain; }
     select { appearance: none; padding-right: 30px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%23626670' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-position: right 11px center; background-repeat: no-repeat; }
     textarea { display: block; field-sizing: content; min-height: 72px; max-height: 280px; resize: vertical; line-height: 1.5; }
     .scene-voiceover { min-height: 54px; }
@@ -178,8 +185,6 @@
     .scene-card:not(.collapsed) .scene-toggle { transform: rotate(180deg); }
     .scene-body { padding: 1px 12px 12px; border-top: 1px solid #edf0f5; }
     .scene-card.collapsed .scene-body { display: none; }
-    .scene-upload { display: flex; gap: 6px; }
-    .scene-upload input[type=file] { max-width: 118px; }
     .inspector-column { display: grid; grid-template-columns: minmax(0,1fr); gap: var(--panel-gap); }
     .quick-layout { display: grid; gap: var(--panel-gap); align-items: start; grid-template-areas: "brief" "settings" "preview" "videos"; grid-template-columns: minmax(0,1fr); }
     .quick-brief { grid-area: brief; }
@@ -187,7 +192,6 @@
     .quick-preview { grid-area: preview; }
     .quick-videos { grid-area: videos; }
     .quick-brief textarea { min-height: 144px; }
-    .quick-reference { display: grid; gap: 8px; grid-template-columns: minmax(0,1fr); }
     .quick-output-fields { display: grid; gap: 0 10px; grid-template-columns: minmax(0,1fr); }
     .quick-settings .btn { width: 100%; margin-top: 14px; }
     .quick-videos-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(250px,100%),1fr)); gap: 8px; }
@@ -308,15 +312,10 @@
       .field-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
     }
     @container panel (min-width: 430px) {
-      .quick-reference { grid-template-columns: minmax(0,1fr) minmax(155px,36%); }
       .quick-output-fields { grid-template-columns: minmax(115px,1fr) minmax(0,2fr); }
     }
     @container panel (max-width: 460px) {
       .export-panel .field-grid { grid-template-columns: minmax(0,1fr); }
-    }
-    @container panel (max-width: 520px) {
-      .scene-upload { flex-wrap: wrap; }
-      .scene-upload input[type=file] { max-width: none; }
     }
     @media (max-width: 1660px) {
       .topbar { grid-template-columns: auto minmax(0, 1fr) auto; }
@@ -450,10 +449,6 @@
           </div>
           <div class="storyboard-tools">
             <div class="storyboard-format">
-              <select id="tvcInputMode" aria-label="Chế độ tạo video TVC" onchange="onTvcInputModeChanged(this.value)">
-                <option value="reference" selected>🖼️ Tạo từ Ảnh tham chiếu (Reference-to-Video)</option>
-                <option value="text">📝 Tạo từ Văn bản (Text-to-Video · Không dùng ảnh)</option>
-              </select>
               <select id="tvcSceneDur" aria-label="Thời lượng mỗi cảnh" onchange="renderStoryboard()">
                 <option value="15" selected>15s / cảnh</option>
                 <option value="10">10s / cảnh</option>
@@ -465,8 +460,8 @@
             </div>
             <div class="storyboard-presets" role="group" aria-label="Mẫu TVC & Ảnh tham chiếu">
               <input type="file" id="tvcGlobalImgInput" accept="image/*" style="display:none;" onchange="uploadGlobalTvcImage(this)" />
-              <button type="button" class="btn btn-xs" onclick="document.getElementById('tvcGlobalImgInput').click()" title="Tải 1 ảnh nhân vật hoặc sản phẩm dùng chung cho toàn bộ các cảnh TVC">📤 Tải ảnh chung cả TVC</button>
-              <button type="button" class="btn btn-ghost btn-xs" onclick="clearAllTvcImages()" title="Xóa toàn bộ ảnh tham chiếu để tạo TVC hoàn toàn từ văn bản">📝 Chỉ dùng văn bản</button>
+              <button type="button" class="btn btn-xs" onclick="document.getElementById('tvcGlobalImgInput').click()" title="Tải 1 ảnh nhân vật hoặc sản phẩm dùng chung cho toàn bộ các cảnh TVC"><svg class="sf-icon" aria-hidden="true"><use href="#sf-photo"/></svg> Tải ảnh chung</button>
+              <button type="button" class="btn btn-ghost btn-xs" onclick="clearAllTvcImages()" id="clearTvcReferences" hidden title="Xóa toàn bộ ảnh tham chiếu để tạo TVC hoàn toàn từ văn bản">Bỏ ảnh TVC</button>
               <button class="btn btn-ghost btn-xs" onclick="loadPresetStoryboard(2, 15)">30s · 2 cảnh</button>
               <button class="btn btn-ghost btn-xs" onclick="loadPresetStoryboard(4, 15)">60s · 4 cảnh</button>
               <button class="btn btn-ghost btn-xs" onclick="loadPresetStoryboard(6, 10)">60s · 6 cảnh</button>
@@ -549,7 +544,7 @@
               </div>
               <div>
                 <label for="tvcOutputName">Tên file xuất</label>
-                <input id="tvcOutputName" value="hebum_tvc_60s_4x15s_1080p.mp4" />
+                <input id="tvcOutputName" value="omni_tvc_60s_4x15s_1080p.mp4" />
               </div>
             </div>
 
@@ -577,35 +572,16 @@
               Nội dung cảnh quay
             </h2>
           </div>
-          <label for="scInputMode">Chế độ tạo video (Ảnh tham chiếu hoặc Văn bản thuần túy)</label>
-          <select id="scInputMode" onchange="onQuickInputModeChanged(this.value)">
-            <option value="reference" selected>🖼️ Tạo từ Ảnh tham chiếu (Reference-to-Video · Giữ nguyên nhân vật/sản phẩm)</option>
-            <option value="text">📝 Tạo từ Văn bản thuần túy (Text-to-Video · Không dùng ảnh tham chiếu)</option>
-          </select>
-
           <label>Mô tả cảnh quay (Tiếng Anh hoặc Tiếng Việt)</label>
-          <textarea id="scPrompt">Continuous unbroken 15-second cinematic shot in a sleek dark-emerald executive glass office. A charismatic 32-year-old Vietnamese male business founder in a tailored charcoal-black blazer stands on the left and gestures proudly toward a large frameless ultrawide glass monitor on the right that displays the exact HEBUM CRM interface from the reference image. Smooth camera push-in toward the glowing CRM monitor. No spoken dialogue.</textarea>
+          <textarea id="scPrompt">Continuous unbroken 15-second cinematic shot in a modern sunlit architectural studio. Smooth camera push-in with warm golden-hour rim lighting and shallow depth of field.</textarea>
 
-          <div id="scRefImageSection">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-              <label style="margin-bottom:0;">Chọn hoặc tải lên ảnh tham chiếu (Nhân vật / Sản phẩm / Giao diện)</label>
-              <button type="button" class="btn btn-ghost btn-xs" onclick="switchQuickToTextOnly()">✕ Bỏ ảnh (Chỉ dùng văn bản)</button>
-            </div>
-            <div class="quick-reference" style="margin-top:6px;">
-              <select id="scPresetImage" onchange="onQuickPresetImageSelected(this.value)">
-                <option value="assets_1080p/asset_01_kenh_ket_noi_1080p.png">Ảnh #1 — Kênh kết nối đa nền tảng (1080p)</option>
-                <option value="assets_1080p/asset_02_hop_thu_da_kenh_1080p.png">Ảnh #2 — Hộp thư đa kênh Live Chat (1080p)</option>
-                <option value="assets_1080p/asset_03_ho_so_khach_hang_cong_no_1080p.png">Ảnh #3 — Hồ sơ Khách hàng 360° & Công nợ (1080p)</option>
-                <option value="assets_1080p/asset_04_pipeline_kinh_doanh_1080p.png">Ảnh #4 — Pipeline kinh doanh Kanban (1080p)</option>
-                <option value="assets_1080p/asset_05_luong_tu_dong_hoa_1080p.png">Ảnh #5 — Thiết lập luồng Tự động hóa VIP (1080p)</option>
-                <option value="assets_1080p/asset_06_bao_cao_dashboard_1080p.png">Ảnh #6 — Báo cáo Dashboard Real-Time (1080p)</option>
-                <option value="">-- Không dùng ảnh thành phần (Tạo từ văn bản) --</option>
-              </select>
-              <input type="file" accept="image/*" onchange="encodeFileToInput(this, 'scImagePath')" />
-            </div>
-            <label>Đường dẫn ảnh tham chiếu đang kích hoạt</label>
-            <input id="scImagePath" value="assets_1080p/asset_01_kenh_ket_noi_1080p.png" placeholder="Để trống nếu tạo video từ văn bản thuần túy..." />
+          <label for="scRefUpload">Ảnh tham chiếu · Tùy chọn</label>
+          <div class="reference-upload">
+            <label class="btn btn-ghost btn-xs reference-pick"><svg class="sf-icon" aria-hidden="true"><use href="#sf-photo"/></svg> Tải ảnh lên<input id="scRefUpload" type="file" accept="image/*" onchange="uploadQuickReference(this)" /></label>
+            <button class="btn btn-ghost btn-xs" id="scRefClear" type="button" onclick="clearOptionalReference('sc')" hidden>Bỏ ảnh</button>
           </div>
+          <input id="scImagePath" type="hidden" />
+          <p class="media-hint reference-status" id="scRefStatus" role="status">Chưa có ảnh.</p>
         </div>
         <div class="panel quick-settings">
           <div class="panel-header"><h2 class="panel-title">Thiết lập đầu ra</h2><span class="chip" id="scResChip">1080p · 16:9</span></div>
@@ -695,13 +671,15 @@
             <span class="chip ok"><span class="dot"></span> Không tốn API Key</span>
           </div>
           <label for="imgPromptInput">Mô tả hình ảnh</label>
-          <textarea id="imgPromptInput" style="min-height:92px;">A sleek futuristic dark-emerald glass executive office with a large frameless ultrawide glass monitor displaying a modern multi-channel CRM dashboard, warm cinematic studio lighting, 4k photorealistic</textarea>
+          <textarea id="imgPromptInput" style="min-height:92px;">A sleek modern architectural creative studio with warm golden-hour sunlight streaming through floor-to-ceiling glass windows, cinematic studio lighting, 4k photorealistic</textarea>
 
-          <label for="imgRefPath">Ảnh tham chiếu · Tùy chọn</label>
-          <div class="quick-reference">
-            <input id="imgRefPath" placeholder="Để trống nếu tạo ảnh mới hoàn toàn, hoặc tải ảnh lên bên cạnh..." />
-            <input type="file" accept="image/*" onchange="uploadRefForImageTab(this)" />
+          <label for="imgRefUpload">Ảnh tham chiếu · Tùy chọn</label>
+          <div class="reference-upload">
+            <label class="btn btn-ghost btn-xs reference-pick"><svg class="sf-icon" aria-hidden="true"><use href="#sf-photo"/></svg> Tải ảnh lên<input id="imgRefUpload" type="file" accept="image/*" onchange="uploadRefForImageTab(this)" /></label>
+            <button class="btn btn-ghost btn-xs" id="imgRefClear" type="button" onclick="clearOptionalReference('img')" hidden>Bỏ ảnh</button>
           </div>
+          <input id="imgRefPath" type="hidden" />
+          <p class="media-hint reference-status" id="imgRefStatus" role="status">Chưa có ảnh.</p>
 
           <div class="field-grid">
             <div>
@@ -763,12 +741,6 @@
             </div>
           </div>
           <div id="imgActionRow" style="display:none; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-            <button class="btn btn-xs" onclick="useCookieImageForQuickScene()">
-              <svg class="sf-icon" aria-hidden="true"><use href="#sf-sparkles"/></svg> Dùng làm ảnh tham chiếu Cảnh nhanh
-            </button>
-            <button class="btn btn-ghost btn-xs" onclick="useCookieImageForScene1()">
-              <svg class="sf-icon" aria-hidden="true"><use href="#sf-film"/></svg> Gắn vào Cảnh 1 TVC
-            </button>
             <a id="imgDownloadLink" class="btn btn-ghost btn-xs" href="#" download>
               <svg class="sf-icon" aria-hidden="true"><use href="#sf-download"/></svg> Tải ảnh PNG
             </a>
@@ -792,11 +764,11 @@
             <label for="voTextInput">Lời thoại tiếng Việt</label>
             <span class="audio-counter" id="voiceScriptCount"></span>
           </div>
-          <textarea id="voTextInput" aria-describedby="voiceScriptHint" oninput="updateVoiceScriptCount()">Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập... Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!
+          <textarea id="voTextInput" aria-describedby="voiceScriptHint" oninput="updateVoiceScriptCount()">Khám phá chuẩn mực mới của công nghệ sản xuất hình ảnh và video điện ảnh tự động bằng trí tuệ nhân tạo.
 
-Đó là lúc Hebum xuất hiện! Gom trọn mọi hội thoại về một màn hình Live Chat, phản hồi khách tức thì!
+Mọi ý tưởng sáng tạo đều được hiện thực hóa sắc nét ở độ phân giải Full HD với chuyển động mượt mà và ánh sáng chân thực.
 
-Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng ký ngay tại wscrm chấm hebum chấm com chấm vn, chỉ sáu trăm chín mươi nghìn đồng!</textarea>
+Bắt đầu hành trình kiến tạo thương hiệu đột phá ngay hôm nay cùng Omni Studio Pro!</textarea>
           <p class="media-hint" id="voiceScriptHint">Dùng một dòng trống để ngắt giữa các cảnh.</p>
           <div class="field-grid">
             <div>
@@ -947,12 +919,12 @@ Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng k�
           <pre class="apple-console"># 1. Kiểm tra trạng thái Cookie & Auto-Rotate
 GET /api/session/status
 
-# 2. Tạo 1 cảnh video 15s kèm ảnh Thành phần (StructuredImage)
+# 2. Tạo 1 cảnh video 15s (Reference-to-Video hoặc Text-to-Video)
 POST /api/generate-scene
 {
   "prompt": "Continuous unbroken 15-second cinematic shot...",
   "duration": 15,
-  "image": "assets_1080p/asset_01_kenh_ket_noi_1080p.png",
+  "input_mode": "auto",
   "output_filename": "scene1_15s_1080p.mp4",
   "upscale_1080p": true
 }
@@ -1013,52 +985,52 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
   <script>
     const PRESET_60S = [
       {
-        badge: "01 // NỖI ĐAU DỮ LIỆU RỜI RẠC",
-        image: "assets_1080p/asset_01_kenh_ket_noi_1080p.png",
-        prompt: "Continuous unbroken cinematic shot in a sleek dark-emerald executive glass office. A charismatic 32-year-old Vietnamese male business founder in a tailored charcoal-black blazer stands on the left and gestures proudly toward a large frameless ultrawide glass monitor on the right that displays the exact HEBUM CRM multi-channel connection hub interface from the reference image. Smooth camera push-in toward the glowing CRM monitor. No spoken dialogue.",
-        vo: "Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập... Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!",
-        sub_1: "Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập...",
-        sub_2: "Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!"
+        badge: "01 // KHỞI ĐẦU ẤN TƯỢNG",
+        image: "",
+        prompt: "Continuous unbroken cinematic shot in a sleek modern creative studio with warm golden-hour lighting. Smooth camera push-in showcasing a refined executive workspace with natural depth of field.",
+        vo: "Khám phá chuẩn mực mới của công nghệ sản xuất hình ảnh và video điện ảnh tự động bằng trí tuệ nhân tạo!",
+        sub_1: "Khám phá chuẩn mực mới của công nghệ sản xuất",
+        sub_2: "video điện ảnh tự động bằng trí tuệ nhân tạo!"
       },
       {
-        badge: "02 // BÙNG NỔ HỘP THƯ LIVE CHAT ĐA KÊNH",
-        image: "assets_1080p/asset_02_hop_thu_da_kenh_1080p.png",
-        prompt: "Continuous unbroken cinematic shot in the same sleek dark-emerald executive glass office. The same 32-year-old Vietnamese male founder in the charcoal-black blazer stands on the left side of the frame gesturing toward a large frameless ultrawide monitor on the right that displays the exact HEBUM CRM multi-channel Live Chat inbox interface from the reference image. Smooth camera tracking movement. No spoken dialogue.",
-        vo: "Đó là lúc Hebum xuất hiện! Gom trọn mọi hội thoại về một màn hình Live Chat, phản hồi khách tức thì!",
-        sub_1: "Đó là lúc Hebum xuất hiện! Gom trọn mọi hội thoại...",
-        sub_2: "...về một màn hình Live Chat, phản hồi khách tức thì!"
+        badge: "02 // ĐỒNG BỘ NHÂN VẬT & BỐI CẢNH",
+        image: "",
+        prompt: "Continuous unbroken cinematic shot in the same modern creative studio with warm golden-hour lighting. Smooth tracking camera motion capturing refined details and realistic atmosphere.",
+        vo: "Giữ trọn vẹn diện mạo nhân vật, sản phẩm và bối cảnh xuyên suốt mọi phân cảnh với độ chân thực vượt trội!",
+        sub_1: "Giữ trọn vẹn diện mạo nhân vật và sản phẩm",
+        sub_2: "xuyên suốt mọi phân cảnh với độ chân thực cao!"
       },
       {
-        badge: "03 // HỒ SƠ KHÁCH HÀNG 360° & CÔNG NỢ",
-        image: "assets_1080p/asset_03_ho_so_khach_hang_cong_no_1080p.png",
-        prompt: "Continuous unbroken cinematic shot in the same sleek dark-emerald executive glass office. The same 32-year-old Vietnamese male founder in the charcoal-black blazer stands on the left, nodding with satisfaction as he points toward a large frameless ultrawide glass monitor on the right that displays the exact HEBUM CRM 360-degree customer profile and credit limit dashboard from the reference image. No spoken dialogue.",
-        vo: "Mở ngay hồ sơ khách hàng ba trăm sáu mươi độ... Từ lịch sử đơn hàng đến hạn mức công nợ, tất cả minh bạch trong tầm tay!",
-        sub_1: "Mở ngay hồ sơ khách hàng 360 độ...",
-        sub_2: "Từ lịch sử đơn hàng đến hạn mức công nợ, minh bạch trong tầm tay!"
+        badge: "03 // GIỌNG ĐỌC AI CẢM XÚC 1-TAKE",
+        image: "",
+        prompt: "Continuous unbroken cinematic shot in a professional acoustic broadcast studio with warm ambient lighting and sleek modern equipment. Smooth orbital camera motion.",
+        vo: "Hệ thống lồng tiếng một lượt liền mạch giúp truyền tải trọn vẹn cảm xúc tự nhiên và nhịp điệu thương hiệu!",
+        sub_1: "Hệ thống lồng tiếng 1-Take liền mạch",
+        sub_2: "truyền tải trọn vẹn cảm xúc tự nhiên!"
       },
       {
-        badge: "04 // LÀM CHỦ PIPELINE BÁN HÀNG KANBAN",
-        image: "assets_1080p/asset_04_pipeline_kinh_doanh_1080p.png",
-        prompt: "Continuous unbroken cinematic shot in the same sleek dark-emerald executive glass office. The same 32-year-old Vietnamese male founder in the charcoal-black blazer leads a focused strategy briefing on the left while gesturing toward a large frameless ultrawide glass display on the right that displays the exact HEBUM CRM 4-column Kanban sales pipeline interface from the reference image. No spoken dialogue.",
-        vo: "Kiểm soát toàn bộ phễu bán hàng với bảng Pipeline bốn bước trực quan — nắm chắc từng cơ hội chốt đơn lớn!",
-        sub_1: "Kiểm soát toàn bộ phễu bán hàng với Pipeline 4 bước trực quan —",
-        sub_2: "nắm chắc từng cơ hội chốt đơn lớn!"
+        badge: "04 // HÒA ÂM NHẠC NỀN STUDIO 48KHZ",
+        image: "",
+        prompt: "Continuous unbroken cinematic shot of a modern creative production desk with glowing audio waveforms on a sleek display, warm studio lighting and smooth camera movement.",
+        vo: "Tự động sáng tác nhạc nền chất lượng cao và cân bằng âm lượng thông minh theo từng câu thoại!",
+        sub_1: "Tự động sáng tác nhạc nền Studio 48kHz",
+        sub_2: "và cân bằng âm lượng thông minh theo lời thoại!"
       },
       {
-        badge: "05 // TỰ ĐỘNG HÓA CHĂM SÓC VIP 24/7",
-        image: "assets_1080p/asset_05_luong_tu_dong_hoa_1080p.png",
-        prompt: "Continuous unbroken cinematic shot in the same sleek dark-emerald executive glass office. The same 32-year-old Vietnamese male founder in the charcoal-black blazer stands on the left beside his desk and gestures toward a large frameless ultrawide glass monitor on the right that displays the exact HEBUM CRM automated VIP workflow builder interface from the reference image. No spoken dialogue.",
-        vo: "Tự động phân loại khách VIP, nhắc lịch và cảnh báo quá hạn... Giải phóng đến tám mươi phần trăm việc tay chân!",
-        sub_1: "Tự động phân loại khách VIP, nhắc lịch và cảnh báo quá hạn...",
-        sub_2: "Giải phóng đến 80% việc tay chân!"
+        badge: "05 // TỐI ƯU ĐA NỀN TẢNG 16:9 & 9:16",
+        image: "",
+        prompt: "Continuous unbroken cinematic shot in a sunlit glass creative lounge overlooking a modern city skyline at golden hour. Smooth camera dolly motion.",
+        vo: "Hỗ trợ linh hoạt cả khung hình ngang tiêu chuẩn điện ảnh lẫn khung hình dọc cho các nền tảng mạng xã hội!",
+        sub_1: "Hỗ trợ linh hoạt cả khung hình ngang 16:9",
+        sub_2: "lẫn khung hình dọc 9:16 cho mạng xã hội!"
       },
       {
-        badge: "06 // WORKSHOP VIBE CODING CRM — 690.000Đ",
-        image: "assets_1080p/asset_06_bao_cao_dashboard_1080p.png",
-        prompt: "Continuous unbroken cinematic finale shot in the same sleek dark-emerald executive glass office. The same 32-year-old Vietnamese male founder in the charcoal-black blazer smiles confidently on the left and gestures warmly toward a large frameless ultrawide glass command-center monitor on the right that displays the exact HEBUM CRM real-time business revenue dashboard from the reference image. No spoken dialogue.",
-        vo: "Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng ký ngay tại wscrm chấm hebum chấm com chấm vn, chỉ sáu trăm chín mươi nghìn đồng!",
-        sub_1: "3 giờ thực hành Vibe Coding để tự xây hệ thống CRM riêng!",
-        sub_2: "Đăng ký ngay: wscrm.hebum.com.vn — chỉ 690.000đ/người!"
+        badge: "06 // BỨT PHÁ SÁNG TẠO CÙNG OMNI STUDIO",
+        image: "",
+        prompt: "Continuous unbroken cinematic finale shot of a modern architectural studio bathed in warm sunrise light, expansive glass windows, inspiring and triumphant atmosphere.",
+        vo: "Sẵn sàng nâng tầm tốc độ sản xuất nội dung của bạn! Khởi tạo ngay video thương mại Full HD chỉ trong vài phút!",
+        sub_1: "Sẵn sàng nâng tầm tốc độ sản xuất nội dung!",
+        sub_2: "Khởi tạo ngay video thương mại Full HD!"
       }
     ];
 
@@ -1168,11 +1140,9 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
                 <input value="${escapeHtml(sc.badge)}" onchange="storyboardScenes[${i}].badge = this.value; renderStoryboard();" />
               </div>
               <div>
-                <label>Ảnh tham chiếu</label>
-                <div class="scene-upload">
-                  <input id="scImg_${i}" value="${escapeHtml(sc.image)}" onchange="storyboardScenes[${i}].image = this.value" />
-                  <input type="file" accept="image/*" onchange="uploadSceneImg(this, ${i})" />
-                </div>
+                <label for="scRefUpload_${i}">Ảnh tham chiếu</label>
+                <label class="btn btn-ghost btn-xs reference-pick"><svg class="sf-icon" aria-hidden="true"><use href="#sf-photo"/></svg> Tải ảnh lên<input id="scRefUpload_${i}" type="file" accept="image/*" onchange="uploadSceneImg(this, ${i})" /></label>
+                <p class="media-hint reference-status" id="scImg_${i}" role="status">${escapeHtml(sc.referenceName || 'Chưa có ảnh.')}</p>
               </div>
             </div>
             <label>Mô tả cảnh quay</label>
@@ -1195,6 +1165,7 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
       });
       if (!storyboardScenes.length) container.innerHTML = '<div class="empty-state"><svg class="sf-icon" aria-hidden="true"><use href="#sf-film"/></svg><strong>Bắt đầu câu chuyện của bạn</strong>Thêm cảnh đầu tiên hoặc chọn một mẫu phía trên.</div>';
       connectFieldLabels(container);
+      document.getElementById('clearTvcReferences').hidden = !storyboardScenes.some(scene => scene.image);
       updateTimeline();
     }
 
@@ -1207,7 +1178,7 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
           JSON.parse(JSON.stringify(PRESET_60S[0])),
           JSON.parse(JSON.stringify(PRESET_60S[5]))
         ];
-        document.getElementById('tvcOutputName').value = 'hebum_tvc_30s_2x15s_1080p.mp4';
+        document.getElementById('tvcOutputName').value = 'omni_tvc_30s_2x15s_1080p.mp4';
       } else if (count === 4) {
         storyboardScenes = [
           JSON.parse(JSON.stringify(PRESET_60S[0])),
@@ -1215,20 +1186,22 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
           JSON.parse(JSON.stringify(PRESET_60S[3])),
           JSON.parse(JSON.stringify(PRESET_60S[5]))
         ];
-        document.getElementById('tvcOutputName').value = 'hebum_tvc_60s_4x15s_1080p.mp4';
+        document.getElementById('tvcOutputName').value = 'omni_tvc_60s_4x15s_1080p.mp4';
       } else {
         storyboardScenes = JSON.parse(JSON.stringify(PRESET_60S));
-        document.getElementById('tvcOutputName').value = 'hebum_tvc_60s_6x10s_1080p.mp4';
+        document.getElementById('tvcOutputName').value = 'omni_tvc_60s_6x10s_1080p.mp4';
       }
+      storyboardScenes.forEach(scene => { scene.image = ''; });
       renderStoryboard();
+      clearReferencePreview('tvcVideoStage');
     }
 
     function addSceneBox() {
       const idx = storyboardScenes.length + 1;
       storyboardScenes.push({
         badge: `0${idx} // PHÂN CẢNH MỚI`,
-        image: "assets_1080p/asset_01_kenh_ket_noi_1080p.png",
-        prompt: "Continuous unbroken 15-second cinematic shot in a sleek dark-emerald executive glass office. The founder gestures toward the frameless ultrawide glass monitor displaying the reference image. No spoken dialogue.",
+        image: '',
+        prompt: "Continuous unbroken 15-second cinematic shot in a modern studio with soft warm lighting and smooth camera movement.",
         vo: "Nhập lời thoại tiếng Việt truyền cảm cho phân cảnh này...",
         sub_1: "Phụ đề vế thứ nhất...",
         sub_2: "...phụ đề vế thứ hai!"
@@ -1244,13 +1217,12 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
       renderStoryboard();
     }
 
-    function isDefaultHebumTemplatePrompt(text) {
+    function isDefaultTemplatePrompt(text) {
       const lower = String(text || '').toLowerCase();
       return (
         !lower.trim() ||
-        lower.includes('32-year-old vietnamese male') ||
-        lower.includes('hebum crm') ||
-        lower.includes('the founder gestures toward the frameless ultrawide glass monitor')
+        lower.includes('sleek modern creative studio with warm golden-hour lighting') ||
+        lower.includes('modern sunlit architectural studio')
       );
     }
 
@@ -1278,31 +1250,14 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
       return { dataUrl, ...d };
     }
 
-    function isDefaultHebumAssetPath(imgStr) {
-      const b = String(imgStr || '').trim().split(/[\\/]/).pop().toLowerCase();
-      return /^asset_0[1-6]_/.test(b);
-    }
-
-    function onTvcInputModeChanged(mode) {
-      if (mode === 'text') {
-        clearAllTvcImages(false);
-      }
-    }
-
-    function clearAllTvcImages(updateSelect = true) {
-      if (updateSelect) {
-        const sel = document.getElementById('tvcInputMode');
-        if (sel) sel.value = 'text';
-      }
-      storyboardScenes.forEach((sc, i) => {
-        sc.image = '';
-        if (sc.prompt) {
-          sc.prompt = sc.prompt.replace(/\s+from the reference image\b/gi, '');
-        }
+    function clearAllTvcImages() {
+      storyboardScenes.forEach(scene => {
+        scene.image = '';
+        scene.referenceName = '';
       });
       renderStoryboard();
-      const con = document.getElementById('tvcConsole');
-      if (con) con.textContent = '📝 Đã chuyển sang chế độ Tạo TVC từ Văn bản thuần túy (Không dùng ảnh tham chiếu).';
+      clearReferencePreview('tvcVideoStage');
+      document.getElementById('tvcConsole').textContent = 'Đã bỏ ảnh tham chiếu khỏi TVC.';
     }
 
     async function uploadGlobalTvcImage(input) {
@@ -1310,149 +1265,119 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
       if (!file) return;
       const con = document.getElementById('tvcConsole');
       document.getElementById('tvcProgressDetails').open = true;
+      input.disabled = true;
       try {
         const res = await uploadImageToStudioServer(file, msg => {
           if (con) con.textContent = msg;
         });
-        const sel = document.getElementById('tvcInputMode');
-        if (sel) sel.value = 'reference';
         const safePrompt = res.suggested_prompt || 'The person in the reference image smiles warmly and presents naturally in a modern executive studio office with soft cinematic lighting and smooth camera movement.';
-        storyboardScenes.forEach((sc, i) => {
+        storyboardScenes.forEach(sc => {
           sc.image = res.relative_path;
-          if (isDefaultHebumTemplatePrompt(sc.prompt)) {
+          sc.referenceName = file.name;
+          if (isDefaultTemplatePrompt(sc.prompt)) {
             sc.prompt = safePrompt;
           }
         });
         renderStoryboard();
-        const stage = document.getElementById('tvcVideoStage');
-        if (stage && res.download_url) {
-          stage.innerHTML = `<img src="${res.download_url}?t=${Date.now()}" alt="Ảnh tham chiếu chung cho toàn bộ TVC" style="width:100%; height:100%; object-fit:contain;" />`;
-        }
+        showReferencePreview('tvcVideoStage', res.download_url);
         if (con) {
           con.textContent = `✅ Đã áp dụng ảnh tham chiếu "${res.relative_path}" cho toàn bộ ${storyboardScenes.length} cảnh TVC!`;
         }
       } catch (err) {
         if (con) con.textContent = 'Lỗi tải ảnh: ' + err.message;
+      } finally {
+        input.value = '';
+        input.disabled = false;
       }
+    }
+
+    function showReferencePreview(stageId, downloadUrl) {
+      if (!downloadUrl) return;
+      const image = document.createElement('img');
+      image.src = downloadUrl;
+      image.alt = 'Ảnh tham chiếu đã tải lên';
+      image.className = 'reference-preview';
+      document.getElementById(stageId).replaceChildren(image);
+    }
+
+    function clearReferencePreview(stageId) {
+      const stage = document.getElementById(stageId);
+      if (stage.querySelector('.reference-preview')) {
+        stage.innerHTML = '<div class="monitor-empty"><strong>Chưa có bản xem trước</strong></div>';
+      }
+    }
+
+    function clearOptionalReference(kind) {
+      const quick = kind === 'sc';
+      document.getElementById(quick ? 'scImagePath' : 'imgRefPath').value = '';
+      document.getElementById(kind + 'RefStatus').textContent = 'Chưa có ảnh.';
+      document.getElementById(kind + 'RefClear').hidden = true;
+      clearReferencePreview(quick ? 'scVideoStage' : 'imgPreviewStage');
+    }
+
+    async function uploadOptionalReference(input, kind) {
+      const file = input.files[0];
+      if (!file) return;
+      const quick = kind === 'sc';
+      const target = document.getElementById(quick ? 'scImagePath' : 'imgRefPath');
+      const status = document.getElementById(kind + 'RefStatus');
+      const clearButton = document.getElementById(kind + 'RefClear');
+      const oldStatus = status.textContent;
+      input.disabled = clearButton.disabled = true;
+      status.textContent = 'Đang tải ảnh…';
+      try {
+        const result = await uploadImageToStudioServer(file, text => { status.textContent = text; });
+        target.value = result.relative_path;
+        status.textContent = file.name;
+        clearButton.hidden = false;
+        if (quick) {
+          const prompt = document.getElementById('scPrompt');
+          if (result.suggested_prompt && isDefaultTemplatePrompt(prompt.value)) prompt.value = result.suggested_prompt;
+        }
+        showReferencePreview(quick ? 'scVideoStage' : 'imgPreviewStage', result.download_url);
+      } catch (error) {
+        status.textContent = 'Tải ảnh thất bại: ' + error.message + (target.value ? ' · Ảnh hiện tại: ' + oldStatus : '');
+      } finally {
+        input.value = '';
+        input.disabled = clearButton.disabled = false;
+      }
+    }
+
+    function uploadQuickReference(input) {
+      return uploadOptionalReference(input, 'sc');
     }
 
     async function uploadSceneImg(input, idx) {
       const file = input.files[0];
       if (!file) return;
-      const imgInput = document.getElementById('scImg_' + idx);
-      const promptInput = document.getElementById('scPrompt_' + idx);
-      const prevVal = imgInput ? imgInput.value : '';
+      const scene = storyboardScenes[idx];
+      const status = document.getElementById('scImg_' + idx);
+      status.textContent = 'Đang tải ảnh…';
+      input.disabled = true;
       try {
-        const res = await uploadImageToStudioServer(file, msg => {
-          if (imgInput) imgInput.value = msg;
-        });
-        const modeSel = document.getElementById('tvcInputMode');
-        if (modeSel) modeSel.value = 'reference';
-        storyboardScenes[idx].image = res.relative_path;
-        if (imgInput) imgInput.value = res.relative_path;
-        const safePrompt = res.suggested_prompt || 'The person in the reference image smiles warmly and presents naturally in a modern executive studio office with soft cinematic lighting and smooth camera movement.';
-        if (isDefaultHebumTemplatePrompt(storyboardScenes[idx].prompt)) {
-          storyboardScenes[idx].prompt = safePrompt;
-          if (promptInput) promptInput.value = safePrompt;
-        }
-        if (idx === 0) {
-          for (let j = 1; j < storyboardScenes.length; j++) {
-            if (!storyboardScenes[j].image || isDefaultHebumAssetPath(storyboardScenes[j].image)) {
-              storyboardScenes[j].image = res.relative_path;
-              const imgJEl = document.getElementById('scImg_' + j);
-              if (imgJEl) imgJEl.value = res.relative_path;
-            }
-            if (isDefaultHebumTemplatePrompt(storyboardScenes[j].prompt)) {
-              storyboardScenes[j].prompt = safePrompt;
-              const pjEl = document.getElementById('scPrompt_' + j);
-              if (pjEl) pjEl.value = safePrompt;
-            }
+        const result = await uploadImageToStudioServer(file);
+        const currentIndex = storyboardScenes.indexOf(scene);
+        if (currentIndex < 0) return;
+        storyboardScenes.forEach((item, index) => {
+          if (item !== scene && (currentIndex !== 0 || item.image)) return;
+          item.image = result.relative_path;
+          item.referenceName = file.name;
+          document.getElementById('scImg_' + index).textContent = file.name;
+          if (result.suggested_prompt && isDefaultTemplatePrompt(item.prompt)) {
+            item.prompt = result.suggested_prompt;
+            document.getElementById('scPrompt_' + index).value = item.prompt;
           }
-        }
-        const stage = document.getElementById('tvcVideoStage');
-        if (stage && res.download_url) {
-          stage.innerHTML = `<img src="${res.download_url}?t=${Date.now()}" alt="Ảnh tham chiếu Cảnh ${idx + 1}" style="width:100%; height:100%; object-fit:contain;" />`;
-        }
-      } catch (err) {
-        console.error(err);
-        if (imgInput) imgInput.value = prevVal;
-      }
-    }
-
-    function onQuickInputModeChanged(mode) {
-      const refSec = document.getElementById('scRefImageSection');
-      const imgPath = document.getElementById('scImagePath');
-      const presetSel = document.getElementById('scPresetImage');
-      const promptEl = document.getElementById('scPrompt');
-      if (mode === 'text') {
-        if (refSec) refSec.style.display = 'none';
-        if (imgPath) imgPath.value = '';
-        if (presetSel) presetSel.value = '';
-        if (promptEl && /from the reference image/i.test(promptEl.value)) {
-          promptEl.value = promptEl.value.replace(/\s+from the reference image\b/gi, '');
-        }
-        const con = document.getElementById('scConsole');
-        if (con) con.textContent = '📝 Đã chuyển sang chế độ Tạo từ Văn bản thuần túy (Text-to-Video · Không dùng ảnh tham chiếu).';
-      } else {
-        if (refSec) refSec.style.display = 'block';
-      }
-    }
-
-    function onQuickPresetImageSelected(val) {
-      const imgPath = document.getElementById('scImagePath');
-      const modeSel = document.getElementById('scInputMode');
-      if (imgPath) imgPath.value = val || '';
-      if (!val) {
-        if (modeSel) modeSel.value = 'text';
-        onQuickInputModeChanged('text');
-      } else {
-        if (modeSel) modeSel.value = 'reference';
-        onQuickInputModeChanged('reference');
-      }
-    }
-
-    function switchQuickToTextOnly() {
-      const modeSel = document.getElementById('scInputMode');
-      if (modeSel) modeSel.value = 'text';
-      onQuickInputModeChanged('text');
-    }
-
-    async function encodeFileToInput(input, targetId) {
-      const file = input.files[0];
-      if (!file) return;
-      const target = document.getElementById(targetId);
-      const promptInput = document.getElementById('scPrompt');
-      const presetSel = document.getElementById('scPresetImage');
-      const modeSel = document.getElementById('scInputMode');
-      const prevVal = target ? target.value : '';
-      try {
-        const res = await uploadImageToStudioServer(file, msg => {
-          if (target) target.value = msg;
         });
-        if (modeSel) {
-          modeSel.value = 'reference';
-          onQuickInputModeChanged('reference');
-        }
-        if (target) target.value = res.relative_path;
-        if (presetSel) presetSel.value = '';
-        const safePrompt = res.suggested_prompt || 'The person in the reference image smiles warmly and presents naturally in a modern executive studio office with soft cinematic lighting and smooth camera movement.';
-        if (promptInput && isDefaultHebumTemplatePrompt(promptInput.value)) {
-          promptInput.value = safePrompt;
-        }
-        const stage = document.getElementById('scVideoStage');
-        if (stage && res.download_url) {
-          stage.innerHTML = `<img src="${res.download_url}?t=${Date.now()}" alt="Ảnh tham chiếu đã tải lên" style="width:100%; height:100%; object-fit:contain;" />`;
-        }
-        const con = document.getElementById('scConsole');
-        if (con) {
-          con.textContent = `✅ Đã tải ảnh tham chiếu: ${res.relative_path} (${res.mime}, ${res.width}x${res.height})` +
-            (res.subject_description ? `\nNhân vật / Chủ thể: ${res.subject_description}` : '');
-        }
-      } catch (err) {
-        console.error(err);
-        if (target) target.value = prevVal;
+        document.getElementById('clearTvcReferences').hidden = false;
+        showReferencePreview('tvcVideoStage', result.download_url);
+      } catch (error) {
+        status.textContent = 'Tải ảnh thất bại: ' + error.message + (scene.referenceName ? ' · Ảnh hiện tại: ' + scene.referenceName : '');
+      } finally {
+        input.value = '';
+        input.disabled = false;
       }
     }
+
 
     async function refreshStatus() {
       try {
@@ -1666,7 +1591,7 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
       document.getElementById('tvcProgressDetails').open = true;
       document.getElementById('tvcDownloadBar').style.display = 'none';
       const tvcAr = (document.getElementById('tvcAspectRatioExport') || document.getElementById('tvcAspectRatio') || {}).value || '16:9';
-      const tvcInputMode = (document.getElementById('tvcInputMode') || {}).value || 'reference';
+      const tvcInputMode = storyboardScenes.some(scene => scene.image) ? 'reference' : 'text';
       const payload = {
         input_mode: tvcInputMode,
         scenes: storyboardScenes.map(sc => ({
@@ -1834,8 +1759,8 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
         source.focus();
         return;
       }
-      const scInputMode = (document.getElementById('scInputMode') || {}).value || 'reference';
-      const imgVal = scInputMode === 'text' ? '' : document.getElementById('scImagePath').value.trim();
+      const imgVal = document.getElementById('scImagePath').value.trim();
+      const scInputMode = imgVal ? 'reference' : 'text';
       const payload = {
         input_mode: scInputMode,
         prompt: document.getElementById('scPrompt').value.trim(),
@@ -2253,30 +2178,8 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
       }).join('') || '<p class="empty-state">Không có tệp phù hợp.</p>';
     }
 
-    let lastGeneratedCookieImagePath = '';
-
-    async function uploadRefForImageTab(input) {
-      const file = input.files && input.files[0];
-      if (!file) return;
-      const target = document.getElementById('imgRefPath');
-      const con = document.getElementById('imgConsole');
-      const prevVal = target ? target.value : '';
-      if (target) target.value = 'Đang tải & phân tích ảnh tham chiếu...';
-      try {
-        const res = await uploadImageToStudioServer(file);
-        if (target) target.value = res.relative_path || '';
-        const stage = document.getElementById('imgPreviewStage');
-        if (stage && res.download_url) {
-          stage.innerHTML = `<img src="${res.download_url}?t=${Date.now()}" alt="Ảnh tham chiếu đã tải lên" style="width:100%; height:100%; object-fit:contain; position:relative; z-index:2;" />`;
-        }
-        if (con) {
-          con.textContent = 'Đã tải ảnh tham chiếu: ' + (res.relative_path || '') +
-            (res.subject_description ? '\nNhận diện chủ thể: ' + res.subject_description : '');
-        }
-      } catch (err) {
-        if (target) target.value = prevVal;
-        alert('Lỗi tải ảnh tham chiếu: ' + err.message);
-      }
+    function uploadRefForImageTab(input) {
+      return uploadOptionalReference(input, 'img');
     }
 
     async function submitCookieImageGen() {
@@ -2310,7 +2213,6 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
         });
         const d = await r.json();
         if (!r.ok || d.error) throw new Error(d.error || 'Không thể tạo ảnh qua Cookie');
-        lastGeneratedCookieImagePath = d.relative_path || '';
         badge.className = 'chip ok';
         badge.innerHTML = '<span class="dot"></span> Hoàn tất';
         showResultActivity('imgPreviewStage', 'done', 'Ảnh đã sẵn sàng');
@@ -2328,32 +2230,6 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
         btn.disabled = false;
         btn.innerHTML = origHtml;
       }
-    }
-
-    function useCookieImageForQuickScene() {
-      if (!lastGeneratedCookieImagePath) return;
-      document.getElementById('scImagePath').value = lastGeneratedCookieImagePath;
-      const presetSel = document.getElementById('scPresetImage');
-      if (presetSel) presetSel.value = '';
-      const imgPrompt = (document.getElementById('imgPromptInput')?.value || '').trim();
-      const scPromptEl = document.getElementById('scPrompt');
-      if (imgPrompt && scPromptEl && isDefaultHebumTemplatePrompt(scPromptEl.value)) {
-        scPromptEl.value = `Continuous unbroken 15-second cinematic shot animating the exact subject, character, and environment from the reference image (${imgPrompt}). Smooth cinematic camera movement. No spoken dialogue.`;
-      }
-      const navBtns = document.querySelectorAll('.seg-btn');
-      if (navBtns[1]) switchTab('tab-scene', navBtns[1]);
-    }
-
-    function useCookieImageForScene1() {
-      if (!lastGeneratedCookieImagePath || !storyboardScenes.length) return;
-      storyboardScenes[0].image = lastGeneratedCookieImagePath;
-      const imgPrompt = (document.getElementById('imgPromptInput')?.value || '').trim();
-      if (imgPrompt && isDefaultHebumTemplatePrompt(storyboardScenes[0].prompt)) {
-        storyboardScenes[0].prompt = `Continuous unbroken 15-second cinematic shot animating the exact subject, character, and environment from the reference image (${imgPrompt}). Smooth cinematic camera movement. No spoken dialogue.`;
-      }
-      renderStoryboard();
-      const navBtns = document.querySelectorAll('.seg-btn');
-      if (navBtns[0]) switchTab('tab-commercial', navBtns[0]);
     }
 
     function playGalleryFile(event) {
@@ -2380,26 +2256,26 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
     const MCP_SAMPLE_ARGS = {
       omni_session_status: {},
       omni_session_update: {
-        doc_id: "1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc",
+        doc_id: "16IG7we3OjfyxE0-ipLpUOGu7mUXJ9jFc2zeTRi1lneY",
         authuser: "0"
       },
       omni_generate_scene: {
-        prompt: "Continuous unbroken 15-second cinematic shot in a sleek dark-emerald executive glass office. A Vietnamese founder gestures toward a frameless ultrawide monitor displaying the exact CRM interface from the reference image. No spoken dialogue.",
+        prompt: "Continuous unbroken 15-second cinematic shot in a modern sunlit architectural studio with warm golden-hour lighting and smooth camera push-in.",
         duration: 15,
-        image: "assets_1080p/asset_01_kenh_ket_noi_1080p.png",
+        input_mode: "text",
         output_filename: "mcp_scene1_15s_1080p.mp4",
         upscale_1080p: true,
         wait: false
       },
       omni_generate_image: {
-        prompt: "A sleek futuristic dark-emerald glass executive office with a large frameless ultrawide glass monitor displaying a modern multi-channel CRM dashboard, warm cinematic studio lighting, 4k photorealistic",
+        prompt: "A sleek modern architectural creative studio with warm golden-hour sunlight streaming through floor-to-ceiling glass windows, cinematic studio lighting, 4k photorealistic",
         aspect_ratio: "16:9",
         style: "PHOTOGRAPHY",
         num_images: 1,
-        output_filename: "mcp_cookie_image_1080p.png"
+        output_filename: "mcp_studio_image_1080p.png"
       },
       omni_synthesize_1take_vo: {
-        text: "Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập... Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!\n\nĐó là lúc Hebum xuất hiện! Gom trọn mọi hội thoại về một màn hình Live Chat, phản hồi khách tức thì!",
+        text: "Khám phá chuẩn mực mới của công nghệ sản xuất hình ảnh và video điện ảnh tự động bằng trí tuệ nhân tạo.\n\nBắt đầu hành trình kiến tạo thương hiệu đột phá ngay hôm nay cùng Omni Studio Pro!",
         voice: "Puck",
         output_filename: "mcp_vo_1take.wav"
       },

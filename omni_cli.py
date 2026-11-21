@@ -7,7 +7,7 @@ Commands:
   python3 omni_cli.py status
   python3 omni_cli.py set-cookie --cookie "SID=...; __Secure-1PSIDTS=..." --doc-id "1x5..." --authuser 0 --api-key "AIza..."
   python3 omni_cli.py rotate-cookie
-  python3 omni_cli.py scene --prompt "Continuous cinematic shot..." --image assets_1080p/asset_01_kenh_ket_noi_1080p.png --output outputs/scene1.mp4
+  python3 omni_cli.py scene --prompt "Continuous cinematic shot..." --image outputs/reference_image.png --output outputs/scene1.mp4
   python3 omni_cli.py server --port 8080
 """
 

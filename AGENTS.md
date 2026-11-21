@@ -11,7 +11,7 @@ Tệp quy tắc này tự động áp dụng cho toàn bộ dự án trong works
    - **TUYỆT ĐỐI KHÔNG** sử dụng hay đề xuất tạo video bằng Remotion/React trong dự án này.
 
 2. **Quy chuẩn Multi-Scene Chaining & Thành Phần Tạo (`StructuredImage`) trên Google Vids RPC (`DoWorkspaceOperation / 374`)**:
-   - **Thành phần tạo (`StructuredContentNode[11]` = `StructuredImage`)**: Khi có ảnh tài nguyên (giao diện phần mềm CRM/SaaS, ảnh sản phẩm, ảnh nhân vật), luôn nạp trực tiếp ảnh `1080p` vào khe `StructuredImage` (`Node[11]`, tham số `--image` / `image_files=[...]`) để hiển thị tự nhiên bên trong màn hình 3D hoặc bối cảnh điện ảnh.
+   - **Thành phần tạo (`StructuredContentNode[11]` = `StructuredImage`)**: Khi có ảnh tài nguyên (ảnh nhân vật, ảnh sản phẩm, ảnh giao diện), luôn nạp trực tiếp ảnh `1080p` vào khe `StructuredImage` (`Node[11]`, tham số `--image` / `image_files=[...]`) để hiển thị tự nhiên bên trong bối cảnh điện ảnh.
    - **Anchor Node Chaining (`prior_node_files=[s1_node]`)**: Cảnh 1 (`s1_node.json`) luôn đóng vai trò **Anchor Node (`StructuredContentNode`)** được truyền vào các cảnh tiếp theo để giữ đồng nhất 100% gương mặt nhân vật, trang phục và bối cảnh studio xuyên suốt 30s–60s+.
    - **Quy tắc Prompt & Tải Video**:
      - Không truyền thẻ SDK-only (`[# References <VIDEO_REF_0>@Video1]` hoặc `<IMAGE_REF_0>`) vào prompt text của Vids RPC (`374`).

@@ -1,7 +1,7 @@
 # 🎬 Gemini Omni 1.1 Flash Video Studio & Antigravity Skill (`gemini-omni-flash-api`)
 
 Bộ mã nguồn tinh gọn và **Agent Skill (`gemini-omni-flash-api`)** chuyên dụng để sản xuất **Video Thương Mại & TVC Điện Ảnh Đa Cảnh (`10s / 30s / 60s+`, `1920x1080 Full HD`)** bằng **Gemini Omni 1.1 Flash (`gemini-omni-1.1-flash`)**, kết hợp:
-- 🖼️ **Native Image Ingredients (`StructuredContentNode[11]` = `StructuredImage`)**: Đưa trực tiếp ảnh giao diện phần mềm (CRM, SaaS, App) hoặc ảnh sản phẩm thật vào khe **"Thành phần tạo" (Ingredients)** của Google Vids RPC (`DoWorkspaceOperation` / `374`) để hiển thị tự nhiên bên trong màn hình 3D / bối cảnh điện ảnh.
+- 🖼️ **Native Image Ingredients (`StructuredContentNode[11]` = `StructuredImage`)**: Đưa trực tiếp ảnh nhân vật, sản phẩm hoặc giao diện phần mềm vào khe **"Thành phần tạo" (Ingredients)** của Google Vids RPC (`DoWorkspaceOperation` / `376` & `374`) để hiển thị tự nhiên bên trong bối cảnh điện ảnh.
 - 🔗 **Dual-Anchor Multi-Scene Chaining (`[Scene_1_Anchor, Prev_Scene]`)**: Giữ nguyên 100% khuôn mặt nhân vật, trang phục, bối cảnh văn phòng và thiết kế sản phẩm xuyên suốt chuỗi 6 phân cảnh (`60s`).
 - 🎙️ **100% Synchronized Vietnamese AI Voiceover (`Gemini 3.8 Flash TTS`)**:
   - **Single-Model & Single-Style Lock**: Khóa cố định 1 model TTS duy nhất (`gemini-3.8-flash-lite-tts` hoặc `gemini-3.8-flash-tts`), 1 giọng đọc (`Puck`) và 1 phong cách phát thanh xuyên suốt toàn bộ video (không trộn lẫn model giữa các cảnh).
@@ -24,10 +24,7 @@ gemini-omni-flash-video-studio/
 ├── produce.ps1                                   # CLI vận hành nhanh trên Windows
 ├── install-skill.ps1                             # Cài đặt 1-Click skill vào ~/.gemini/config/skills/
 ├── requirements.txt                              # Các thư viện Python cần thiết
-├── assets_1080p/                                 # 6 ảnh giao diện CRM 1920x1080 mẫu (đã làm sạch & nâng cấp Full HD)
 ├── examples/
-│   ├── produce_omni_ingredients_master.py        # Pipeline mẫu 60s: Nạp 6 ảnh 1080p vào Thành phần tạo (StructuredImage)
-│   ├── sync_vo_and_remaster_ingredients.py       # Pipeline mẫu 60s: Đồng bộ giọng đọc Single-Model + Clause Sync
 │   └── make_emotional_1take_vo.py                # Pipeline mẫu 30s/60s: Lồng tiếng 1-Take giàu cảm xúc (gemini-3.8-flash-tts)
 └── skills/
     └── gemini-omni-flash-api/                    # Trọn bộ Skill chuẩn Antigravity / Claude Code / Gemini CLI
@@ -93,16 +90,15 @@ $env:GEMINI_API_KEY = "AIzaSy..."
 
 ### 3. Tạo Video với Ảnh Thành Phần (`StructuredImage` / Ingredients)
 ```powershell
-.\produce.ps1 edit "Continuous cinematic shot in a dark-emerald glass office. A Vietnamese founder gestures toward a sleek ultrawide monitor displaying the exact CRM interface from the reference image. No spoken dialogue." `
+.\produce.ps1 edit "Continuous cinematic shot in a sleek modern studio. The person in the reference image presents naturally with warm lighting and smooth camera push-in." `
   --backend vids `
-  --image "assets_1080p/asset_01_kenh_ket_noi_1080p.png" `
+  --image "outputs/reference_image.png" `
   --output "outputs/scene1_ingredient.mp4"
 ```
 
-### 4. Chạy Pipeline 60 Giây Đầy Đủ (6 Cảnh `StructuredImage` + Giọng Đọc Đồng Bộ 100%)
+### 4. Chạy Pipeline Lồng Tiếng 1-Take Đồng Bộ 100%
 ```powershell
-python examples/produce_omni_ingredients_master.py
-python examples/sync_vo_and_remaster_ingredients.py
+python examples/make_emotional_1take_vo.py
 ```
 
 ---

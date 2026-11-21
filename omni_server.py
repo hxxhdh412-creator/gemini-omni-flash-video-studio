@@ -167,10 +167,9 @@ def rotate_google_cookies_headless(session_path: str = DEFAULT_SESSION_PATH) -> 
        and updates `__Secure-1PSIDTS`, `__Secure-3PSIDTS`, `SIDCC`, `__Secure-1PSIDCC`, `__Secure-3PSIDCC`
        in `vids_session.json` so the session stays alive on headless servers!
     """
-    # Try CDP first (non-launching on headless Linux)
+    # Try CDP first (auto-launches background Chrome CDP if installed on host)
     try:
-        urllib.request.urlopen("http://127.0.0.1:9222/json/version", timeout=1.0).read()
-        cdp_sess = refresh_session_from_cdp(session_path=session_path, auto_launch=False)
+        cdp_sess = refresh_session_from_cdp(session_path=session_path, auto_launch=True)
         if cdp_sess:
             SESSION_META["last_rotated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
             SESSION_META["last_rotate_status"] = "ok_cdp"
@@ -500,10 +499,10 @@ def run_job_generate_scene(job_id: str, payload: dict):
         image_files = []
         input_mode = str(payload.get("input_mode") or "auto").strip().lower()
         raw_img = "" if input_mode == "text" else str(payload.get("image") or "").strip()
-        # If extending a prior video and the user didn't explicitly upload a new custom image (or left default asset_01),
+        # If extending a prior video and the user didn't explicitly upload a new custom image,
         # extract the exact final frame from prior_video_mp4 to guarantee seamless visual continuation
         use_last_frame_from_prior = False
-        if is_extending and prior_video_mp4 and (not raw_img or "asset_01_kenh_ket_noi_1080p.png" in raw_img):
+        if is_extending and prior_video_mp4 and not raw_img:
             use_last_frame_from_prior = True
 
         if use_last_frame_from_prior and ffmpeg_exe:
@@ -732,7 +731,7 @@ def run_job_produce_commercial(job_id: str, payload: dict):
         node_jsons = [None] * n_scenes
 
         # Pre-resolve Scene 1 subject identity if a custom image was uploaded so Scene 2..N prompts
-        # don't accidentally revert to the default "32-year-old Vietnamese male founder" template.
+        # stay consistent across the entire commercial.
         input_mode = str(payload.get("input_mode") or "auto").strip().lower()
         scene1_custom_subject = ""
         scene1_custom_img_path = ""
@@ -741,16 +740,11 @@ def run_job_produce_commercial(job_id: str, payload: dict):
                 s1_img_p = save_base64_image_if_needed(scenes_in[0]["image"], job_dir, 1)
                 if s1_img_p and os.path.exists(s1_img_p):
                     s1_info = describe_image_subject_for_omni(s1_img_p)
-                    if not s1_info.get("is_hebum_ui"):
-                        scene1_custom_img_path = s1_img_p
-                        if s1_info.get("subject_description"):
-                            scene1_custom_subject = s1_info["subject_description"]
+                    scene1_custom_img_path = s1_img_p
+                    if s1_info.get("subject_description"):
+                        scene1_custom_subject = s1_info["subject_description"]
             except Exception:
                 pass
-
-        def _is_default_hebum_asset(img_str: str) -> bool:
-            b = os.path.basename(str(img_str or "").strip()).lower()
-            return any(b.startswith(f"asset_0{k}_") for k in range(1, 7))
 
         def _gen_single_scene(zero_idx: int, prior_files: list, use_rpc_lock: bool):
             sc = scenes_in[zero_idx]
@@ -764,9 +758,7 @@ def run_job_produce_commercial(job_id: str, payload: dict):
             sc_img_raw = "" if input_mode == "text" else str(sc.get("image") or "").strip()
             if input_mode != "text":
                 if zero_idx > 0 and chain_anchor and scene1_custom_img_path:
-                    # If Scene 1 has a custom uploaded portrait/product and Scene 2..N still had a default asset_01..06,
-                    # use Scene 1's custom portrait instead of the default HEBUM UI screenshot!
-                    if not sc_img_raw or _is_default_hebum_asset(sc_img_raw):
+                    if not sc_img_raw:
                         img_files.append(scene1_custom_img_path)
                     else:
                         cur_img_p = save_base64_image_if_needed(sc_img_raw, job_dir, idx)
@@ -780,9 +772,7 @@ def run_job_produce_commercial(job_id: str, payload: dict):
             if input_mode == "text" or not img_files:
                 sc_prompt = re.sub(r"\s+from the reference image\b", "", sc_prompt, flags=re.IGNORECASE)
             elif scene1_custom_img_path and (
-                "32-year-old vietnamese male" in sc_prompt.lower()
-                or "charcoal-black blazer" in sc_prompt.lower()
-                or "hebum" in sc_prompt.lower()
+                "sleek modern creative studio with warm golden-hour lighting" in sc_prompt.lower()
             ):
                 sc_prompt = (
                     "The person in the reference image smiles warmly and presents naturally with confident gestures "
@@ -917,9 +907,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <div class="card">
         <h2>🎥 2. Tạo Nhanh Cảnh Video Omni 1.1 Flash (`10s`)</h2>
         <label>Prompt Mô Tả Cảnh (Tiếng Anh):</label>
-        <textarea id="promptInput">Continuous unbroken cinematic shot in a sleek dark-emerald executive glass office. A charismatic 32-year-old Vietnamese founder gestures toward a frameless ultrawide glass monitor displaying the exact CRM interface from the reference image. No spoken dialogue.</textarea>
+        <textarea id="promptInput">Continuous unbroken cinematic shot in a sleek modern creative studio with warm golden-hour lighting and smooth camera push-in.</textarea>
         <label>Đường dẫn ảnh Thành phần (`StructuredImage` — tùy chọn):</label>
-        <input id="imageInput" value="assets_1080p/asset_01_kenh_ket_noi_1080p.png" />
+        <input id="imageInput" value="" placeholder="outputs/reference_image.png" />
         <label>Tên file xuất (`outputs/`):</label>
         <input id="outNameInput" value="server_scene_1080p.mp4" />
         <button onclick="generateScene()">🚀 Bắt Đầu Tạo Video (Async Job)</button>
@@ -1306,7 +1296,7 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                     f.write(raw)
                 norm_path, _, norm_mime, norm_w, norm_h = ensure_png_or_jpeg_image_file(saved_path)
                 final_fn = os.path.basename(norm_path)
-                subj_info = {"is_hebum_ui": False, "is_character_or_person": False, "subject_description": "", "suggested_prompt": ""}
+                subj_info = {"is_character_or_person": False, "subject_description": "", "suggested_prompt": ""}
                 if body.get("analyze_subject", True):
                     subj_info = describe_image_subject_for_omni(norm_path)
                 self._send_json(
@@ -1416,7 +1406,8 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
 
 
 class ResilientThreadingHTTPServer(ThreadingHTTPServer):
-    allow_reuse_address = True
+    # On Windows, SO_REUSEADDR allows duplicate processes to bind the same port simultaneously; disable on Windows!
+    allow_reuse_address = (os.name != "nt")
     daemon_threads = True
     request_queue_size = 128
 
@@ -1434,6 +1425,14 @@ def main():
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8765")), help="Bind port (default: 8765)")
     parser.add_argument("--rotate-interval", type=int, default=480, help="Cookie keep-alive rotation interval in seconds (default: 480)")
     args = parser.parse_args()
+
+    # Single-instance guard: if port is already bound by an active omni_server.py, exit immediately
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", args.port), timeout=0.5):
+            sys.exit(0)
+    except OSError:
+        pass
 
     bootstrap_session_from_env()
     start_cookie_keepalive_daemon(interval_sec=args.rotate_interval)

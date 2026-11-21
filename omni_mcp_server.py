@@ -539,7 +539,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             shutil.copy2(norm_path, dest_p)
             norm_path = dest_p
         final_fn = os.path.basename(norm_path)
-        subj_info = {"is_hebum_ui": False, "is_character_or_person": False, "subject_description": "", "suggested_prompt": ""}
+        subj_info = {"is_character_or_person": False, "subject_description": "", "suggested_prompt": ""}
         if args.get("analyze_subject", True):
             res_holder = []
 

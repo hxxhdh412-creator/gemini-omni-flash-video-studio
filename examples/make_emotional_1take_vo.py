@@ -33,15 +33,15 @@ sys.path.insert(0, SKILL_VIDEO_DIR)
 from edit_video import apply_vo_style_mastering, get_ffmpeg_exe, log, run_vids_rpc_tts_voiceover
 
 ARTIFACT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-SCRATCH_60S_DIR = os.path.join(ARTIFACT_DIR, "scratch", "vibe_coding_crm_omni")
+SCRATCH_60S_DIR = os.path.join(ARTIFACT_DIR, "scratch", "omni_commercial_60s")
 SCRATCH_30S_DIR = os.path.join(ARTIFACT_DIR, "scratch", "vids_native_30s")
 STUDIO_OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "outputs"))
 
 # Rich, emotionally dynamic style instruction for flagship gemini-3.8-flash-tts
 EMOTIONAL_DIRECTOR_STYLE = (
     "Expressive, deeply emotional, charismatic Vietnamese commercial storyteller and startup founder. "
-    "Start with empathetic, dramatic concern when describing the pain of scattered messages; "
-    "then shift into warm excitement, pride, and inspiring breakthrough energy when revealing the Hebum CRM solution; "
+    "Start with empathetic, engaging storytelling; "
+    "then shift into warm excitement, pride, and inspiring breakthrough energy; "
     "use natural human breathing, expressive pitch variation, emphatic stress on key phrases, and a passionate, "
     "persuasive call-to-action finale. Never sound flat or robotic."
 )
@@ -51,45 +51,45 @@ EMOTIONAL_DIRECTOR_STYLE = (
 SCENES_60S_EMOTIONAL = [
     {
         "idx": 1,
-        "badge": "01 // NỖI ĐAU DỮ LIỆU RỜI RẠC",
-        "vo": "Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập... Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!",
-        "sub_1": "Tin nhắn Zalo, Facebook, Shopee đổ về dồn dập...",
-        "sub_2": "Nhưng dữ liệu rời rạc đang khiến bạn mất khách mỗi ngày!",
+        "badge": "01 // KHỞI ĐẦU ẤN TƯỢNG",
+        "vo": "Khám phá chuẩn mực mới của công nghệ sản xuất hình ảnh và video điện ảnh tự động bằng trí tuệ nhân tạo!",
+        "sub_1": "Khám phá chuẩn mực mới của công nghệ sản xuất",
+        "sub_2": "video điện ảnh tự động bằng trí tuệ nhân tạo!",
     },
     {
         "idx": 2,
-        "badge": "02 // BÙNG NỔ HỘP THƯ LIVE CHAT ĐA KÊNH",
-        "vo": "Đó là lúc Hebum xuất hiện! Gom trọn mọi hội thoại về một màn hình Live Chat, phản hồi khách tức thì!",
-        "sub_1": "Đó là lúc Hebum xuất hiện! Gom trọn mọi hội thoại...",
-        "sub_2": "...về một màn hình Live Chat, phản hồi khách tức thì!",
+        "badge": "02 // ĐỒNG BỘ NHÂN VẬT & BỐI CẢNH",
+        "vo": "Giữ trọn vẹn diện mạo nhân vật, sản phẩm và bối cảnh xuyên suốt mọi phân cảnh với độ chân thực vượt trội!",
+        "sub_1": "Giữ trọn vẹn diện mạo nhân vật và sản phẩm",
+        "sub_2": "xuyên suốt mọi phân cảnh với độ chân thực cao!",
     },
     {
         "idx": 3,
-        "badge": "03 // HỒ SƠ KHÁCH HÀNG 360° & CÔNG NỢ",
-        "vo": "Mở ngay hồ sơ khách hàng ba trăm sáu mươi độ... Từ lịch sử đơn hàng đến hạn mức công nợ, tất cả minh bạch trong tầm tay!",
-        "sub_1": "Mở ngay hồ sơ khách hàng 360 độ...",
-        "sub_2": "Từ lịch sử đơn hàng đến hạn mức công nợ, minh bạch trong tầm tay!",
+        "badge": "03 // GIỌNG ĐỌC AI CẢM XÚC 1-TAKE",
+        "vo": "Hệ thống lồng tiếng một lượt liền mạch giúp truyền tải trọn vẹn cảm xúc tự nhiên và nhịp điệu thương hiệu!",
+        "sub_1": "Hệ thống lồng tiếng 1-Take liền mạch",
+        "sub_2": "truyền tải trọn vẹn cảm xúc tự nhiên!",
     },
     {
         "idx": 4,
-        "badge": "04 // LÀM CHỦ PIPELINE BÁN HÀNG KANBAN",
-        "vo": "Kiểm soát toàn bộ phễu bán hàng với bảng Pipeline bốn bước trực quan — nắm chắc từng cơ hội chốt đơn lớn!",
-        "sub_1": "Kiểm soát toàn bộ phễu bán hàng với Pipeline 4 bước trực quan —",
-        "sub_2": "nắm chắc từng cơ hội chốt đơn lớn!",
+        "badge": "04 // HÒA ÂM NHẠC NỀN STUDIO 48KHZ",
+        "vo": "Tự động sáng tác nhạc nền chất lượng cao và cân bằng âm lượng thông minh theo từng câu thoại!",
+        "sub_1": "Tự động sáng tác nhạc nền Studio 48kHz",
+        "sub_2": "và cân bằng âm lượng thông minh theo lời thoại!",
     },
     {
         "idx": 5,
-        "badge": "05 // TỰ ĐỘNG HÓA CHĂM SÓC VIP 24/7",
-        "vo": "Tự động phân loại khách VIP, nhắc lịch và cảnh báo quá hạn... Giải phóng đến tám mươi phần trăm việc tay chân!",
-        "sub_1": "Tự động phân loại khách VIP, nhắc lịch và cảnh báo quá hạn...",
-        "sub_2": "Giải phóng đến 80% việc tay chân!",
+        "badge": "05 // TỐI ƯU ĐA NỀN TẢNG 16:9 & 9:16",
+        "vo": "Hỗ trợ linh hoạt cả khung hình ngang tiêu chuẩn điện ảnh lẫn khung hình dọc cho các nền tảng mạng xã hội!",
+        "sub_1": "Hỗ trợ linh hoạt cả khung hình ngang 16:9",
+        "sub_2": "lẫn khung hình dọc 9:16 cho mạng xã hội!",
     },
     {
         "idx": 6,
-        "badge": "06 // WORKSHOP VIBE CODING CRM — 690.000Đ",
-        "vo": "Ba giờ thực hành Vibe Coding để tự xây hệ thống riêng! Đăng ký ngay tại wscrm chấm hebum chấm com chấm vn, chỉ sáu trăm chín mươi nghìn đồng!",
-        "sub_1": "3 giờ thực hành Vibe Coding để tự xây hệ thống CRM riêng!",
-        "sub_2": "Đăng ký ngay: wscrm.hebum.com.vn — chỉ 690.000đ/người!",
+        "badge": "06 // BỨT PHÁ SÁNG TẠO CÙNG OMNI STUDIO",
+        "vo": "Sẵn sàng nâng tầm tốc độ sản xuất nội dung của bạn! Khởi tạo ngay video thương mại Full HD chỉ trong vài phút!",
+        "sub_1": "Sẵn sàng nâng tầm tốc độ sản xuất nội dung!",
+        "sub_2": "Khởi tạo ngay video thương mại Full HD!",
     },
 ]
 
@@ -457,10 +457,10 @@ def build_1take_master(
     play_res_x, play_res_y = ("1080", "1920") if is_vertical else ("1920", "1080")
     sub_margin_lr = "44" if is_vertical else "80"
     sub_margin_v = "110" if is_vertical else "38"
-    ass_path = os.path.join(work_dir, f"hebum_1take_{total_dur}s.ass")
+    ass_path = os.path.join(work_dir, f"omni_1take_{total_dur}s.ass")
     ass_lines = [
         "[Script Info]",
-        f"Title: HEBUM {total_dur}s 1-Take Emotional Master",
+        f"Title: OMNI STUDIO {total_dur}s 1-Take Emotional Master",
         "ScriptType: v4.00+",
         f"PlayResX: {play_res_x}",
         f"PlayResY: {play_res_y}",
@@ -483,7 +483,7 @@ def build_1take_master(
         et = fmt_ass(base_t + sc_dur - 0.15)
         ass_lines.append(f"Dialogue: 2,{st},{et},TopPill,,0,0,0,,{{\\fad(200,200)}}  {sc['badge']}  ")
         ass_lines.append(
-            f"Dialogue: 2,{st},{et},BrandTag,,0,0,0,,{{\\fad(200,200)}}  HEBUM VIBE CODING CRM  •  690.000Đ  "
+            f"Dialogue: 2,{st},{et},BrandTag,,0,0,0,,{{\\fad(200,200)}}  OMNI STUDIO PRO  •  1080P FULL HD  "
         )
         ass_lines.append(
             f"Dialogue: 3,{fmt_ass(m['c1_start'])},{fmt_ass(m['c1_end'])},SubBox,,0,0,0,,{{\\fad(120,90)}}{sc['sub_1']}"
@@ -585,14 +585,14 @@ def main():
     if not api_key:
         raise RuntimeError("No GEMINI_API_KEY in environment")
 
-    bgm_wav = os.path.join(ARTIFACT_DIR, "hebum_vibe_coding_lyria_bgm_60s.wav")
+    bgm_wav = os.path.join(ARTIFACT_DIR, "omni_studio_lyria_bgm_60s.wav")
     ing_mp4s_60s = [
-        os.path.join(SCRATCH_60S_DIR, "s1_ing_multichannel_raw720p.mp4"),
-        os.path.join(SCRATCH_60S_DIR, "s2_ing_livechat_raw720p.mp4"),
-        os.path.join(SCRATCH_60S_DIR, "s3_ing_customer360_raw720p.mp4"),
-        os.path.join(SCRATCH_60S_DIR, "s4_ing_pipeline_raw720p.mp4"),
-        os.path.join(SCRATCH_60S_DIR, "s5_ing_automation_raw720p.mp4"),
-        os.path.join(SCRATCH_60S_DIR, "s6_ing_dashboard_finale_raw720p.mp4"),
+        os.path.join(SCRATCH_60S_DIR, "s1_raw720p.mp4"),
+        os.path.join(SCRATCH_60S_DIR, "s2_raw720p.mp4"),
+        os.path.join(SCRATCH_60S_DIR, "s3_raw720p.mp4"),
+        os.path.join(SCRATCH_60S_DIR, "s4_raw720p.mp4"),
+        os.path.join(SCRATCH_60S_DIR, "s5_raw720p.mp4"),
+        os.path.join(SCRATCH_60S_DIR, "s6_raw720p.mp4"),
     ]
     ing_mp4s_30s = [
         ing_mp4s_60s[0],
@@ -601,7 +601,7 @@ def main():
     ]
 
     # 1. Master 30-Second Commercial with 1-Take Flagship Emotional Voiceover
-    out_30s = os.path.join(ARTIFACT_DIR, "hebum_vids_new_native_voice_30s_1080p.mp4")
+    out_30s = os.path.join(ARTIFACT_DIR, "omni_vids_new_native_voice_30s_1080p.mp4")
     build_1take_master(
         scenes=SCENES_30S_EMOTIONAL,
         scene_mp4s=ing_mp4s_30s,
@@ -615,7 +615,7 @@ def main():
     shutil.copy2(out_30s, os.path.join(STUDIO_OUT_DIR, os.path.basename(out_30s)))
 
     # 2. Master 60-Second Commercial with 1-Take Flagship Emotional Voiceover
-    out_60s = os.path.join(ARTIFACT_DIR, "hebum_vibe_coding_crm_omni_ingredients_60s_1080p.mp4")
+    out_60s = os.path.join(ARTIFACT_DIR, "omni_commercial_ingredients_60s_1080p.mp4")
     build_1take_master(
         scenes=SCENES_60S_EMOTIONAL,
         scene_mp4s=ing_mp4s_60s,

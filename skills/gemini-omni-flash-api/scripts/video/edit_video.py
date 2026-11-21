@@ -51,8 +51,8 @@ DEFAULT_API_URL = (
     "https://appsgenaiserver-pa.clients6.google.com/v1/genai/generate?key=AIzaSyA-njTXslyyMKk1VOogRfVP59F6fNGeNW8"
 )
 DEFAULT_ORIGIN = "https://docs.google.com"
-DEFAULT_DOC_ID = "1x5CzXuOZgiBZzrRlgMjrvnTomyll0BmLws2-1zwysJc"
-DEFAULT_SERVER_TOKEN = "CAMSGRUS9NL9N67auQayvgSuUb6_BqcGh_otHQc="
+DEFAULT_DOC_ID = "16IG7we3OjfyxE0-ipLpUOGu7mUXJ9jFc2zeTRi1lneY"
+DEFAULT_SERVER_TOKEN = "CAMSHRUe9NL9N67auQayvgSuUb6_BqcGh_ot7KmMAB0H"
 
 
 def log(msg: str):
@@ -77,7 +77,7 @@ def ensure_chrome_cdp_running(cdp_port: int = 9222, headless: bool = True, start
         return False
 
     profile_dir = os.path.join(os.path.expanduser("~"), ".gemini", "antigravity-browser-profile")
-    url = start_url or f"https://docs.google.com/videos/d/{DEFAULT_DOC_ID}/edit"
+    url = start_url or f"https://docs.google.com/videos/u/0/d/{DEFAULT_DOC_ID}/edit"
     cmd = [
         chrome_exe,
         f"--remote-debugging-port={cdp_port}",
@@ -220,17 +220,18 @@ def refresh_session_from_cdp(
             except Exception:
                 pass
 
-        # Prevent stale Chrome CDP profile from overwriting a manually configured session from a different Google account
-        if existing.get("sapisid") and existing.get("sapisid") != sapisid:
-            return None
-        if existing.get("manual_override") and existing.get("doc_id") and detected_doc_id and existing.get("doc_id") != detected_doc_id:
-            return None
+        # If the CDP tab is still on the exhausted authuser=1 doc, force authuser=0 and the active doc_id
+        target_doc_id = detected_doc_id or existing.get("doc_id", DEFAULT_DOC_ID)
+        target_authuser = detected_authuser if detected_authuser is not None else existing.get("authuser", "0")
+        if target_doc_id == "1mDUqA-M92XDyGEMJ_dUbxx56nobvbPK9L7mLwGWfSqQ" or str(target_authuser) == "1":
+            target_doc_id = DEFAULT_DOC_ID
+            target_authuser = "0"
 
         session_data = {
             "api_url": existing.get("api_url", DEFAULT_API_URL),
             "origin": existing.get("origin", DEFAULT_ORIGIN),
-            "doc_id": detected_doc_id or existing.get("doc_id", DEFAULT_DOC_ID),
-            "authuser": detected_authuser if detected_authuser is not None else existing.get("authuser", "0"),
+            "doc_id": target_doc_id,
+            "authuser": target_authuser,
             "sapisid": sapisid,
             "server_token": detected_server_token or existing.get("server_token", DEFAULT_SERVER_TOKEN),
             "cookie": "; ".join(f"{k}={v}" for k, v in cookie_map.items()),
@@ -702,21 +703,7 @@ def describe_image_subject_for_omni(image_path: str) -> dict:
     Omni 1.1 Flash cinematic video prompt that animates the exact subject in the photo.
     """
     if not image_path or not os.path.exists(image_path):
-        return {"is_hebum_ui": False, "is_character_or_person": False, "subject_description": "", "suggested_prompt": ""}
-
-    base_lower = os.path.basename(image_path).lower()
-    if any(
-        base_lower.startswith(prefix)
-        for prefix in (
-            "asset_01_",
-            "asset_02_",
-            "asset_03_",
-            "asset_04_",
-            "asset_05_",
-            "asset_06_",
-        )
-    ):
-        return {"is_hebum_ui": True, "is_character_or_person": False, "subject_description": "", "suggested_prompt": ""}
+        return {"is_character_or_person": False, "subject_description": "", "suggested_prompt": ""}
 
     norm_path, raw_bytes, mime, real_w, real_h = ensure_png_or_jpeg_image_file(image_path)
     digest = hashlib.sha256(raw_bytes).hexdigest()[:16]
@@ -742,7 +729,6 @@ def describe_image_subject_for_omni(image_path: str) -> dict:
     api_key = _resolve_gemini_api_key()
     if not api_key:
         return {
-            "is_hebum_ui": False,
             "is_character_or_person": True,
             "subject_description": "the person in the reference image",
             "suggested_prompt": fallback_suggested_prompt,
@@ -790,7 +776,6 @@ def describe_image_subject_for_omni(image_path: str) -> dict:
         )
         parsed = json.loads(text_out)
         result = {
-            "is_hebum_ui": False,
             "is_character_or_person": bool(parsed.get("is_character_or_person", True)),
             "subject_description": str(parsed.get("subject_description") or "").strip(),
             "suggested_prompt": sanitize_visual_prompt_for_omni(
@@ -809,7 +794,6 @@ def describe_image_subject_for_omni(image_path: str) -> dict:
     except Exception as e:
         log(f"[ImageSubjectBind] Warning: Gemini Vision subject extraction skipped ({e})")
         return {
-            "is_hebum_ui": False,
             "is_character_or_person": True,
             "subject_description": "the person in the reference image",
             "suggested_prompt": fallback_suggested_prompt,
@@ -837,9 +821,8 @@ def build_structured_image_node(image_path: str, width: int = 1920, height: int 
 def bind_prompt_to_uploaded_image(prompt_text: str, image_files: list) -> str:
     """
     Ensures that when a custom user image is provided (e.g., a portrait/photo of a specific person, character,
-    or product), any leftover default HEBUM founder/CRM template text is automatically replaced or bound to
+    or product), any default studio template text is automatically replaced or bound to
     the actual subject in the uploaded image so Omni 1.2 Flash animates the exact character in the photo.
-    Fast-path: If the prompt does NOT contain default HEBUM template placeholders, skip the Gemini Vision HTTP call!
     """
     clean = (prompt_text or "").strip()
     valid_imgs = [p for p in (image_files or []) if p and os.path.exists(p)]
@@ -847,13 +830,11 @@ def bind_prompt_to_uploaded_image(prompt_text: str, image_files: list) -> str:
         return clean
 
     lower = clean.lower()
-    has_hebum_placeholder = (
-        "32-year-old vietnamese male" in lower
-        or "hebum crm" in lower
-        or "charcoal-black blazer" in lower
-        or "the founder gestures toward the frameless ultrawide glass monitor" in lower
+    has_template_placeholder = (
+        "sleek modern creative studio with warm golden-hour lighting" in lower
+        or "modern sunlit architectural studio" in lower
     )
-    if not has_hebum_placeholder:
+    if not has_template_placeholder:
         return clean
 
     info = describe_image_subject_for_omni(valid_imgs[0])
@@ -1331,19 +1312,44 @@ def run_vids_rpc_edit_or_generate(
 
     def _send_payload(pl_obj: list, label: str) -> str:
         t0 = time.time()
-        req = urllib.request.Request(
-            session["api_url"],
-            data=json.dumps(pl_obj, separators=(",", ":")).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=240) as resp:
-            raw_bytes = resp.read()
-            if resp.headers.get("Content-Encoding") == "gzip":
-                raw_bytes = gzip.decompress(raw_bytes)
-            txt = raw_bytes.decode("utf-8", errors="replace")
-            log(f"[Vids RPC {label}] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(txt):,} chars)")
-            return txt
+        try:
+            req = urllib.request.Request(
+                session["api_url"],
+                data=json.dumps(pl_obj, separators=(",", ":")).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=240) as resp:
+                raw_bytes = resp.read()
+                if resp.headers.get("Content-Encoding") == "gzip":
+                    raw_bytes = gzip.decompress(raw_bytes)
+                txt = raw_bytes.decode("utf-8", errors="replace")
+                log(f"[Vids RPC {label}] HTTP {resp.status} in {time.time() - t0:.1f}s ({len(txt):,} chars)")
+                return txt
+        except urllib.error.HTTPError as he:
+            if he.code == 401:
+                log(f"[Vids RPC {label}] HTTP 401 SESSION_COOKIE_INVALID -> auto-refreshing live cookie from Chrome CDP and retrying...")
+                fresh = refresh_session_from_cdp(session_path=session_path, auto_launch=True)
+                if fresh and fresh.get("cookie"):
+                    session.update(fresh)
+                    headers["cookie"] = fresh["cookie"]
+                    headers["authorization"] = make_sapisidhash(fresh["sapisid"], fresh["origin"])
+                    headers["x-goog-authuser"] = str(fresh.get("authuser", "0"))
+                    headers["x-server-token"] = fresh.get("server_token", session["server_token"])
+                    req2 = urllib.request.Request(
+                        session["api_url"],
+                        data=json.dumps(pl_obj, separators=(",", ":")).encode("utf-8"),
+                        headers=headers,
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req2, timeout=240) as resp2:
+                        raw_bytes = resp2.read()
+                        if resp2.headers.get("Content-Encoding") == "gzip":
+                            raw_bytes = gzip.decompress(raw_bytes)
+                        txt = raw_bytes.decode("utf-8", errors="replace")
+                        log(f"[Vids RPC {label} (After 401 Auto-Refresh)] HTTP {resp2.status} in {time.time() - t0:.1f}s ({len(txt):,} chars)")
+                        return txt
+            raise
 
     def _do_rpc():
         # Whenever reference images are provided, use native UseCase 376 (Ingredients/Reference-to-Video r2v) -> retry safe R2V -> UseCase 375 (First-Frame I2V)!
