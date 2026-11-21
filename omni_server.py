@@ -1511,37 +1511,42 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                 for i, im in enumerate(body.get("images") or []):
                     ref_imgs.append(save_base64_image_if_needed(im, OUTPUTS_DIR, i + 1))
                 ref_imgs = [p for p in ref_imgs if p]
-                if engine == "chatgpt":
-                    from chatgpt_image_backend import generate_chatgpt_image
-                    res = generate_chatgpt_image(
-                        prompt=prompt,
-                        output_path=out_path,
-                        aspect_ratio=aspect_ratio,
-                        image_files=ref_imgs,
-                        conversation_id=(body.get("conversation_id") or "").strip(),
-                    )
-                    imgs = []
-                    for p in res.get("images", [res["output_path"]]):
-                        fn = os.path.basename(p)
-                        imgs.append(
+                if engine in ("chatgpt", "auto"):
+                    from chatgpt_image_backend import generate_chatgpt_image, get_chatgpt_account_info
+                    can_use_cgpt = True if engine == "chatgpt" else bool(get_chatgpt_account_info(force=False).get("logged_in"))
+                    if can_use_cgpt:
+                        res = generate_chatgpt_image(
+                            prompt=prompt,
+                            output_path=out_path,
+                            aspect_ratio=aspect_ratio,
+                            image_files=ref_imgs,
+                            conversation_id=(body.get("conversation_id") or "").strip(),
+                            new_session=bool(body.get("new_session", False)),
+                        )
+                        imgs = []
+                        for p in res.get("images", [res["output_path"]]):
+                            fn = os.path.basename(p)
+                            imgs.append(
+                                {
+                                    "filename": fn,
+                                    "relative_path": f"outputs/{fn}",
+                                    "download_url": f"/outputs/{fn}",
+                                }
+                            )
+                        self._send_json(
                             {
-                                "filename": fn,
-                                "relative_path": f"outputs/{fn}",
-                                "download_url": f"/outputs/{fn}",
+                                "status": "ok",
+                                "backend": "chatgpt_web_image",
+                                "download_url": imgs[0]["download_url"],
+                                "relative_path": imgs[0]["relative_path"],
+                                "images": imgs,
+                                "aspect_ratio": res.get("aspect_ratio", aspect_ratio),
+                                "chatgpt_conversation_id": res.get("chatgpt_conversation_id", ""),
+                                "session_mode": res.get("session_mode", ""),
+                                "is_continuation": res.get("is_continuation", False),
                             }
                         )
-                    self._send_json(
-                        {
-                            "status": "ok",
-                            "backend": "chatgpt_web_image",
-                            "download_url": imgs[0]["download_url"],
-                            "relative_path": imgs[0]["relative_path"],
-                            "images": imgs,
-                            "aspect_ratio": res.get("aspect_ratio", aspect_ratio),
-                            "chatgpt_conversation_id": res.get("chatgpt_conversation_id", ""),
-                        }
-                    )
-                    return
+                        return
                 res = run_vids_rpc_generate_image(
                     prompt_text=prompt,
                     output_path=out_path,

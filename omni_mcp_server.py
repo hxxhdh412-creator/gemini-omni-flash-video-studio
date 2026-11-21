@@ -216,14 +216,21 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_generate_image",
         "description": (
-            "Generate high-resolution AI images, ad banners, posters, product visuals, or reference-guided variations via the Omni Studio Image Generation API. "
+            "Generate high-resolution AI images, complete commercial ad banners, posters, product visuals, or reference-guided variations via the Omni Studio Image Generation API (powered by ChatGPT Plus GPT-Image-1 & Omni Studio Imagen). "
+            "MANDATORY BANNER & POSTER RULE FOR AI AGENTS: "
+            "This engine natively renders agency-grade commercial typography and complete Vietnamese diacritics directly inside the artwork. "
+            "When the user asks for an ad banner, poster, or social media post, NEVER generate a blank 'background-only' plate or leave empty solid-color blocks waiting for later text! "
+            "You MUST prompt for a COMPLETE, finished commercial banner layout including: "
+            "(a) Hero visual subject & product packaging/elements, "
+            "(b) Bold Vietnamese headline in quotes (`\"...\"`), "
+            "(c) Subtitle / 2–3 key benefit callouts or badges in quotes, "
+            "(d) Footer / CTA / brand contact info, and "
+            "(e) Cohesive graphic design (editorial typography hierarchy, lighting, subtle frames/dividers). "
+            "If the user has not provided exact copy yet, compose appropriate high-converting Vietnamese headline & benefit copy matching their topic so the banner is 100% complete and visually rich! "
             "HOW TO USE: "
-            "(1) Mode: Omit `image`/`images` for pure Text-to-Image, or pass 1–3 reference images (`image`/`images`) for Reference-to-Image to preserve exact product, logo, or character appearance. "
-            "(2) Prompting: Describe subject, setting, lighting, camera angle, and composition clearly; describe colors in natural words (never use `#RRGGBB` hex codes). "
-            "(3) Vietnamese Typography on Banners/Posters: Wrap any exact Vietnamese headline/CTA in quotes (e.g., `\"GIẢM 30% HÔM NAY\"`) and include `'exact Vietnamese text with diacritics'` in the prompt so Vietnamese text is rendered accurately without auto-translation. "
-            "(4) Aspect Ratio & Style: Pick `aspect_ratio` (`16:9`, `1:1`, or `9:16`) matching the target channel and choose from 14 visual `style` presets. "
-            "(5) Async Retrieval: If the response returns `status='running'` with a `job_id`, poll `omni_job_status(job_id=...)` until `status='completed'` to get `public_download_url` and `images[]`. "
-            "Generated PNGs in `/outputs` can be passed directly into `omni_generate_scene`'s `image` parameter."
+            "(1) Mode: Omit `image`/`images` for Text-to-Image, or pass 1–3 reference images (`image`/`images`) to preserve exact product, logo, or character appearance. "
+            "(2) Smart Session Continuity: Automatically continues in the same ChatGPT design thread when refining/fixing the same banner (or pass `new_session=true` for a fresh concept). "
+            "(3) Async Retrieval: If `status='running'`, poll `omni_job_status(job_id=...)` until `status='completed'` to get `public_download_url`."
         ),
         "inputSchema": {
             "type": "object",
@@ -309,14 +316,23 @@ MCP_TOOLS_SCHEMA = [
                 },
                 "engine": {
                     "type": "string",
-                    "enum": ["omni", "chatgpt", "auto"],
-                    "default": "omni",
+                    "enum": ["auto", "chatgpt", "omni"],
+                    "default": "auto",
                     "description": (
                         "Image generation backend engine: "
-                        "`omni` (default — Omni Studio native Imagen engine, fastest with 14 style presets and up to 4 variations), "
-                        "`chatgpt` (ChatGPT Image Engine — excels at complex typography, photorealistic editorial layouts, and multi-turn visual editing), "
-                        "`auto` (uses `omni` first and automatically falls back to `chatgpt` if unavailable)."
+                        "`auto` (default — automatically uses `chatgpt` when the ChatGPT Plus Web Image Engine is active for maximum typography/product fidelity, and falls back to `omni` if unavailable), "
+                        "`chatgpt` (ChatGPT Plus Web Image Engine — best for ad banners, Vietnamese typography, reference product design, and Smart Session Continuity multi-turn editing), "
+                        "`omni` (Omni Studio native Imagen engine — fastest ~12s generation with 14 style presets and up to 4 variations)."
                     ),
+                },
+                "conversation_id": {
+                    "type": "string",
+                    "description": "Optional ChatGPT conversation ID to continue editing in a specific session (auto-resolved by Smart Session Continuity when omitted).",
+                },
+                "new_session": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If true, forces a brand-new ChatGPT conversation instead of auto-continuing the current banner/project session. Default: `false`.",
                 },
             },
             "required": ["prompt"],
@@ -325,14 +341,19 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_generate_image_chatgpt",
         "description": (
-            "Generate or edit high-resolution AI images via the ChatGPT Image Engine. "
-            "HOW TO USE: "
-            "(1) Mode: Omit `image`/`images` for pure Text-to-Image, or pass 1–3 reference images (`image`/`images`) for Reference-to-Image / image editing. "
-            "(2) Prompting: Describe subject, composition, lighting, typography, and color palette in natural language. "
-            "Wrap exact Vietnamese or English on-image headlines/CTAs in quotes (`\"...\"`). "
-            "(3) Aspect Ratio: Choose `16:9` (landscape banner/thumbnail), `1:1` (square social post), `9:16` (vertical Reels/TikTok/Story), `4:3`, `3:4`, `3:2`, or `2:3`. "
-            "(4) Iterative Editing: Pass the `chatgpt_conversation_id` returned from a previous job to refine or edit the previous image in the same conversation. "
-            "(5) Async Retrieval: Runs asynchronously and returns within <=5s; if `status='running'`, immediately poll `omni_job_status(job_id=...)` until `status='completed'` to get `public_download_url` and `images[]`."
+            "Generate or edit high-resolution AI images, complete commercial ad banners, and product visuals via the ChatGPT Plus Web Image Engine (GPT-Image-1) with Smart Session Continuity. "
+            "MANDATORY BANNER & POSTER RULE FOR AI AGENTS: "
+            "ChatGPT Plus GPT-Image-1 natively renders complete, agency-grade commercial ad banners with crisp Vietnamese typography and diacritics directly inside the image. "
+            "When asked to design a banner/poster, NEVER prompt for a blank/half-empty 'background plate' or leave empty green/dark blocks without headline text! "
+            "Always specify a COMPLETE finished ad banner in your prompt: "
+            "(1) Rich hero subject/product visual, "
+            "(2) Bold Vietnamese headline in quotes (`\"...\"`), "
+            "(3) Supporting subtitle / 2–3 benefit badges or bullet points in quotes, "
+            "(4) Brand / CTA / footer in quotes, and "
+            "(5) Polished commercial graphic layout (balanced typography hierarchy, gold/accent dividers, badges, lighting). "
+            "If the user did not supply exact text, write compelling Vietnamese marketing copy fitting their product/topic so the resulting banner is 100% finished! "
+            "Smart Session Continuity automatically continues inside the same ChatGPT conversation when refining the same banner (or pass `new_session=true` for a fresh concept). "
+            "If `status='running'`, immediately poll `omni_job_status(job_id=...)` until `status='completed'`."
         ),
         "inputSchema": {
             "type": "object",
@@ -340,13 +361,13 @@ MCP_TOOLS_SCHEMA = [
                 "prompt": {
                     "type": "string",
                     "description": (
-                        "Detailed English or Vietnamese prompt describing the image to generate or the edit to apply to the reference image(s). "
+                        "Detailed English or Vietnamese prompt describing the image to generate or the edit to apply to the reference/previous image. "
                         "Wrap exact on-image text/headlines in quotes (`\"...\"`)."
                     ),
                 },
                 "image": {
                     "type": "string",
-                    "description": "Optional single reference image (local path, `outputs/...`, `file:///`, `https://` URL, or base64 data URI) for Reference-to-Image or image editing.",
+                    "description": "Optional single reference image (local path, `outputs/...`, `file:///`, `https://` URL, or base64 data URI) for Reference-to-Image or product design.",
                 },
                 "images": {
                     "type": "array",
@@ -361,11 +382,16 @@ MCP_TOOLS_SCHEMA = [
                 },
                 "conversation_id": {
                     "type": "string",
-                    "description": "Optional ChatGPT conversation ID returned by a prior `omni_generate_image_chatgpt` job to continue editing in the same thread.",
+                    "description": "Optional explicit ChatGPT conversation ID returned by a prior job (if omitted, Smart Session Continuity automatically matches by banner code or edit intent).",
+                },
+                "new_session": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If true, forces a brand-new ChatGPT conversation session instead of continuing the active banner/project thread. Default: `false`.",
                 },
                 "output_filename": {
                     "type": "string",
-                    "description": "Optional output image filename inside `/outputs` (e.g. `chatgpt_poster_1x1.png`). Auto-generated if omitted.",
+                    "description": "Optional output image filename inside `/outputs` (e.g. `ND-202611-009_v01.png`). Auto-generated if omitted.",
                 },
             },
             "required": ["prompt"],
@@ -748,6 +774,10 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         aspect_ratio: str,
         ref_imgs: list[str],
         conversation_id: str = "",
+        new_session: bool = False,
+        fallback_to_omni_on_error: bool = False,
+        style: str = "PHOTOGRAPHY",
+        num_images: int = 1,
     ) -> dict:
         from chatgpt_image_backend import generate_chatgpt_image
 
@@ -775,6 +805,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                     aspect_ratio=aspect_ratio,
                     image_files=ref_imgs,
                     conversation_id=conversation_id,
+                    new_session=new_session,
                     on_status=_on_status,
                 )
                 imgs = []
@@ -800,14 +831,60 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                             "relative_path": imgs[0]["relative_path"],
                             "images": imgs,
                             "mime": res.get("mime", "image/png"),
-                            "reference_images_used": len(ref_imgs),
+                            "reference_images_used": res.get("reference_images_used", len(ref_imgs)),
                             "aspect_ratio": res.get("aspect_ratio", aspect_ratio),
                             "chatgpt_conversation_id": res.get("chatgpt_conversation_id", ""),
+                            "session_mode": res.get("session_mode", ""),
+                            "is_continuation": res.get("is_continuation", False),
                             "assistant_text": res.get("assistant_text", ""),
                         }
                     )
                     srv.JOBS[job_id]["logs"].append(f"✅ ChatGPT image ready: {imgs[0]['download_url']}")
             except Exception as e:
+                if fallback_to_omni_on_error:
+                    try:
+                        with srv.JOBS_LOCK:
+                            srv.JOBS[job_id]["logs"].append(f"⚠️ ChatGPT engine busy/unavailable ({e}); falling back to Omni Studio Imagen...")
+                        res = run_vids_rpc_generate_image(
+                            prompt_text=prompt,
+                            output_path=out_path,
+                            aspect_ratio=aspect_ratio,
+                            style=style,
+                            num_images=num_images,
+                            image_files=ref_imgs,
+                            save_all=(num_images > 1),
+                        )
+                        imgs = []
+                        for p in res.get("images", [res["output_path"]]):
+                            fn = os.path.basename(p)
+                            imgs.append(
+                                {
+                                    "filename": fn,
+                                    "path": p,
+                                    "relative_path": f"outputs/{fn}",
+                                    "download_url": f"/outputs/{fn}",
+                                    "public_download_url": f"{host_url}/outputs/{fn}",
+                                }
+                            )
+                        with srv.JOBS_LOCK:
+                            srv.JOBS[job_id].update(
+                                {
+                                    "status": "completed",
+                                    "engine": "omni-studio-imagen",
+                                    "output_file": imgs[0]["filename"],
+                                    "download_url": imgs[0]["download_url"],
+                                    "public_download_url": imgs[0]["public_download_url"],
+                                    "relative_path": imgs[0]["relative_path"],
+                                    "images": imgs,
+                                    "reference_images_used": len(ref_imgs),
+                                    "aspect_ratio": res.get("aspect_ratio", aspect_ratio),
+                                    "style": res.get("style", style),
+                                }
+                            )
+                            srv.JOBS[job_id]["logs"].append(f"✅ Fallback Omni Imagen ready: {imgs[0]['download_url']}")
+                        return
+                    except Exception as e2:
+                        e = e2
                 with srv.JOBS_LOCK:
                     srv.JOBS[job_id]["status"] = "failed"
                     srv.JOBS[job_id]["error"] = str(e)
@@ -823,6 +900,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             raise ValueError("Missing required 'prompt' for omni_generate_image_chatgpt")
         aspect_ratio = args.get("aspect_ratio", "16:9")
         conversation_id = (args.get("conversation_id") or "").strip()
+        new_session = bool(args.get("new_session", False))
         out_name = os.path.basename(args.get("output_filename") or f"chatgpt_img_{uuid.uuid4().hex[:6]}.png")
         if not out_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
             out_name += ".png"
@@ -844,16 +922,19 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             aspect_ratio=aspect_ratio,
             ref_imgs=ref_imgs,
             conversation_id=conversation_id,
+            new_session=new_session,
         )
 
     if tool_name == "omni_generate_image":
         prompt = (args.get("prompt") or "").strip()
         if not prompt:
             raise ValueError("Missing required 'prompt' for omni_generate_image")
-        engine = str(args.get("engine") or "omni").strip().lower()
+        engine = str(args.get("engine") or "auto").strip().lower()
         aspect_ratio = args.get("aspect_ratio", "16:9")
         style = args.get("style", "PHOTOGRAPHY")
         num_images = max(1, min(4, int(args.get("num_images", 1))))
+        conversation_id = (args.get("conversation_id") or "").strip()
+        new_session = bool(args.get("new_session", False))
         out_name = os.path.basename(args.get("output_filename") or f"studio_img_{uuid.uuid4().hex[:6]}.png")
         if not out_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
             out_name += ".png"
@@ -870,12 +951,27 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         ]
         ref_imgs = [p for p in ref_imgs if p]
 
+        use_chatgpt = False
         if engine == "chatgpt":
+            use_chatgpt = True
+        elif engine == "auto":
+            try:
+                from chatgpt_image_backend import get_chatgpt_account_info
+                use_chatgpt = bool(get_chatgpt_account_info(force=False).get("logged_in"))
+            except Exception:
+                use_chatgpt = False
+
+        if use_chatgpt:
             return _run_chatgpt_image_job(
                 prompt=prompt,
                 out_path=out_path,
                 aspect_ratio=aspect_ratio,
                 ref_imgs=ref_imgs,
+                conversation_id=conversation_id,
+                new_session=new_session,
+                fallback_to_omni_on_error=(engine == "auto"),
+                style=style,
+                num_images=num_images,
             )
 
         job_id = uuid.uuid4().hex[:10]
