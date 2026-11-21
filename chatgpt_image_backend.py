@@ -163,10 +163,15 @@ LIST_IMAGES_EXPR = """(() => {
   return imgs.filter(i => {
     const src = i.currentSrc || i.src || '';
     if (!src || src.includes('avatars') || src.includes('favicon') || src.includes('/cdn-cgi/') || src.includes('profile')) return false;
+    // Never match user-uploaded reference attachments inside the composer or user message turns!
+    if (i.closest('form, [data-chatgpt-composer], [data-message-author-role="user"], [data-user-message-bubble], .bg-user-message')) return false;
+    const turnRoot = i.closest('[data-turn-key], [data-testid^="conversation-turn-"], article');
+    if (turnRoot && turnRoot.querySelector('[data-message-author-role="user"], [data-user-message-bubble]') && !turnRoot.querySelector('[data-message-author-role="assistant"], [data-conversation-role="assistant"], [data-chatgpt-agent-turn-start]')) return false;
     const alt = (i.alt || '').trim();
+    if (/^(uploaded image|hình ảnh đã tải lên)/i.test(alt)) return false;
     const inGenBox = !!i.closest('[class*="generated-image"]');
-    const inTurn = inGenBox || !!i.closest('[data-turn-key]:has([data-conversation-role="assistant"], [data-chatgpt-agent-turn-start]), [class*="MarkdownRoot"], [data-message-author-role="assistant"], article, [data-testid^="conversation-turn"]');
-    return alt.startsWith('Generated image') || inGenBox || (inTurn && (i.naturalWidth >= 180 || i.width >= 180));
+    const inAsstTurn = inGenBox || !!i.closest('[data-message-author-role="assistant"], [data-conversation-role="assistant"], [data-chatgpt-agent-turn-start], [data-turn-key]:has([data-conversation-role="assistant"], [data-chatgpt-agent-turn-start]), [data-testid^="conversation-turn-"]:has([data-message-author-role="assistant"])');
+    return alt.startsWith('Generated image') || alt.includes('Đã tạo hình ảnh') || inGenBox || (inAsstTurn && (i.naturalWidth >= 256 || i.width >= 256));
   }).map(i => ({
     src: i.currentSrc || i.src,
     alt: (i.alt || 'Generated image').trim(),
@@ -1300,13 +1305,16 @@ def generate_chatgpt_image(
                     and (int(im.get("w") or 0) >= 256 or str(im.get("alt") or "").startswith("Generated image"))
                 ]
 
-                full_res_ready = any(int(im.get("w") or 0) >= 512 and im.get("complete") for im in new_imgs)
+                has_new_asst_turn = int(st.get("turnCount") or 0) > base_turns
+                full_res_ready = has_new_asst_turn and any(
+                    int(im.get("w") or 0) >= 512 and im.get("complete") for im in new_imgs
+                )
                 if full_res_ready:
                     ready_img_ticks += 1
                 else:
                     ready_img_ticks = 0
 
-                if new_imgs and (not st.get("busy") or ready_img_ticks >= 2):
+                if has_new_asst_turn and new_imgs and (not st.get("busy") or ready_img_ticks >= 2):
                     _emit("download", "Image generated, downloading full-resolution output...")
                     saved_paths: list[str] = []
                     primary_mime = "image/png"
