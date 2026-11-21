@@ -1142,6 +1142,22 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
             self._send_json(get_account_pool_summary())
             return
 
+        if path == "/api/chatgpt/status":
+            try:
+                from chatgpt_image_backend import get_chatgpt_account_info
+                self._send_json(get_chatgpt_account_info(force=True))
+            except Exception as e:
+                self._send_json({"connected": False, "logged_in": False, "error": str(e)}, 500)
+            return
+
+        if path == "/api/chatgpt/session/export":
+            try:
+                from chatgpt_image_backend import export_chatgpt_session
+                self._send_json(export_chatgpt_session())
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, getattr(e, "status_code", 500))
+            return
+
         if path == "/api/jobs":
             with JOBS_LOCK:
                 self._send_json({"jobs": list(JOBS.values())})
@@ -1446,17 +1462,41 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(e)}, 500)
             return
 
+        if path == "/api/chatgpt/launch":
+            try:
+                from chatgpt_image_backend import launch_chatgpt_browser
+                wait_sec = float(body.get("wait_sec", 15.0))
+                self._send_json(launch_chatgpt_browser(wait_sec=wait_sec))
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, getattr(e, "status_code", 500))
+            return
+
+        if path == "/api/chatgpt/session/import":
+            try:
+                from chatgpt_image_backend import import_chatgpt_session
+                res = import_chatgpt_session(
+                    cookies=body.get("cookies") or [],
+                    user_agent=body.get("userAgent") or body.get("user_agent") or "",
+                    persist=bool(body.get("persist", True)),
+                )
+                self._send_json(res)
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, getattr(e, "status_code", 500))
+            return
+
         if path == "/api/generate-image":
             try:
                 prompt = (body.get("prompt") or "").strip()
                 if not prompt:
                     self._send_json({"error": "Missing image prompt"}, 400)
                     return
+                engine = str(body.get("engine") or "omni").strip().lower()
                 aspect_ratio = body.get("aspect_ratio", "16:9")
                 style = body.get("style", "PHOTOGRAPHY")
                 num_images = max(1, min(4, int(body.get("num_images", 1))))
-                out_name = os.path.basename(body.get("output_filename") or f"cookie_img_{uuid.uuid4().hex[:6]}.png")
-                if not out_name.lower().endswith((".png", ".jpg", ".jpeg")):
+                default_prefix = "chatgpt_img" if engine == "chatgpt" else "cookie_img"
+                out_name = os.path.basename(body.get("output_filename") or f"{default_prefix}_{uuid.uuid4().hex[:6]}.png")
+                if not out_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
                     out_name += ".png"
                 out_path = os.path.join(OUTPUTS_DIR, out_name)
                 ref_imgs = []
@@ -1465,6 +1505,37 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                 for i, im in enumerate(body.get("images") or []):
                     ref_imgs.append(save_base64_image_if_needed(im, OUTPUTS_DIR, i + 1))
                 ref_imgs = [p for p in ref_imgs if p]
+                if engine == "chatgpt":
+                    from chatgpt_image_backend import generate_chatgpt_image
+                    res = generate_chatgpt_image(
+                        prompt=prompt,
+                        output_path=out_path,
+                        aspect_ratio=aspect_ratio,
+                        image_files=ref_imgs,
+                        conversation_id=(body.get("conversation_id") or "").strip(),
+                    )
+                    imgs = []
+                    for p in res.get("images", [res["output_path"]]):
+                        fn = os.path.basename(p)
+                        imgs.append(
+                            {
+                                "filename": fn,
+                                "relative_path": f"outputs/{fn}",
+                                "download_url": f"/outputs/{fn}",
+                            }
+                        )
+                    self._send_json(
+                        {
+                            "status": "ok",
+                            "backend": "chatgpt_web_image",
+                            "download_url": imgs[0]["download_url"],
+                            "relative_path": imgs[0]["relative_path"],
+                            "images": imgs,
+                            "aspect_ratio": res.get("aspect_ratio", aspect_ratio),
+                            "chatgpt_conversation_id": res.get("chatgpt_conversation_id", ""),
+                        }
+                    )
+                    return
                 res = run_vids_rpc_generate_image(
                     prompt_text=prompt,
                     output_path=out_path,

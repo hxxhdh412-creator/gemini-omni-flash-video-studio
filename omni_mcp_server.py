@@ -55,7 +55,7 @@ MCP_INSTRUCTIONS = (
     "Standard workflow for AI Agents: "
     "(1) Call omni_session_status to verify studio service readiness (session_ready=true). "
     "(2) If the user provides a reference image (local path, URL, or base64), pass it directly to the `image` parameter of omni_generate_scene / omni_generate_image / omni_produce_commercial, or call omni_upload_image first to normalize and analyze the subject. "
-    "(3) To generate high-resolution AI images, banners, posters, or product/character variations, call omni_generate_image: "
+    "(3) To generate high-resolution AI images, banners, posters, or product/character variations, call omni_generate_image (default `engine='omni'`, or set `engine='chatgpt'` / `'auto'`) or call omni_generate_image_chatgpt directly for the ChatGPT Image Engine: "
     "omit `image` for Text-to-Image, or pass `image`/`images` for Reference-to-Image consistency; choose `aspect_ratio` (`16:9` landscape/web/YouTube, `1:1` square Facebook/Instagram Ads, `9:16` vertical TikTok/Reels/Story) and one of 14 `style` presets (default `PHOTOGRAPHY`). "
     "For Vietnamese posters/banners with on-image text, wrap exact Vietnamese text in quotes (`\"...\"`) and specify `'exact Vietnamese text with diacritics'` so it is preserved verbatim; never use `#RRGGBB` hex codes. "
     "(4) To generate a 3s–15s video clip (default 15s, 16:9 or 9:16), call omni_generate_scene: "
@@ -307,6 +307,66 @@ MCP_TOOLS_SCHEMA = [
                     "type": "string",
                     "description": "Output PNG filename inside `/outputs` (e.g. `promo_banner_1x1.png`). Auto-generated if omitted.",
                 },
+                "engine": {
+                    "type": "string",
+                    "enum": ["omni", "chatgpt", "auto"],
+                    "default": "omni",
+                    "description": (
+                        "Image generation backend engine: "
+                        "`omni` (default — Omni Studio native Imagen engine, fastest with 14 style presets and up to 4 variations), "
+                        "`chatgpt` (ChatGPT Image Engine — excels at complex typography, photorealistic editorial layouts, and multi-turn visual editing), "
+                        "`auto` (uses `omni` first and automatically falls back to `chatgpt` if unavailable)."
+                    ),
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "omni_generate_image_chatgpt",
+        "description": (
+            "Generate or edit high-resolution AI images via the ChatGPT Image Engine. "
+            "HOW TO USE: "
+            "(1) Mode: Omit `image`/`images` for pure Text-to-Image, or pass 1–3 reference images (`image`/`images`) for Reference-to-Image / image editing. "
+            "(2) Prompting: Describe subject, composition, lighting, typography, and color palette in natural language. "
+            "Wrap exact Vietnamese or English on-image headlines/CTAs in quotes (`\"...\"`). "
+            "(3) Aspect Ratio: Choose `16:9` (landscape banner/thumbnail), `1:1` (square social post), `9:16` (vertical Reels/TikTok/Story), `4:3`, `3:4`, `3:2`, or `2:3`. "
+            "(4) Iterative Editing: Pass the `chatgpt_conversation_id` returned from a previous job to refine or edit the previous image in the same conversation. "
+            "(5) Async Retrieval: Runs asynchronously and returns within <=5s; if `status='running'`, immediately poll `omni_job_status(job_id=...)` until `status='completed'` to get `public_download_url` and `images[]`."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": (
+                        "Detailed English or Vietnamese prompt describing the image to generate or the edit to apply to the reference image(s). "
+                        "Wrap exact on-image text/headlines in quotes (`\"...\"`)."
+                    ),
+                },
+                "image": {
+                    "type": "string",
+                    "description": "Optional single reference image (local path, `outputs/...`, `file:///`, `https://` URL, or base64 data URI) for Reference-to-Image or image editing.",
+                },
+                "images": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of up to 3 reference images (paths/URLs/base64) to combine or edit together.",
+                },
+                "aspect_ratio": {
+                    "type": "string",
+                    "enum": ["16:9", "1:1", "9:16", "4:3", "3:4", "3:2", "2:3"],
+                    "default": "16:9",
+                    "description": "Desired output aspect ratio (`16:9`, `1:1`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`). Default: `16:9`.",
+                },
+                "conversation_id": {
+                    "type": "string",
+                    "description": "Optional ChatGPT conversation ID returned by a prior `omni_generate_image_chatgpt` job to continue editing in the same thread.",
+                },
+                "output_filename": {
+                    "type": "string",
+                    "description": "Optional output image filename inside `/outputs` (e.g. `chatgpt_poster_1x1.png`). Auto-generated if omitted.",
+                },
             },
             "required": ["prompt"],
         },
@@ -548,6 +608,12 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                 daemon=True,
             ).start()
         raw_st = srv.get_session_status()
+        chatgpt_ready = False
+        try:
+            from chatgpt_image_backend import is_chatgpt_image_available
+            chatgpt_ready = is_chatgpt_image_available(force=bool(args.get("refresh")))
+        except Exception:
+            chatgpt_ready = False
         return {
             "status": "ok",
             "session_ready": raw_st.get("session_ready", True),
@@ -558,6 +624,8 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             "tts_engine": "gemini-3.8-flash-tts",
             "music_engine": "lyria-3.5-studio",
             "image_engine": "omni-studio-imagen",
+            "chatgpt_image_engine": "chatgpt-web-image",
+            "chatgpt_image_ready": chatgpt_ready,
             "last_refreshed_at": raw_st.get("last_rotated_at"),
             "refresh_count": raw_st.get("rotate_count", 0),
         }
@@ -674,15 +742,89 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         t.start()
         return _wait_for_job_bounded(job_id, max_sec=5.0)
 
-    if tool_name == "omni_generate_image":
+    def _run_chatgpt_image_job(
+        prompt: str,
+        out_path: str,
+        aspect_ratio: str,
+        ref_imgs: list[str],
+        conversation_id: str = "",
+    ) -> dict:
+        from chatgpt_image_backend import generate_chatgpt_image
+
+        job_id = uuid.uuid4().hex[:10]
+        host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
+        with srv.JOBS_LOCK:
+            srv.JOBS[job_id] = {
+                "job_id": job_id,
+                "type": "generate-image-chatgpt",
+                "status": "running",
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "logs": [f"🖼️ Generating {aspect_ratio} image via ChatGPT Image Engine..."],
+            }
+
+        def _on_status(_stage: str, msg: str):
+            with srv.JOBS_LOCK:
+                if job_id in srv.JOBS:
+                    srv.JOBS[job_id]["logs"].append(f"⏳ {msg}")
+
+        def _bg_chatgpt_img():
+            try:
+                res = generate_chatgpt_image(
+                    prompt=prompt,
+                    output_path=out_path,
+                    aspect_ratio=aspect_ratio,
+                    image_files=ref_imgs,
+                    conversation_id=conversation_id,
+                    on_status=_on_status,
+                )
+                imgs = []
+                for p in res.get("images", [res["output_path"]]):
+                    fn = os.path.basename(p)
+                    imgs.append(
+                        {
+                            "filename": fn,
+                            "path": p,
+                            "relative_path": f"outputs/{fn}",
+                            "download_url": f"/outputs/{fn}",
+                            "public_download_url": f"{host_url}/outputs/{fn}",
+                        }
+                    )
+                with srv.JOBS_LOCK:
+                    srv.JOBS[job_id].update(
+                        {
+                            "status": "completed",
+                            "engine": "chatgpt-web-image",
+                            "output_file": imgs[0]["filename"],
+                            "download_url": imgs[0]["download_url"],
+                            "public_download_url": imgs[0]["public_download_url"],
+                            "relative_path": imgs[0]["relative_path"],
+                            "images": imgs,
+                            "mime": res.get("mime", "image/png"),
+                            "reference_images_used": len(ref_imgs),
+                            "aspect_ratio": res.get("aspect_ratio", aspect_ratio),
+                            "chatgpt_conversation_id": res.get("chatgpt_conversation_id", ""),
+                            "assistant_text": res.get("assistant_text", ""),
+                        }
+                    )
+                    srv.JOBS[job_id]["logs"].append(f"✅ ChatGPT image ready: {imgs[0]['download_url']}")
+            except Exception as e:
+                with srv.JOBS_LOCK:
+                    srv.JOBS[job_id]["status"] = "failed"
+                    srv.JOBS[job_id]["error"] = str(e)
+                    srv.JOBS[job_id]["logs"].append(f"❌ Error: {e}")
+
+        t = threading.Thread(target=_bg_chatgpt_img, daemon=True)
+        t.start()
+        return _wait_for_job_bounded(job_id, max_sec=5.0)
+
+    if tool_name == "omni_generate_image_chatgpt":
         prompt = (args.get("prompt") or "").strip()
         if not prompt:
-            raise ValueError("Missing required 'prompt' for omni_generate_image")
+            raise ValueError("Missing required 'prompt' for omni_generate_image_chatgpt")
         aspect_ratio = args.get("aspect_ratio", "16:9")
-        style = args.get("style", "PHOTOGRAPHY")
-        num_images = max(1, min(4, int(args.get("num_images", 1))))
-        out_name = os.path.basename(args.get("output_filename") or f"studio_img_{uuid.uuid4().hex[:6]}.png")
-        if not out_name.lower().endswith((".png", ".jpg", ".jpeg")):
+        conversation_id = (args.get("conversation_id") or "").strip()
+        out_name = os.path.basename(args.get("output_filename") or f"chatgpt_img_{uuid.uuid4().hex[:6]}.png")
+        if not out_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
             out_name += ".png"
         out_path = os.path.join(OUTPUTS_DIR, out_name)
         ref_imgs = []
@@ -691,6 +833,40 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         for i, im in enumerate(args.get("images") or []):
             ref_imgs.append(srv.save_base64_image_if_needed(im, OUTPUTS_DIR, i + 1))
         ref_imgs = [p for p in ref_imgs if p]
+        return _run_chatgpt_image_job(
+            prompt=prompt,
+            out_path=out_path,
+            aspect_ratio=aspect_ratio,
+            ref_imgs=ref_imgs,
+            conversation_id=conversation_id,
+        )
+
+    if tool_name == "omni_generate_image":
+        prompt = (args.get("prompt") or "").strip()
+        if not prompt:
+            raise ValueError("Missing required 'prompt' for omni_generate_image")
+        engine = str(args.get("engine") or "omni").strip().lower()
+        aspect_ratio = args.get("aspect_ratio", "16:9")
+        style = args.get("style", "PHOTOGRAPHY")
+        num_images = max(1, min(4, int(args.get("num_images", 1))))
+        out_name = os.path.basename(args.get("output_filename") or f"studio_img_{uuid.uuid4().hex[:6]}.png")
+        if not out_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+            out_name += ".png"
+        out_path = os.path.join(OUTPUTS_DIR, out_name)
+        ref_imgs = []
+        if args.get("image"):
+            ref_imgs.append(srv.save_base64_image_if_needed(args["image"], OUTPUTS_DIR, 1))
+        for i, im in enumerate(args.get("images") or []):
+            ref_imgs.append(srv.save_base64_image_if_needed(im, OUTPUTS_DIR, i + 1))
+        ref_imgs = [p for p in ref_imgs if p]
+
+        if engine == "chatgpt":
+            return _run_chatgpt_image_job(
+                prompt=prompt,
+                out_path=out_path,
+                aspect_ratio=aspect_ratio,
+                ref_imgs=ref_imgs,
+            )
 
         job_id = uuid.uuid4().hex[:10]
         host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
@@ -743,6 +919,50 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                     )
                     srv.JOBS[job_id]["logs"].append(f"✅ Image ready: {imgs[0]['download_url']}")
             except Exception as e:
+                if engine == "auto":
+                    try:
+                        from chatgpt_image_backend import generate_chatgpt_image, is_chatgpt_image_available
+
+                        if is_chatgpt_image_available(force=True):
+                            with srv.JOBS_LOCK:
+                                srv.JOBS[job_id]["logs"].append(f"⚠️ Primary image engine error ({e}); falling back to ChatGPT Image Engine...")
+                            res_cg = generate_chatgpt_image(
+                                prompt=prompt,
+                                output_path=out_path,
+                                aspect_ratio=aspect_ratio,
+                                image_files=ref_imgs,
+                            )
+                            imgs = []
+                            for p in res_cg.get("images", [res_cg["output_path"]]):
+                                fn = os.path.basename(p)
+                                imgs.append(
+                                    {
+                                        "filename": fn,
+                                        "path": p,
+                                        "relative_path": f"outputs/{fn}",
+                                        "download_url": f"/outputs/{fn}",
+                                        "public_download_url": f"{host_url}/outputs/{fn}",
+                                    }
+                                )
+                            with srv.JOBS_LOCK:
+                                srv.JOBS[job_id].update(
+                                    {
+                                        "status": "completed",
+                                        "engine": "chatgpt-web-image",
+                                        "output_file": imgs[0]["filename"],
+                                        "download_url": imgs[0]["download_url"],
+                                        "public_download_url": imgs[0]["public_download_url"],
+                                        "relative_path": imgs[0]["relative_path"],
+                                        "images": imgs,
+                                        "reference_images_used": len(ref_imgs),
+                                        "aspect_ratio": res_cg.get("aspect_ratio", aspect_ratio),
+                                        "chatgpt_conversation_id": res_cg.get("chatgpt_conversation_id", ""),
+                                    }
+                                )
+                                srv.JOBS[job_id]["logs"].append(f"✅ Fallback ChatGPT image ready: {imgs[0]['download_url']}")
+                            return
+                    except Exception as cg_err:
+                        e = RuntimeError(f"Primary engine failed ({e}); ChatGPT fallback failed ({cg_err})")
                 with srv.JOBS_LOCK:
                     srv.JOBS[job_id]["status"] = "failed"
                     srv.JOBS[job_id]["error"] = str(e)
@@ -905,7 +1125,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         if os.path.exists(OUTPUTS_DIR):
             for fn in sorted(os.listdir(OUTPUTS_DIR), reverse=True):
                 fp = os.path.join(OUTPUTS_DIR, fn)
-                if os.path.isfile(fp) and fn.endswith((".mp4", ".wav", ".json", ".png", ".jpg", ".jpeg")):
+                if os.path.isfile(fp) and fn.endswith((".mp4", ".wav", ".json", ".png", ".jpg", ".jpeg", ".webp")):
                     items.append(
                         {
                             "name": fn,
