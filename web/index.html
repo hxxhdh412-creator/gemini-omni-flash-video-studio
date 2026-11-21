@@ -659,35 +659,45 @@
       </div>
     </section>
 
-    <!-- TAB 2B: COOKIE AI IMAGE GENERATOR -->
+    <!-- TAB 2B: AI IMAGE GENERATOR (CHATGPT PLUS WEB & OMNI IMAGEN) -->
     <section id="tab-image" class="tab-pane">
       <div class="layout-2col">
         <div class="panel">
           <div class="panel-header">
             <h2 class="panel-title">
               <svg class="sf-icon sf-icon-lg" aria-hidden="true"><use href="#sf-photo"/></svg>
-              Tạo ảnh AI qua Cookie
+              Tạo ảnh AI · ChatGPT Plus &amp; Omni Imagen
             </h2>
-            <span class="chip ok"><span class="dot"></span> Không tốn API Key</span>
+            <span class="chip ok" id="chatgptEngineBadge"><span class="dot"></span> ChatGPT Plus &amp; Omni Ready</span>
           </div>
-          <label for="imgPromptInput">Mô tả hình ảnh</label>
+
+          <label for="imgEngineSelect">Engine tạo ảnh AI</label>
+          <select id="imgEngineSelect" onchange="onImageEngineChange(this.value)">
+            <option value="chatgpt" selected>⚡ ChatGPT Plus Web (GPT-Image-1 · Thiết kế Banner, Chữ tiếng Việt &amp; Sản phẩm mượt nhất)</option>
+            <option value="omni">🎨 Omni Studio Imagen (Google Vids UC=205 · Tạo ảnh nhanh ~12s, 5 tỷ lệ gốc)</option>
+            <option value="auto">🔄 Tự động (Ưu tiên ChatGPT Plus, dự phòng Omni Imagen)</option>
+          </select>
+
+          <label for="imgPromptInput">Mô tả hình ảnh / Thiết kế Banner</label>
           <textarea id="imgPromptInput" style="min-height:92px;">A sleek modern architectural creative studio with warm golden-hour sunlight streaming through floor-to-ceiling glass windows, cinematic studio lighting, 4k photorealistic</textarea>
 
-          <label for="imgRefUpload">Ảnh tham chiếu · Tùy chọn</label>
+          <label for="imgRefUpload">Ảnh sản phẩm / Ảnh tham chiếu · Tùy chọn</label>
           <div class="reference-upload">
-            <label class="btn btn-ghost btn-xs reference-pick"><svg class="sf-icon" aria-hidden="true"><use href="#sf-photo"/></svg> Tải ảnh lên<input id="imgRefUpload" type="file" accept="image/*" onchange="uploadRefForImageTab(this)" /></label>
+            <label class="btn btn-ghost btn-xs reference-pick"><svg class="sf-icon" aria-hidden="true"><use href="#sf-photo"/></svg> Tải ảnh sản phẩm lên<input id="imgRefUpload" type="file" accept="image/*" onchange="uploadRefForImageTab(this)" /></label>
             <button class="btn btn-ghost btn-xs" id="imgRefClear" type="button" onclick="clearOptionalReference('img')" hidden>Bỏ ảnh</button>
           </div>
           <input id="imgRefPath" type="hidden" />
-          <p class="media-hint reference-status" id="imgRefStatus" role="status">Chưa có ảnh.</p>
+          <p class="media-hint reference-status" id="imgRefStatus" role="status">Chưa có ảnh tham chiếu (bỏ trống để tạo ảnh mới, hoặc tải ảnh sản phẩm lên để AI thiết kế).</p>
 
           <div class="field-grid">
             <div>
               <label for="imgAspectRatio">Tỷ lệ khung hình</label>
               <select id="imgAspectRatio" onchange="setPreviewAspect('imgPreviewStage', this.value)">
-                <option value="16:9" selected>16:9 · Khổ ngang (Video)</option>
-                <option value="1:1">1:1 · Hình vuông</option>
-                <option value="9:16">9:16 · Khổ dọc (Shorts/Reels)</option>
+                <option value="16:9">16:9 · Khổ ngang (1376×768 · Web/Video)</option>
+                <option value="1:1" selected>1:1 · Hình vuông (1024×1024 · Ads/Feed)</option>
+                <option value="3:4">3:4 · Khổ dọc Feed 4:5 (896×1200 · Poster)</option>
+                <option value="4:3">4:3 · Khổ ngang cổ điển (1200×896)</option>
+                <option value="9:16">9:16 · Khổ dọc Story/Reels (768×1376)</option>
               </select>
             </div>
             <div>
@@ -698,10 +708,14 @@
                 <option value="ILLUSTRATION">Minh họa (Illustration)</option>
                 <option value="BACKGROUND">Phông nền (Background)</option>
                 <option value="LANDSCAPE">Phong cảnh (Landscape)</option>
-                <option value="FLATLAY">Trải phẳng (Flatlay)</option>
+                <option value="FLATLAY">Trải phẳng sản phẩm (Flatlay)</option>
                 <option value="WATERCOLOR">Màu nước (Watercolor)</option>
-                <option value="CYBERPUNK">Viễn tưởng công nghệ cao (Cyberpunk)</option>
-                <option value="UNSPECIFIED">Mặc định (Không chọn kiểu)</option>
+                <option value="CYBERPUNK">Viễn tưởng (Cyberpunk)</option>
+                <option value="VECTOR_ICON">Biểu tượng phẳng (Vector Icon)</option>
+                <option value="CLIPART">Hình dán (Clipart)</option>
+                <option value="HANDICRAFT">Thủ công (Handicraft)</option>
+                <option value="PIXEL_ART">Nghệ thuật điểm ảnh (Pixel Art)</option>
+                <option value="UNSPECIFIED">Mặc định (Theo sát mô tả Prompt)</option>
               </select>
             </div>
           </div>
@@ -716,13 +730,21 @@
               </select>
             </div>
             <div>
-              <label for="imgOutName">Tên tệp ảnh</label>
-              <input id="imgOutName" value="omni_cookie_image_1080p.png" />
+              <label for="imgOutName">Tên tệp ảnh xuất ra</label>
+              <input id="imgOutName" value="chatgpt_design_banner.png" />
+            </div>
+          </div>
+
+          <div id="imgConvIdWrap" style="margin-top:8px;">
+            <label for="imgConvId">Phiên sửa ảnh nối tiếp ChatGPT (Conversation ID · Tùy chọn)</label>
+            <div style="display:flex; gap:6px;">
+              <input id="imgConvId" placeholder="Để trống khi tạo ảnh mới · Tự động điền sau khi tạo để sửa tiếp" style="flex:1;" />
+              <button type="button" class="btn btn-ghost btn-xs" onclick="document.getElementById('imgConvId').value=''" title="Tạo phiên mới">Phiên mới</button>
             </div>
           </div>
 
           <button class="btn" id="generateImageBtn" style="margin-top:14px; width:100%;" onclick="submitCookieImageGen()">
-            <svg class="sf-icon" aria-hidden="true"><use href="#sf-sparkles"/></svg> Tạo ảnh qua Cookie
+            <svg class="sf-icon" aria-hidden="true"><use href="#sf-sparkles"/></svg> Tạo ảnh với ChatGPT Plus
           </button>
         </div>
 
@@ -894,7 +916,8 @@ Bắt đầu hành trình kiến tạo thương hiệu đột phá ngay hôm nay
     <section id="tab-session" class="tab-pane">
       <div class="session-metrics" aria-label="Trạng thái kết nối">
         <div class="session-metric"><strong><svg class="sf-icon" aria-hidden="true"><use href="#sf-shield"/></svg> Google Vids</strong><span class="chip" id="sessionVidsStatus">Đang kiểm tra…</span></div>
-        <div class="session-metric"><strong><svg class="sf-icon" aria-hidden="true"><use href="#sf-waveform"/></svg> Gemini TTS & Lyria</strong><span class="chip" id="sessionAudioStatus">Đang kiểm tra…</span></div>
+        <div class="session-metric"><strong><svg class="sf-icon" aria-hidden="true"><use href="#sf-photo"/></svg> ChatGPT Plus Web</strong><span class="chip" id="sessionChatgptStatus">Đang kiểm tra…</span></div>
+        <div class="session-metric"><strong><svg class="sf-icon" aria-hidden="true"><use href="#sf-waveform"/></svg> Gemini TTS &amp; Lyria</strong><span class="chip" id="sessionAudioStatus">Đang kiểm tra…</span></div>
         <div class="session-metric"><strong><svg class="sf-icon" aria-hidden="true"><use href="#sf-refresh"/></svg> Làm mới phiên</strong><span class="chip" id="sessionRotateStatus">Đang kiểm tra…</span></div>
       </div>
       <div class="layout-2col">
@@ -2237,29 +2260,85 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
       return uploadOptionalReference(input, 'img');
     }
 
+    function onImageEngineChange(engine) {
+      const btn = document.getElementById('generateImageBtn');
+      const convWrap = document.getElementById('imgConvIdWrap');
+      const outEl = document.getElementById('imgOutName');
+      if (convWrap) convWrap.style.display = (engine === 'omni') ? 'none' : 'block';
+      if (btn) {
+        const label = engine === 'chatgpt'
+          ? 'Tạo ảnh với ChatGPT Plus'
+          : engine === 'omni'
+          ? 'Tạo ảnh với Omni Imagen (UC=205)'
+          : 'Tạo ảnh AI (Tự động)';
+        btn.innerHTML = `<svg class="sf-icon" aria-hidden="true"><use href="#sf-sparkles"/></svg> ${label}`;
+      }
+      if (outEl) {
+        if (engine === 'chatgpt' && outEl.value === 'omni_cookie_image_1080p.png') {
+          outEl.value = 'chatgpt_design_banner.png';
+        } else if (engine === 'omni' && outEl.value === 'chatgpt_design_banner.png') {
+          outEl.value = 'omni_imagen_1080p.png';
+        }
+      }
+    }
+
+    async function refreshChatgptStatusBadge() {
+      try {
+        const r = await fetch('/api/chatgpt/status');
+        if (!r.ok) return;
+        const d = await r.json();
+        const badge = document.getElementById('chatgptEngineBadge');
+        const sessBadge = document.getElementById('sessionChatgptStatus');
+        if (d.logged_in) {
+          const planTag = d.plan ? ` (${String(d.plan).toUpperCase()})` : '';
+          const txt = `<span class="dot"></span> ChatGPT${planTag} · ${d.email || 'Đã kết nối'}`;
+          if (badge) { badge.className = 'chip ok'; badge.innerHTML = txt; }
+          if (sessBadge) { sessBadge.className = 'chip ok'; sessBadge.innerHTML = txt; }
+        } else if (d.connected) {
+          if (badge) { badge.className = 'chip warn'; badge.innerHTML = '<span class="dot"></span> ChatGPT CDP (Chưa đăng nhập)'; }
+          if (sessBadge) { sessBadge.className = 'chip warn'; sessBadge.innerHTML = '<span class="dot"></span> Chưa đăng nhập'; }
+        } else {
+          if (badge) { badge.className = 'chip'; badge.innerHTML = '<span class="dot"></span> Omni Imagen Ready'; }
+          if (sessBadge) { sessBadge.className = 'chip warn'; sessBadge.innerHTML = '<span class="dot"></span> Chưa bật CDP'; }
+        }
+      } catch (_) {}
+    }
+
     async function submitCookieImageGen() {
       const btn = document.getElementById('generateImageBtn');
       const badge = document.getElementById('imgJobBadge');
       const con = document.getElementById('imgConsole');
       const stage = document.getElementById('imgPreviewStage');
       const actionRow = document.getElementById('imgActionRow');
+      const engineEl = document.getElementById('imgEngineSelect');
+      const engine = engineEl ? engineEl.value : 'chatgpt';
+      const convEl = document.getElementById('imgConvId');
       const origHtml = btn.innerHTML;
       btn.disabled = true;
-      btn.textContent = 'Đang tạo ảnh qua Cookie...';
+      btn.textContent = engine === 'chatgpt' ? 'ChatGPT Plus đang vẽ ảnh (20–40s)...' : 'Đang tạo ảnh AI...';
       badge.className = 'chip warn';
       badge.innerHTML = '<span class="dot"></span> Đang xử lý';
-      con.textContent = 'Đang gửi yêu cầu tạo ảnh qua Cookie lên Google Vids RPC (UC 141)...';
-      showResultActivity('imgPreviewStage', 'working', 'Đang tạo ảnh', 'Đang chờ Google Vids trả ảnh.');
+      con.textContent = engine === 'chatgpt'
+        ? 'Đang gửi yêu cầu thiết kế ảnh (kèm ảnh tham chiếu nếu có) sang ChatGPT Plus Web...'
+        : 'Đang gửi yêu cầu tạo ảnh sang Omni Studio Imagen (UC=205 Full-Res)...';
+      showResultActivity(
+        'imgPreviewStage',
+        'working',
+        engine === 'chatgpt' ? 'ChatGPT Plus đang thiết kế ảnh' : 'Omni Imagen đang tạo ảnh',
+        engine === 'chatgpt' ? 'Thường mất 20–45 giây cho ảnh độ phân giải cao.' : 'Thường mất ~10–15 giây.'
+      );
       setLocalTask('image', 'Tạo ảnh');
       try {
         const refImgEl = document.getElementById('imgRefPath');
         const payload = {
+          engine: engine,
           prompt: document.getElementById('imgPromptInput').value.trim(),
           aspect_ratio: document.getElementById('imgAspectRatio').value,
           style: document.getElementById('imgStyleSelect').value,
           num_images: parseInt(document.getElementById('imgCountSelect').value || '1', 10),
           output_filename: document.getElementById('imgOutName').value.trim(),
-          image: refImgEl ? refImgEl.value.trim() : ''
+          image: refImgEl ? refImgEl.value.trim() : '',
+          conversation_id: convEl ? convEl.value.trim() : ''
         };
         const r = await fetch('/api/generate-image', {
           method: 'POST',
@@ -2267,7 +2346,10 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
           body: JSON.stringify(payload)
         });
         const d = await r.json();
-        if (!r.ok || d.error) throw new Error(d.error || 'Không thể tạo ảnh qua Cookie');
+        if (!r.ok || d.error) throw new Error(d.error || 'Không thể tạo ảnh AI');
+        if (convEl && d.chatgpt_conversation_id) {
+          convEl.value = d.chatgpt_conversation_id;
+        }
         badge.className = 'chip ok';
         badge.innerHTML = '<span class="dot"></span> Hoàn tất';
         showResultActivity('imgPreviewStage', 'done', 'Ảnh đã sẵn sàng');
@@ -2475,8 +2557,10 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
     document.querySelector('.seg-btn.active').setAttribute('aria-current', 'page');
     loadPresetStoryboard(4, 15);
     refreshStatus();
+    refreshChatgptStatusBadge();
     refreshJobActivity();
     setInterval(refreshStatus, 15000);
+    setInterval(refreshChatgptStatusBadge, 20000);
     setInterval(refreshJobActivity, 5000);
     setInterval(updateResultClocks, 1000);
   </script>
