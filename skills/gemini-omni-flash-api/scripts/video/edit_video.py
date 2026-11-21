@@ -838,14 +838,14 @@ def bind_prompt_to_uploaded_image(prompt_text: str, image_files: list) -> str:
         return clean
 
     info = describe_image_subject_for_omni(valid_imgs[0])
-    if info.get("is_hebum_ui") or not info.get("subject_description"):
+    if not info.get("subject_description"):
         return clean
 
     subj_desc = info["subject_description"]
     suggested = info.get("suggested_prompt") or ""
 
-    if has_hebum_placeholder and info.get("is_character_or_person", True) and suggested:
-        log(f"[ImageSubjectBind] Auto-replacing default HEBUM template prompt with uploaded photo subject blueprint: {subj_desc[:110]}...")
+    if has_template_placeholder and info.get("is_character_or_person", True) and suggested:
+        log(f"[ImageSubjectBind] Auto-replacing default template prompt with uploaded photo subject blueprint: {subj_desc[:110]}...")
         clean = suggested
 
     return clean
