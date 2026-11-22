@@ -89,6 +89,20 @@ CREATIVE_LAYOUT_ARCHETYPES: dict[str, str] = {
 }
 ARCHETYPE_ROTATION_ORDER = list(CREATIVE_LAYOUT_ARCHETYPES.keys())
 
+LAYOUT_ARCHETYPE_ALIASES: dict[str, str] = {
+    "TRIPLE_PINNED_CARDS": "EDITORIAL_GLASS_CARDS",
+    "SPLIT_BEFORE_AFTER": "MAGNIFIER_ZOOM_INSIGHT",
+    "SPLIT_COMPARISON": "MAGNIFIER_ZOOM_INSIGHT",
+    "STYLE_01": "HERO_PRODUCT_3D",
+    "STYLE_02": "EDITORIAL_GLASS_CARDS",
+    "STYLE_03": "MAGNIFIER_ZOOM_INSIGHT",
+    "STYLE_04": "STEP_TIMELINE_FLOW",
+    "STYLE_05": "RADIAL_HUB_INFOGRAPHIC",
+    "STYLE_06": "CINEMATIC_STORY_POSTER",
+    "STYLE_07": "EDITORIAL_GLASS_CARDS",
+    "STYLE_08": "HERO_PRODUCT_3D",
+}
+
 _IMAGE_LOCK = threading.Lock()
 _EP_CACHE: dict[str, Any] = {"at": 0.0, "value": ""}
 _ACCOUNT_CACHE: dict[str, Any] = {"at": 0.0, "value": None}
@@ -1132,6 +1146,7 @@ def _pick_creative_archetype(prompt: str, requested_archetype: str = "AUTO_ROTAT
     req = str(requested_archetype or "AUTO_ROTATE").strip().upper()
     if req in ("NONE", "OFF", "RAW"):
         return "", ""
+    req = LAYOUT_ARCHETYPE_ALIASES.get(req, req)
     if req in CREATIVE_LAYOUT_ARCHETYPES:
         return req, CREATIVE_LAYOUT_ARCHETYPES[req]
 
