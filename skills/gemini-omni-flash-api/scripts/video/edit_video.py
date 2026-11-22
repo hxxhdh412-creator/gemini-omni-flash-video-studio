@@ -713,8 +713,24 @@ def sanitize_visual_prompt_for_omni(
     cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
 
     lower = cleaned.lower()
-    if mode in ("generate", "chain") and "unbroken" not in lower and "continuous" not in lower:
+    has_multibeat_or_archetype = any(
+        k in lower
+        for k in (
+            "0s-5s",
+            "0-5s",
+            "beat 1",
+            "shot 1",
+            "scene 1",
+            "video archetype",
+            "multi-shot",
+            "3-beat",
+            "all-in-one",
+        )
+    )
+    if mode == "chain" and "unbroken" not in lower and "continuous" not in lower:
         cleaned = f"Continuous unbroken cinematic shot, no internal scene cuts. {cleaned}"
+    elif mode == "generate" and not has_multibeat_or_archetype and "cinematic" not in lower:
+        cleaned = f"High-production 15-second cinematic commercial video with rich native audio and smooth visual storytelling. {cleaned}"
 
     screen_keywords = ("monitor", "screen", "dashboard", "display", "laptop", "interface", "ui ")
     if any(k in lower for k in screen_keywords) and not product_lock and not has_image_reference:
@@ -1370,7 +1386,6 @@ def run_vids_rpc_edit_or_generate(
         ).strip()
         t = re.sub(r"\bNo spoken dialogue\.?\s*", "", t, flags=re.IGNORECASE).strip()
         t = re.sub(r"\b(?:facial features|exact face|biometric)\b", "appearance", t, flags=re.IGNORECASE)
-        t = re.sub(r"\b(?:is\s+)?(?:speaking|talking|spoken|dialogue)\b", "presenting", t, flags=re.IGNORECASE)
         if len(t) < 12:
             t = "The person smiles warmly and presents naturally in a modern studio with soft cinematic lighting."
         return t

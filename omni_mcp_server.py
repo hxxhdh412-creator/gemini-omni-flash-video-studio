@@ -147,12 +147,13 @@ MCP_TOOLS_SCHEMA = [
     {
         "name": "omni_generate_scene",
         "description": (
-            "Stage 1 Pipeline Tool: Generate or extend a 3s–15s cinematic video scene using the `gemini-omni-1.2-flash` Studio Video API. "
-            "• Reference-to-Video mode (`input_mode='reference'` or when `image`/`images` is provided): normalizes the reference image to a 16:9 or 9:16 canvas "
-            "and generates a video that preserves 100% of the exact person, character, product, or software UI from the reference image. "
-            "• Text-to-Video mode (`input_mode='text'` or when `image` is empty): generates a cinematic video scene directly from the text prompt without any reference image. "
-            "• Video Extension mode (`prior_video` + `extend_mode='extend_concat'`): extracts the final frame + anchor node of the prior video, "
-            "generates a seamless +15s continuation, and stitches them into a continuous longer MP4 (`15s -> 30s -> 45s -> 60s`)."
+            "Stage 1 & All-in-One 15s Video Tool: Generate or extend a 3s–15s complete, broadcast-ready cinematic video using the `gemini-omni-1.2-flash` Studio Video API. "
+            "ALL-IN-ONE 15S COMPLETE VIDEO CAPABILITY (ZERO DUBBING / ZERO EDITING NEEDED): "
+            "`gemini-omni-1.2-flash` natively generates a 100% finished 15-second commercial in a single pass — including multi-beat visual progression (`0s–5s` Hook -> `5s–10s` 3D/Macro VFX Action -> `10s–15s` Result & Brand Payoff), on-screen 3D motion graphics/callouts, native Vietnamese voiceover/dialogue (when quoted Vietnamese speech is included in the prompt), realistic ambient Foley SFX, and background music! "
+            "• Reference-to-Video mode (`input_mode='reference'` or when `image`/`images` is provided): preserves 100% of the exact product packaging, person, or reference scene. "
+            "• Text-to-Video mode (`input_mode='text'` or when `image` is empty): generates a complete 15s commercial directly from the text prompt. "
+            "• Creative Video Archetype Rotation (`video_archetype='AUTO_ROTATE'`): automatically rotates across 6 specialized commercial/agriculture/fertilizer 15s directorial archetypes so consecutive videos never look repetitive. "
+            "• Video Extension mode (`prior_video` + `extend_mode='extend_concat'`): seamlessly extends an existing video by +15s (`15s -> 30s -> 45s -> 60s`)."
         ),
         "inputSchema": {
             "type": "object",
@@ -164,7 +165,37 @@ MCP_TOOLS_SCHEMA = [
                 },
                 "prompt": {
                     "type": "string",
-                    "description": "English or Vietnamese cinematic visual prompt describing the scene action, camera movement, and lighting. Do not include raw hex codes (#RRGGBB).",
+                    "description": (
+                        "Complete 15-second commercial director prompt (English or Vietnamese). For a 100% finished 15s video with zero post-editing needed, structure the prompt with: "
+                        "(1) 3-Beat Progression (`0s-5s` opening hook, `5s-10s` core action / 3D root-nutrient or water VFX & floating HUD callouts, `10s-15s` lush harvest payoff & brand title), "
+                        "(2) Native Audio & Voiceover (e.g. `Native Vietnamese voiceover says: \"...\"` plus ambient sound & warm cinematic background music), and "
+                        "(3) On-screen visual callouts. Never include raw `#RRGGBB` hex codes."
+                    ),
+                },
+                "video_archetype": {
+                    "type": "string",
+                    "enum": [
+                        "AUTO_ROTATE",
+                        "AGRI_3D_ROOT_NUTRIENT_VFX",
+                        "EXPERT_FIELD_PRESENTATION_15S",
+                        "DRONE_TO_MACRO_CINEMATIC_15S",
+                        "BEFORE_AFTER_VITALITY_15S",
+                        "PRODUCT_PACKSHOT_COMMERCIAL_15S",
+                        "STEP_BY_STEP_FARMING_HUD_15S",
+                        "NONE",
+                    ],
+                    "default": "AUTO_ROTATE",
+                    "description": (
+                        "15s Complete Commercial Director Archetype (prevents repetitive single-style videos): "
+                        "`AUTO_ROTATE` (default — automatically rotates across 6 distinct 15s commercial structures), "
+                        "`AGRI_3D_ROOT_NUTRIENT_VFX` (field shot -> underground 3D cutaway showing glowing fertilizer nutrients absorbed by white rice roots -> lush green tillering payoff), "
+                        "`EXPERT_FIELD_PRESENTATION_15S` (farmer/agronomist presenting healthy rice roots in golden sunrise field with floating 3D glassmorphism HUD callouts & native Vietnamese speech), "
+                        "`DRONE_TO_MACRO_CINEMATIC_15S` (sweeping Mekong Delta aerial drone shot diving smoothly into macro morning dew, water reflection & glowing biological growth wave), "
+                        "`BEFORE_AFTER_VITALITY_15S` (dramatic transformation from stressed crop/soil to vibrant deep-rooted green rice as a golden nutrient wave sweeps across the field), "
+                        "`PRODUCT_PACKSHOT_COMMERCIAL_15S` (3D hero fertilizer/product showcase in fertile field with orbital nutrient particles, benefit icons & broadcast TVC finale), "
+                        "`STEP_BY_STEP_FARMING_HUD_15S` (3-beat 1 -> 2 -> 3 visual farming guide with synchronized floating step badges and native voiceover), "
+                        "`NONE` (use raw prompt without archetype injection)."
+                    ),
                 },
                 "duration": {
                     "type": "integer",
@@ -794,6 +825,75 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
 
     if tool_name == "omni_generate_scene":
         args.setdefault("upscale_1080p", False)
+        video_arch = str(args.get("video_archetype") or "AUTO_ROTATE").strip().upper()
+        raw_p = str(args.get("prompt") or "").strip()
+        if raw_p and video_arch != "NONE" and "Video Archetype [" not in raw_p:
+            arch_map = {
+                "AGRI_3D_ROOT_NUTRIENT_VFX": (
+                    "Video Archetype [AGRI_3D_ROOT_NUTRIENT_VFX — 15s All-in-One Commercial]: "
+                    "(0s-5s) Cinematic opening on a sunlit Mekong Delta rice field as fertilizer granules touch moist fertile soil; "
+                    "(5s-10s) Seamless 3D underground macro cutaway VFX showing glowing golden-green N-P-K nutrient particles dissolving and streaming into vigorous white rice roots expanding deeply; "
+                    "(10s-15s) Camera rises above the water surface to reveal lush, upright dark-green rice tillers with floating 3D benefit callouts and brand finale. "
+                    "Rich native audio with crisp field Foley, water/root energy sound design, warm background music, and clear Vietnamese voiceover narration."
+                ),
+                "EXPERT_FIELD_PRESENTATION_15S": (
+                    "Video Archetype [EXPERT_FIELD_PRESENTATION_15S — 15s All-in-One Commercial]: "
+                    "(0s-5s) Vietnamese agronomist/farmer in conical hat smiling warmly in a golden-hour rice paddy, lifting a healthy rice clump with dense white roots; "
+                    "(5s-10s) Smooth push-in with sleek translucent 3D glassmorphism HUD badges appearing beside the plant highlighting root strength, water balance, and tillering; "
+                    "(10s-15s) Confident closing gesture across the thriving emerald field with clear brand callout. "
+                    "Native lip-synced Vietnamese speech, authentic breeze/water ambience, and uplifting acoustic-cinematic underscore."
+                ),
+                "DRONE_TO_MACRO_CINEMATIC_15S": (
+                    "Video Archetype [DRONE_TO_MACRO_CINEMATIC_15S — 15s All-in-One Commercial]: "
+                    "(0s-5s) Sweeping golden-sunrise aerial drone shot gliding over Mekong Delta irrigation canals and emerald rice paddies; "
+                    "(5s-10s) Seamless FPV dive down to macro level skimming crystal water and morning dew on rice blades as a glowing bioluminescent vitality wave ripples across the crop; "
+                    "(10s-15s) Hero wide shot of a flourishing harvest with 3D motion title and CTA dock. "
+                    "Immersive spatial audio, gentle water & wind SFX, inspiring orchestral-modern BGM, and expressive Vietnamese voiceover."
+                ),
+                "BEFORE_AFTER_VITALITY_15S": (
+                    "Video Archetype [BEFORE_AFTER_VITALITY_15S — 15s All-in-One Commercial]: "
+                    "(0s-5s) Close-up of young rice seedlings needing nutrient and water care in early season; "
+                    "(5s-10s) A radiant golden-emerald nutrient wave sweeps across the soil, triggering real-time time-lapse growth: roots burst white and deep, stems thicken, and leaves turn vibrant upright green with floating 3D metric badges; "
+                    "(10s-15s) Lush uniform rice field glowing under morning sun with brand finale and full native Vietnamese narration + sound effects."
+                ),
+                "PRODUCT_PACKSHOT_COMMERCIAL_15S": (
+                    "Video Archetype [PRODUCT_PACKSHOT_COMMERCIAL_15S — 15s All-in-One Commercial]: "
+                    "(0s-5s) Hero 3D fertilizer/product showcase standing prominently on fertile soil beside a sunlit rice paddy with golden light rays; "
+                    "(5s-10s) Dynamic orbital camera move as glowing nutrient particles flow from the product into surrounding crop roots, accompanied by 3 floating 3D benefit icons; "
+                    "(10s-15s) Broadcast TVC end-frame with bountiful golden grain, brand emblem, and energetic Vietnamese commercial voiceover + soundtrack."
+                ),
+                "STEP_BY_STEP_FARMING_HUD_15S": (
+                    "Video Archetype [STEP_BY_STEP_FARMING_HUD_15S — 15s All-in-One Commercial]: "
+                    "Structured 3-beat visual farming guide: (0s-5s) Step 1 visual action with floating 3D badge '1'; "
+                    "(5s-10s) Fluid camera transition to Step 2 field action with glowing flow line and 3D badge '2'; "
+                    "(10s-15s) Step 3 verification & thriving field payoff with badge '3' and bottom hotline CTA bar. "
+                    "Synchronized native Vietnamese voiceover narration, clean UI chime SFX on each step, and warm background music."
+                ),
+            }
+            arch_keys = list(arch_map.keys())
+            chosen_arch = video_arch if video_arch in arch_map else ""
+            if not chosen_arch:
+                state_f = os.path.join(OUTPUTS_DIR, "chatgpt_image_sessions.json")
+                last_v_idx = -1
+                sdata = {}
+                try:
+                    if os.path.isfile(state_f):
+                        with open(state_f, "r", encoding="utf-8") as sf:
+                            sdata = json.load(sf) or {}
+                        last_v_idx = int(sdata.get("last_video_archetype_idx", -1))
+                except Exception:
+                    pass
+                nxt_v_idx = (last_v_idx + 1) % len(arch_keys)
+                chosen_arch = arch_keys[nxt_v_idx]
+                try:
+                    sdata["last_video_archetype_idx"] = nxt_v_idx
+                    os.makedirs(OUTPUTS_DIR, exist_ok=True)
+                    with open(state_f, "w", encoding="utf-8") as sf:
+                        json.dump(sdata, sf, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+            args["prompt"] = f"{raw_p}\n\n{arch_map[chosen_arch]}"
+            args["video_archetype_used"] = chosen_arch
         job_id = uuid.uuid4().hex[:10]
         job_obj = {
             "job_id": job_id,
