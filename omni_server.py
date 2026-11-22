@@ -226,6 +226,59 @@ def _rotate_single_cookie_http(cookie_str: str, sapisid: str, doc_id: str, authu
     return "; ".join(f"{k}={v}" for k, v in cookie_map.items()), updated_keys
 
 
+def _ensure_cdp_59637_browser_alive() -> bool:
+    """
+    Ensures the 24/7 persistent Chromium profile (`~/.codex-chatgpt-web/chromium-profile`)
+    holding both ChatGPT Plus and Google Vids 400-day master cookies is running on port 59637.
+    Automatically respawns it in the background if it was closed or after a system restart.
+    """
+    from chatgpt_image_backend import _is_cdp_alive
+
+    ep = "http://127.0.0.1:59637"
+    if _is_cdp_alive(ep, timeout=1.5):
+        return True
+    try:
+        home = os.path.expanduser("~")
+        profile_dir = os.path.join(home, ".codex-chatgpt-web", "chromium-profile")
+        runtime_dir = os.path.join(home, ".codex-chatgpt-web", "runtime")
+        os.makedirs(profile_dir, exist_ok=True)
+        os.makedirs(runtime_dir, exist_ok=True)
+        candidates = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        ]
+        chrome_bin = next((p for p in candidates if os.path.isfile(p)), "")
+        if not chrome_bin:
+            return False
+        args = [
+            chrome_bin,
+            "--remote-debugging-port=59637",
+            "--remote-debugging-address=127.0.0.1",
+            f"--user-data-dir={profile_dir}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--window-size=1280,900",
+            "https://chatgpt.com/",
+            "https://accounts.google.com/RotateCookiesPage?og_pid=682&rot=3&origin=https%3A%2F%2Fdocs.google.com",
+        ]
+        subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(10):
+            time.sleep(0.8)
+            if _is_cdp_alive(ep, timeout=1.5):
+                with open(os.path.join(runtime_dir, "launcher-browser.json"), "w", encoding="utf-8") as f:
+                    json.dump({"endpoint": ep, "updatedAt": int(time.time() * 1000)}, f, indent=2)
+                log("[CDP 59637 Watchdog] Auto-respawned persistent 24/7 Chrome CDP browser (ChatGPT Plus + Google Vids).")
+                return True
+    except Exception as e:
+        log(f"[CDP 59637 Watchdog Warning] {e}")
+    return False
+
+
 def _rotate_via_cdp_59637(session_path: str = DEFAULT_SESSION_PATH) -> list[str]:
     """
     Triggers a first-party RotateCookies call inside the 24/7 server CDP browser (port 59637)
@@ -236,6 +289,7 @@ def _rotate_via_cdp_59637(session_path: str = DEFAULT_SESSION_PATH) -> list[str]
     try:
         from chatgpt_image_backend import CDPSession, _list_cdp_targets, _http_get_json
 
+        _ensure_cdp_59637_browser_alive()
         ep = "http://127.0.0.1:59637"
         tabs = _list_cdp_targets(ep, timeout=2.0)
         if not tabs:
