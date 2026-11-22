@@ -354,11 +354,288 @@ def _rotate_via_cdp_59637(session_path: str = DEFAULT_SESSION_PATH) -> list[str]
         sess["sapisid"] = sapisid
         with open(session_path, "w", encoding="utf-8") as f:
             json.dump(sess, f, indent=2)
-        acc_key = register_account_in_pool(sess, source="cdp", label="hgun65991@gmail.com (24/7 Server CDP)")
+        acc_key = register_account_in_pool(sess, source="cdp", label=sess.get("label") or "hgun65991@gmail.com (24/7 Server CDP)")
         update_pool_account_cookie(acc_key, cookie_str, session_path=session_path)
         return ["__Secure-1PSIDTS", "__Secure-3PSIDTS", "SIDCC", "COMPASS"]
     except Exception:
         return []
+
+
+def _generate_totp_code(secret: str) -> str:
+    """Computes a 6-digit RFC 6238 TOTP code from a Base32 2FA secret key."""
+    import base64
+    import hmac
+    import struct
+
+    clean_sec = re.sub(r"[^A-Za-z2-7]", "", (secret or "")).upper()
+    if not clean_sec:
+        return ""
+    pad_len = (8 - (len(clean_sec) % 8)) % 8
+    key_bytes = base64.b32decode(clean_sec + ("=" * pad_len), casefold=True)
+    rem = 30 - (int(time.time()) % 30)
+    if rem <= 2:
+        time.sleep(rem + 0.5)
+    counter = int(time.time()) // 30
+    msg = struct.pack(">Q", counter)
+    digest = hmac.new(key_bytes, msg, hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    code_int = (struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF) % 1000000
+    return f"{code_int:06d}"
+
+
+def auto_login_google_vids_via_cdp(payload: dict, session_path: str = DEFAULT_SESSION_PATH) -> dict:
+    """
+    1-Click Automated Google Vids Login + 2FA TOTP + Auto Doc Creation + 400-Day Cookie Sync
+    inside the 24/7 Chrome CDP browser (port 59637).
+    Accepts `{"raw": "email|password|totp_secret"}` or discrete `email`, `password`, `totp_secret`, `label`.
+    """
+    from chatgpt_image_backend import CDPSession, _http_get_json, _list_cdp_targets
+
+    raw = str(payload.get("raw") or payload.get("credentials") or "").strip()
+    email = str(payload.get("email") or "").strip()
+    password = str(payload.get("password") or "").strip()
+    totp_secret = str(payload.get("totp_secret") or payload.get("totp") or "").strip()
+    custom_label = str(payload.get("label") or "").strip()
+
+    if raw and "|" in raw:
+        parts = [p.strip() for p in raw.split("|")]
+        if len(parts) >= 2:
+            email = email or parts[0]
+            password = password or parts[1]
+        if len(parts) >= 3:
+            totp_secret = totp_secret or parts[2]
+
+    if not email or not password:
+        return {
+            "status": "error",
+            "message": "Thiếu Email hoặc Mật khẩu. Vui lòng nhập đúng định dạng: email@gmail.com|MatKhau|ma_2fa_secret",
+        }
+
+    _ensure_cdp_59637_browser_alive()
+    ep = "http://127.0.0.1:59637"
+    start_url = "https://accounts.google.com/AddSession?hl=en&continue=https%3A%2F%2Fdocs.google.com%2Fvideos%2Fcreate"
+
+    try:
+        tab = _http_get_json(f"{ep}/json/new?{start_url}", timeout=4.0, method="PUT")
+    except Exception:
+        tabs = _list_cdp_targets(ep, timeout=3.0)
+        tab = next((t for t in tabs if t.get("type") == "page" and "chatgpt.com" not in t.get("url", "")), None)
+        if not tab and tabs:
+            tab = tabs[0]
+
+    if not tab or not tab.get("webSocketDebuggerUrl"):
+        return {"status": "error", "message": "Không kết nối được trình duyệt nền CDP 59637."}
+
+    doc_id = ""
+    authuser = "0"
+    steps_log = []
+
+    try:
+        with CDPSession(tab["webSocketDebuggerUrl"], connect_timeout=6.0) as s:
+            s.send("Page.enable", {})
+            s.send("Network.enable", {})
+            s.send("Page.navigate", {"url": start_url})
+            steps_log.append(f"Mở trang đăng nhập Google cho {email}")
+
+            email_done = False
+            pwd_done = False
+            totp_done = False
+            vids_nav_sent = False
+
+            deadline = time.time() + 45.0
+            while time.time() < deadline:
+                time.sleep(1.0)
+                st = s.evaluate(
+                    """(() => {
+                        const url = location.href;
+                        const vis = (el) => {
+                            if (!el) return false;
+                            const r = el.getBoundingClientRect();
+                            return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+                        };
+                        const emailEl = document.querySelector('input[type="email"], #identifierId');
+                        const pwdEl = document.querySelector('input[type="password"], input[name="Passwd"]');
+                        const totpEl = document.querySelector('#totpPin, input[name="totpPin"], input[type="tel"][autocomplete="one-time-code"], input[id*="totp" i]');
+                        const challenge6 = document.querySelector('[data-challengetype="6"]');
+                        const errEl = document.querySelector('[jsname="B34EJ"], [aria-live="assertive"]');
+                        return {
+                            url,
+                            hasEmail: vis(emailEl),
+                            hasPwd: vis(pwdEl),
+                            hasTotp: vis(totpEl),
+                            hasChallenge6: vis(challenge6),
+                            errText: errEl ? (errEl.innerText || '').trim().slice(0, 140) : ''
+                        };
+                    })()""",
+                    timeout=4.0,
+                    await_promise=False,
+                )
+                if not isinstance(st, dict):
+                    continue
+
+                cur_url = str(st.get("url") or "")
+                m_doc = re.search(r"/videos/(?:u/(\d+)/)?d/([a-zA-Z0-9_-]{20,})", cur_url)
+                if m_doc:
+                    if m_doc.group(1):
+                        authuser = m_doc.group(1)
+                    doc_id = m_doc.group(2)
+                    steps_log.append(f"Đã tạo và lấy Google Vids doc_id={doc_id} (authuser={authuser})")
+                    break
+
+                if not email_done and st.get("hasEmail"):
+                    s.evaluate(
+                        f"""(() => {{
+                            const el = document.querySelector('input[type="email"], #identifierId');
+                            if (!el) return false;
+                            el.focus();
+                            el.value = {json.dumps(email)};
+                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            const btn = document.querySelector('#identifierNext button, #identifierNext');
+                            if (btn) btn.click();
+                            return true;
+                        }})()""",
+                        timeout=4.0,
+                    )
+                    email_done = True
+                    steps_log.append("Đã điền Email")
+                    time.sleep(1.5)
+                    continue
+
+                if email_done and not pwd_done and st.get("hasPwd"):
+                    s.evaluate(
+                        f"""(() => {{
+                            const el = document.querySelector('input[type="password"], input[name="Passwd"]');
+                            if (!el) return false;
+                            el.focus();
+                            el.value = {json.dumps(password)};
+                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            const btn = document.querySelector('#passwordNext button, #passwordNext');
+                            if (btn) btn.click();
+                            return true;
+                        }})()""",
+                        timeout=4.0,
+                    )
+                    pwd_done = True
+                    steps_log.append("Đã điền Mật khẩu")
+                    time.sleep(2.0)
+                    continue
+
+                if pwd_done and not totp_done and st.get("hasChallenge6") and not st.get("hasTotp"):
+                    s.evaluate(
+                        """(() => {
+                            const c = document.querySelector('[data-challengetype="6"]');
+                            if (c) c.click();
+                        })()""",
+                        timeout=3.0,
+                    )
+                    steps_log.append("Chọn phương thức xác thực Google Authenticator (2FA)")
+                    time.sleep(1.5)
+                    continue
+
+                if pwd_done and not totp_done and st.get("hasTotp"):
+                    if not totp_secret:
+                        return {
+                            "status": "error",
+                            "message": "Tài khoản yêu cầu mã 2FA (Google Authenticator) nhưng chưa nhập chuỗi 2FA secret (email|pass|2fa_secret).",
+                        }
+                    code_6 = _generate_totp_code(totp_secret)
+                    s.evaluate(
+                        f"""(() => {{
+                            const el = document.querySelector('#totpPin, input[name="totpPin"], input[type="tel"][autocomplete="one-time-code"], input[id*="totp" i]');
+                            if (!el) return false;
+                            el.focus();
+                            el.value = {json.dumps(code_6)};
+                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            const btn = document.querySelector('#totpNext button, #totpNext');
+                            if (btn) btn.click();
+                            return true;
+                        }})()""",
+                        timeout=4.0,
+                    )
+                    totp_done = True
+                    steps_log.append(f"Đã giải mã và điền 2FA TOTP ({code_6})")
+                    time.sleep(2.2)
+                    continue
+
+                # Handle Google speedbump / consent / myaccount redirect
+                if pwd_done and ("speedbump" in cur_url or "consentsummary" in cur_url or "myaccount.google.com" in cur_url or (cur_url.startswith("https://docs.google.com/videos") and "/d/" not in cur_url)):
+                    if not vids_nav_sent:
+                        s.evaluate(
+                            """(() => {
+                                const btn = document.querySelector('#confirm, input[type="submit"]');
+                                if (btn) { btn.click(); return 'clicked'; }
+                                location.href = 'https://docs.google.com/videos/create';
+                                return 'navigated';
+                            })()""",
+                            timeout=4.0,
+                        )
+                        vids_nav_sent = True
+                        time.sleep(2.0)
+
+            all_cks = s.send("Network.getAllCookies", {}, timeout=5.0).get("cookies", [])
+    except Exception as e:
+        return {"status": "error", "message": f"Lỗi trong quá trình đăng nhập tự động: {e}", "steps": steps_log}
+
+    allowed_exact = (".google.com", "google.com", "appsgenaiserver-pa.clients6.google.com", ".clients6.google.com")
+    ck_map = {}
+    for c in all_cks:
+        dom = c.get("domain", "")
+        name = c.get("name", "")
+        if dom in allowed_exact and name not in ("OSID", "__Secure-OSID"):
+            ck_map[name] = c["value"]
+
+    if not ck_map.get("SAPISID") or not ck_map.get("SID"):
+        return {
+            "status": "error",
+            "message": "Chưa lấy được phiên đăng nhập Google (SAPISID/SID). Vui lòng kiểm tra lại mật khẩu hoặc mã 2FA.",
+            "steps": steps_log,
+        }
+
+    # Ensure RotateCookiesPage tab is open for 3-minute keepalive
+    try:
+        tabs_now = _list_cdp_targets(ep, timeout=2.0)
+        if not any("RotateCookiesPage" in (t.get("url") or "") for t in tabs_now):
+            _http_get_json(
+                f"{ep}/json/new?https://accounts.google.com/RotateCookiesPage?og_pid=682&rot=3&origin=https%3A%2F%2Fdocs.google.com",
+                timeout=3.0,
+                method="PUT",
+            )
+    except Exception:
+        pass
+
+    sess = load_vids_session(session_path)
+    doc_id = doc_id or sess.get("doc_id") or DEFAULT_DOC_ID
+    cookie_str = "; ".join(f"{k}={v}" for k, v in ck_map.items())
+    sapisid = ck_map["SAPISID"]
+    label_final = custom_label or f"{email} (24/7 Server CDP)"
+
+    sess["cookie"] = cookie_str
+    sess["sapisid"] = sapisid
+    sess["doc_id"] = doc_id
+    sess["authuser"] = str(authuser)
+    sess["label"] = label_final
+    with open(session_path, "w", encoding="utf-8") as f:
+        json.dump(sess, f, indent=2)
+
+    acc_key = register_account_in_pool(sess, source="cdp_auto_login", label=label_final)
+    set_active_pool_account(acc_key, session_path=session_path)
+    rotated_keys = _rotate_via_cdp_59637(session_path=session_path)
+
+    SESSION_META["last_rotated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    SESSION_META["last_rotate_status"] = f"ok_auto_login ({email})"
+    SESSION_META["rotate_count"] += 1
+    log(f"[Auto-Login CDP] Successfully logged in {email} -> doc_id={doc_id}, key={acc_key}, rotated={rotated_keys}")
+
+    return {
+        "status": "ok",
+        "email": email,
+        "account_key": acc_key,
+        "doc_id": doc_id,
+        "authuser": authuser,
+        "rotated_cookies": rotated_keys,
+        "steps": steps_log,
+        "message": f"✅ Đã đăng nhập tự động {email}, khởi tạo Google Vids ({doc_id[:12]}…) và kích hoạt xoay vòng Cookie 400 ngày!",
+    }
 
 
 def rotate_google_cookies_headless(session_path: str = DEFAULT_SESSION_PATH) -> dict:
@@ -1371,7 +1648,22 @@ class OmniStudioHandler(BaseHTTPRequestHandler):
                     self._send_json(resp)
             return
 
+        if path == "/api/session/auto-login":
+            res = auto_login_google_vids_via_cdp(body, session_path=DEFAULT_SESSION_PATH)
+            code = 200 if res.get("status") == "ok" else 400
+            self._send_json(res, code)
+            return
+
         if path == "/api/session":
+            raw_ck = str(body.get("cookie") or "").strip()
+            if "|" in raw_ck and "@" in raw_ck.split("|")[0] and "SAPISID=" not in raw_ck:
+                res = auto_login_google_vids_via_cdp(
+                    {"raw": raw_ck, "label": body.get("label", "")},
+                    session_path=DEFAULT_SESSION_PATH,
+                )
+                code = 200 if res.get("status") == "ok" else 400
+                self._send_json(res, code)
+                return
             res = update_session_payload(body)
             self._send_json(res)
             return

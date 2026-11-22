@@ -922,10 +922,18 @@ Bắt đầu hành trình kiến tạo thương hiệu đột phá ngay hôm nay
       </div>
       <div class="layout-2col">
         <div class="panel">
-          <div class="panel-header"><h2 class="panel-title"><svg class="sf-icon sf-icon-lg" aria-hidden="true"><use href="#sf-shield"/></svg> Thêm tài khoản vào Pool xoay vòng</h2></div>
+          <div class="panel-header"><h2 class="panel-title"><svg class="sf-icon sf-icon-lg" aria-hidden="true"><use href="#sf-shield"/></svg> Đăng nhập / Gia hạn Tự động 1-Chạm (400 ngày)</h2></div>
+          <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.28); border-radius:10px; padding:12px; margin-bottom:14px;">
+            <label for="sessAutoLoginInput" style="margin-top:0; color:#10b981; font-weight:600;">⚡ Nhập nhanh: <code>email@gmail.com|Mật_khẩu|Mã_2FA_Secret</code></label>
+            <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap;">
+              <input id="sessAutoLoginInput" placeholder="Ví dụ: hgun65991@gmail.com|MatKhau123@|dd43 ugca wwid vr6y..." autocomplete="off" spellcheck="false" style="flex:1; min-width:220px;" />
+              <button class="btn" type="button" onclick="submitAutoLogin(this)">🔐 Đăng nhập &amp; Gia hạn 400 ngày</button>
+            </div>
+            <p class="media-hint" style="margin:6px 0 0 0;">Máy chủ sẽ tự động mở trình duyệt nền CDP 59637, điền Email + Mật khẩu + Giải mã 2FA, tự tạo file Google Vids mới và kích hoạt xoay vòng Cookie 3 phút/lần.</p>
+          </div>
           <label for="sessAccountLabel">Tên gợi nhớ tài khoản (tùy chọn — ví dụ: Gmail 1, Acc dự phòng 2)</label>
           <input id="sessAccountLabel" placeholder="Ví dụ: Acc 1 - hgun65991@gmail.com" autocomplete="off" />
-          <label for="sessCookieInput">Dán lệnh cURL (dòng POST xhr `generate`) hoặc chuỗi Cookie / JSON</label>
+          <label for="sessCookieInput">Hoặc dán lệnh cURL (dòng POST xhr `generate`) / chuỗi Cookie / JSON</label>
           <textarea id="sessCookieInput" placeholder="Dán toàn bộ Copy as cURL (cmd hoặc bash) của dòng generate (Type: xhr) vào đây..." autocomplete="off" spellcheck="false"></textarea>
           <div class="field-grid">
             <div><label for="sessDocId">Google Vids · Doc ID (tự tách nếu dán cURL)</label><input id="sessDocId" placeholder="ID tài liệu" /></div>
@@ -1474,6 +1482,25 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
       await runSessionAction(button, endpoint, { key }, 'Đã cập nhật danh sách tài khoản trong Pool.');
     }
 
+    async function submitAutoLogin(button) {
+      const inp = document.getElementById('sessAutoLoginInput');
+      const raw = (inp?.value || '').trim();
+      const label = (document.getElementById('sessAccountLabel')?.value || '').trim();
+      const message = document.getElementById('sessionActionMessage');
+      if (!raw || !raw.includes('|')) {
+        message.textContent = '⚠️ Vui lòng nhập đúng định dạng: email@gmail.com|Mật_khẩu|Mã_2FA_Secret';
+        inp?.focus();
+        return;
+      }
+      await runSessionAction(
+        button,
+        '/api/session/auto-login',
+        { raw, label },
+        '✅ Đã đăng nhập tự động, tạo Google Vids mới và kích hoạt xoay vòng Cookie 400 ngày!'
+      );
+      if (inp) inp.value = '';
+    }
+
     async function saveSessionConfig(button) {
       const raw = document.getElementById('sessCookieInput').value.trim();
       const label = (document.getElementById('sessAccountLabel')?.value || '').trim();
@@ -1525,7 +1552,7 @@ claude mcp add --transport http omni-flash-video-studio https://omni.mcpads.win/
         });
         const data = await response.json();
         if (!response.ok || data.status !== 'ok') throw new Error(data.message || 'Không thực hiện được yêu cầu.');
-        message.textContent = successMessage;
+        message.textContent = data.message || successMessage;
         refreshStatus();
       } catch (error) {
         message.textContent = error.message;
