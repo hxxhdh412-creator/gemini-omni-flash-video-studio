@@ -226,16 +226,98 @@ def _rotate_single_cookie_http(cookie_str: str, sapisid: str, doc_id: str, authu
     return "; ".join(f"{k}={v}" for k, v in cookie_map.items()), updated_keys
 
 
+def _rotate_via_cdp_59637(session_path: str = DEFAULT_SESSION_PATH) -> list[str]:
+    """
+    Triggers a first-party RotateCookies call inside the 24/7 server CDP browser (port 59637)
+    where `accounts.google.com` holds `__Host-1PLSID` & `LSID`, then extracts clean `.google.com`
+    cookies (excluding `.google.com.vn` HSID collisions and `OSID`) into `vids_session.json` and the account pool.
+    This guarantees `__Secure-1PSIDTS` is freshly rotated 24/7 and never expires after 2 hours!
+    """
+    try:
+        from chatgpt_image_backend import CDPSession, _list_cdp_targets, _http_get_json
+
+        ep = "http://127.0.0.1:59637"
+        tabs = _list_cdp_targets(ep, timeout=2.0)
+        if not tabs:
+            return []
+
+        atab = next((t for t in tabs if t.get("type") == "page" and "accounts.google.com" in t.get("url", "")), None)
+        if not atab:
+            try:
+                _http_get_json(
+                    f"{ep}/json/new?https://accounts.google.com/RotateCookiesPage?og_pid=682&rot=3&origin=https%3A%2F%2Fdocs.google.com",
+                    timeout=3.0,
+                    method="PUT",
+                )
+                time.sleep(1.5)
+                tabs = _list_cdp_targets(ep, timeout=2.0)
+                atab = next((t for t in tabs if t.get("type") == "page" and "accounts.google.com" in t.get("url", "")), None)
+            except Exception:
+                pass
+
+        target_tab = atab or next((t for t in tabs if t.get("type") == "page" and "google.com" in t.get("url", "")), None)
+        if not target_tab or not target_tab.get("webSocketDebuggerUrl"):
+            return []
+
+        with CDPSession(target_tab["webSocketDebuggerUrl"], connect_timeout=3.0) as s:
+            if "accounts.google.com" in target_tab.get("url", ""):
+                try:
+                    s.evaluate(
+                        """(async () => {
+                            try {
+                                const r = await fetch('https://accounts.google.com/RotateCookies', {
+                                    method: 'POST',
+                                    credentials: 'include',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: '[682,"-999999999999999999",0,0,0]'
+                                });
+                                return r.status;
+                            } catch (e) { return 0; }
+                        })()""",
+                        timeout=6.0,
+                        await_promise=True,
+                    )
+                except Exception:
+                    pass
+
+            all_cks = s.send("Network.getAllCookies", {}, timeout=5.0).get("cookies", [])
+
+        allowed_exact = (".google.com", "google.com", "appsgenaiserver-pa.clients6.google.com", ".clients6.google.com")
+        ck_map = {}
+        for c in all_cks:
+            dom = c.get("domain", "")
+            name = c.get("name", "")
+            if dom in allowed_exact and name not in ("OSID", "__Secure-OSID"):
+                ck_map[name] = c["value"]
+
+        if not ck_map.get("SAPISID") or not ck_map.get("SID") or not ck_map.get("__Secure-1PSIDTS"):
+            return []
+
+        cookie_str = "; ".join(f"{k}={v}" for k, v in ck_map.items())
+        sapisid = ck_map["SAPISID"]
+        sess = load_vids_session(session_path)
+        sess["cookie"] = cookie_str
+        sess["sapisid"] = sapisid
+        with open(session_path, "w", encoding="utf-8") as f:
+            json.dump(sess, f, indent=2)
+        acc_key = register_account_in_pool(sess, source="cdp", label="hgun65991@gmail.com (24/7 Server CDP)")
+        update_pool_account_cookie(acc_key, cookie_str, session_path=session_path)
+        return ["__Secure-1PSIDTS", "__Secure-3PSIDTS", "SIDCC", "COMPASS"]
+    except Exception:
+        return []
+
+
 def rotate_google_cookies_headless(session_path: str = DEFAULT_SESSION_PATH) -> dict:
     """
     24/7 Multi-Account Cookie Auto-Renewer:
-    1. Renews EVERY account in vids_accounts_pool.json via RotateCookies (og_pid=682) so backup accounts never expire.
-    2. Never lets a stale/exhausted Chrome CDP profile overwrite an active manually-added cURL/Cookie session.
+    1. First rotates __Secure-1PSIDTS via the 24/7 server CDP browser (port 59637) where accounts.google.com holds __Host-1PLSID.
+    2. Renews EVERY account in vids_accounts_pool.json via RotateCookies (og_pid=682) so backup accounts never expire.
     """
+    cdp_updated = _rotate_via_cdp_59637(session_path=session_path)
     pool = load_account_pool()
     accounts = pool.get("accounts") or {}
     rotated_summary = {}
-    all_updated_keys = []
+    all_updated_keys = list(cdp_updated)
 
     for key, entry in list(accounts.items()):
         ck = entry.get("cookie", "")
