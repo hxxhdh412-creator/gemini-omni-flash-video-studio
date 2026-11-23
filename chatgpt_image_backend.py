@@ -1318,10 +1318,25 @@ def generate_chatgpt_image(
         ws_url = target["webSocketDebuggerUrl"]
 
         with CDPSession(ws_url) as s:
-            try:
-                s.send("Emulation.setFocusEmulationEnabled", {"enabled": True}, timeout=2.0)
-            except Exception:
-                pass
+            for _m, _p in (
+                ("Network.enable", {}),
+                ("Page.enable", {}),
+                ("Emulation.setFocusEmulationEnabled", {"enabled": True}),
+                (
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    {"source": "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"},
+                ),
+                (
+                    "Network.setUserAgentOverride",
+                    {
+                        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+                    },
+                ),
+            ):
+                try:
+                    s.send(_m, _p, timeout=2.5)
+                except Exception:
+                    pass
 
             page_check = None
             try:
@@ -1412,7 +1427,8 @@ def generate_chatgpt_image(
                 if not spa_ok:
                     s.send("Page.navigate", {"url": desired_url}, timeout=6.0)
                     ok = False
-                    for _ in range(35):
+                    wait_ticks = 18 if target_conv_id else 35
+                    for _ in range(wait_ticks):
                         time.sleep(0.3)
                         try:
                             ok = bool(
@@ -1426,6 +1442,26 @@ def generate_chatgpt_image(
                                 break
                         except Exception:
                             pass
+                    # If an old/foreign /c/<conv_id> failed to open composer, fall back to fresh https://chatgpt.com/
+                    if not ok and target_conv_id:
+                        _emit("navigate", f"Stale conversation /c/{target_conv_id[:8]}… unavailable; opening fresh https://chatgpt.com/...")
+                        target_conv_id = ""
+                        is_continuation = False
+                        s.send("Page.navigate", {"url": "https://chatgpt.com/"}, timeout=6.0)
+                        for _ in range(30):
+                            time.sleep(0.3)
+                            try:
+                                ok = bool(
+                                    s.evaluate(
+                                        f"document.readyState !== 'loading' && !!{COMPOSER_JS} && !location.search.includes('temporary-chat')",
+                                        timeout=2.5,
+                                        await_promise=False,
+                                    )
+                                )
+                                if ok:
+                                    break
+                            except Exception:
+                                pass
                     if not ok:
                         raise ChatGPTWebError(
                             "ChatGPT Web composer did not load. Check that you are signed in inside Codex Web GPT Launcher.",

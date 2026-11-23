@@ -888,6 +888,9 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         style: str = "PHOTOGRAPHY",
         num_images: int = 1,
     ) -> dict:
+        import importlib
+        import chatgpt_image_backend
+        importlib.reload(chatgpt_image_backend)
         from chatgpt_image_backend import _pick_creative_archetype, generate_chatgpt_image
 
         job_id = uuid.uuid4().hex[:10]
