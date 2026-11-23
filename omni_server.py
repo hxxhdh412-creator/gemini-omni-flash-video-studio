@@ -248,8 +248,16 @@ def _ensure_cdp_59637_browser_alive() -> bool:
             r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
             r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
             r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            shutil.which("google-chrome") or "",
+            shutil.which("google-chrome-stable") or "",
+            shutil.which("chromium") or "",
+            shutil.which("chromium-browser") or "",
         ]
-        chrome_bin = next((p for p in candidates if os.path.isfile(p)), "")
+        chrome_bin = next((p for p in candidates if p and os.path.isfile(p)), "")
         if not chrome_bin:
             return False
         args = [
@@ -263,9 +271,15 @@ def _ensure_cdp_59637_browser_alive() -> bool:
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--window-size=1280,900",
+        ]
+        if os.name != "nt":
+            args.append("--no-sandbox")
+            if not os.environ.get("DISPLAY"):
+                args.append("--headless=new")
+        args.extend([
             "https://chatgpt.com/",
             "https://accounts.google.com/RotateCookiesPage?og_pid=682&rot=3&origin=https%3A%2F%2Fdocs.google.com",
-        ]
+        ])
         subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(10):
             time.sleep(0.8)
