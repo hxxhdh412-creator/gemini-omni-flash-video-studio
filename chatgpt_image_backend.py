@@ -1143,8 +1143,10 @@ def _pick_creative_archetype(prompt: str, requested_archetype: str = "AUTO_ROTAT
     """
     if is_continuation:
         return "", ""
-    req = str(requested_archetype or "AUTO_ROTATE").strip().upper()
-    if req in ("NONE", "OFF", "RAW"):
+    req = str(requested_archetype or "FREE_CREATIVE").strip().upper()
+    if req in ("NONE", "OFF", "RAW", "FREE_CREATIVE", "CUSTOM"):
+        return "", ""
+    if req == "AUTO_ROTATE" and len((prompt or "").strip()) > 180:
         return "", ""
     req = LAYOUT_ARCHETYPE_ALIASES.get(req, req)
     if req in CREATIVE_LAYOUT_ARCHETYPES:

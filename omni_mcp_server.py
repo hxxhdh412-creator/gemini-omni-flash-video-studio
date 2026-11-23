@@ -826,75 +826,42 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
 
     if tool_name == "omni_generate_scene":
         args.setdefault("upscale_1080p", False)
-        video_arch = str(args.get("video_archetype") or "AUTO_ROTATE").strip().upper()
+        video_arch = str(args.get("video_archetype") or "FREE_CREATIVE").strip().upper()
         raw_p = str(args.get("prompt") or "").strip()
-        if raw_p and video_arch != "NONE" and "Video Archetype [" not in raw_p:
+        if raw_p and video_arch not in ("NONE", "FREE_CREATIVE", "CUSTOM") and "Video Archetype [" not in raw_p:
             arch_map = {
                 "AGRI_3D_ROOT_NUTRIENT_VFX": (
-                    "Video Archetype [AGRI_3D_ROOT_NUTRIENT_VFX — 15s All-in-One Commercial]: "
-                    "(0s-5s) Cinematic opening on a sunlit Mekong Delta rice field as fertilizer granules touch moist fertile soil; "
-                    "(5s-10s) Seamless 3D underground macro cutaway VFX showing glowing golden-green N-P-K nutrient particles dissolving and streaming into vigorous white rice roots expanding deeply; "
-                    "(10s-15s) Camera rises above the water surface to reveal lush, upright dark-green rice tillers with floating 3D benefit callouts and brand finale. "
-                    "Rich native audio with crisp field Foley, water/root energy sound design, warm background music, and clear Vietnamese voiceover narration."
+                    "Creative Direction [3D_MECHANISM_CUTAWAY_VFX]: Adapt dynamically to the exact subject in the prompt — "
+                    "combine authentic real-world cinematography with a seamless 3D macro/cutaway VFX reveal of the underlying biological or technical mechanism, "
+                    "followed by a thriving real-world payoff and rich spatial sound design + natural Vietnamese voiceover."
                 ),
                 "EXPERT_FIELD_PRESENTATION_15S": (
-                    "Video Archetype [EXPERT_FIELD_PRESENTATION_15S — 15s All-in-One Commercial]: "
-                    "(0s-5s) Vietnamese agronomist/farmer in conical hat smiling warmly in a golden-hour rice paddy, lifting a healthy rice clump with dense white roots; "
-                    "(5s-10s) Smooth push-in with sleek translucent 3D glassmorphism HUD badges appearing beside the plant highlighting root strength, water balance, and tillering; "
-                    "(10s-15s) Confident closing gesture across the thriving emerald field with clear brand callout. "
-                    "Native lip-synced Vietnamese speech, authentic breeze/water ambience, and uplifting acoustic-cinematic underscore."
+                    "Creative Direction [AUTHENTIC_HOST_PRESENTATION]: Adapt dynamically to the exact setting in the prompt — "
+                    "feature an authentic Vietnamese agronomist/farmer demonstrating the real-world subject on location with natural gestures, "
+                    "dynamic camera movement, and clear native Vietnamese speech + ambient Foley."
                 ),
                 "DRONE_TO_MACRO_CINEMATIC_15S": (
-                    "Video Archetype [DRONE_TO_MACRO_CINEMATIC_15S — 15s All-in-One Commercial]: "
-                    "(0s-5s) Sweeping golden-sunrise aerial drone shot gliding over Mekong Delta irrigation canals and emerald rice paddies; "
-                    "(5s-10s) Seamless FPV dive down to macro level skimming crystal water and morning dew on rice blades as a glowing bioluminescent vitality wave ripples across the crop; "
-                    "(10s-15s) Hero wide shot of a flourishing harvest with 3D motion title and CTA dock. "
-                    "Immersive spatial audio, gentle water & wind SFX, inspiring orchestral-modern BGM, and expressive Vietnamese voiceover."
+                    "Creative Direction [WIDE_TO_MACRO_CINEMATIC]: Adapt dynamically to the exact environment in the prompt — "
+                    "transition fluidly from an establishing wide/aerial perspective into an intimate macro close-up revealing fine textures and vitality, "
+                    "with immersive spatial audio and expressive Vietnamese voiceover."
                 ),
                 "BEFORE_AFTER_VITALITY_15S": (
-                    "Video Archetype [BEFORE_AFTER_VITALITY_15S — 15s All-in-One Commercial]: "
-                    "(0s-5s) Close-up of young rice seedlings needing nutrient and water care in early season; "
-                    "(5s-10s) A radiant golden-emerald nutrient wave sweeps across the soil, triggering real-time time-lapse growth: roots burst white and deep, stems thicken, and leaves turn vibrant upright green with floating 3D metric badges; "
-                    "(10s-15s) Lush uniform rice field glowing under morning sun with brand finale and full native Vietnamese narration + sound effects."
+                    "Creative Direction [CONTRAST_TRANSFORMATION_VFX]: Adapt dynamically to the exact problem and solution in the prompt — "
+                    "show a vivid visual contrast transforming the initial challenge into a healthy, well-organized, or high-vitality outcome "
+                    "with synchronized Vietnamese narration."
                 ),
                 "PRODUCT_PACKSHOT_COMMERCIAL_15S": (
-                    "Video Archetype [PRODUCT_PACKSHOT_COMMERCIAL_15S — 15s All-in-One Commercial]: "
-                    "(0s-5s) Hero 3D fertilizer/product showcase standing prominently on fertile soil beside a sunlit rice paddy with golden light rays; "
-                    "(5s-10s) Dynamic orbital camera move as glowing nutrient particles flow from the product into surrounding crop roots, accompanied by 3 floating 3D benefit icons; "
-                    "(10s-15s) Broadcast TVC end-frame with bountiful golden grain, brand emblem, and energetic Vietnamese commercial voiceover + soundtrack."
+                    "Creative Direction [HERO_SUBJECT_COMMERCIAL]: Adapt dynamically to the exact product or subject in the prompt — "
+                    "cinematic hero lighting, orbital camera motion, visual energy/benefit flow, and broadcast-grade Vietnamese commercial voiceover."
                 ),
                 "STEP_BY_STEP_FARMING_HUD_15S": (
-                    "Video Archetype [STEP_BY_STEP_FARMING_HUD_15S — 15s All-in-One Commercial]: "
-                    "Structured 3-beat visual farming guide: (0s-5s) Step 1 visual action with floating 3D badge '1'; "
-                    "(5s-10s) Fluid camera transition to Step 2 field action with glowing flow line and 3D badge '2'; "
-                    "(10s-15s) Step 3 verification & thriving field payoff with badge '3' and bottom hotline CTA bar. "
-                    "Synchronized native Vietnamese voiceover narration, clean UI chime SFX on each step, and warm background music."
+                    "Creative Direction [DYNAMIC_3_BEAT_PROGRESSION]: Adapt dynamically to the exact actions in the prompt — "
+                    "choreograph 3 distinct visual beats with smooth camera transitions, clear action progression, and synchronized Vietnamese narration."
                 ),
             }
-            arch_keys = list(arch_map.keys())
-            chosen_arch = video_arch if video_arch in arch_map else ""
-            if not chosen_arch:
-                state_f = os.path.join(OUTPUTS_DIR, "chatgpt_image_sessions.json")
-                last_v_idx = -1
-                sdata = {}
-                try:
-                    if os.path.isfile(state_f):
-                        with open(state_f, "r", encoding="utf-8") as sf:
-                            sdata = json.load(sf) or {}
-                        last_v_idx = int(sdata.get("last_video_archetype_idx", -1))
-                except Exception:
-                    pass
-                nxt_v_idx = (last_v_idx + 1) % len(arch_keys)
-                chosen_arch = arch_keys[nxt_v_idx]
-                try:
-                    sdata["last_video_archetype_idx"] = nxt_v_idx
-                    os.makedirs(OUTPUTS_DIR, exist_ok=True)
-                    with open(state_f, "w", encoding="utf-8") as sf:
-                        json.dump(sdata, sf, ensure_ascii=False, indent=2)
-                except Exception:
-                    pass
-            args["prompt"] = f"{raw_p}\n\n{arch_map[chosen_arch]}"
-            args["video_archetype_used"] = chosen_arch
+            if video_arch in arch_map:
+                args["prompt"] = f"{raw_p}\n\n{arch_map[video_arch]}"
+                args["video_archetype_used"] = video_arch
         job_id = uuid.uuid4().hex[:10]
         job_obj = {
             "job_id": job_id,
