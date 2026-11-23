@@ -833,40 +833,57 @@ def launch_chatgpt_browser(wait_sec: float = 15.0) -> dict[str, Any]:
         return {"ok": True, "already_running": True, "endpoint": existing, "account": get_chatgpt_account_info(force=True)}
 
     home = os.path.expanduser("~")
-    codex_exe = os.path.join(home, "AppData", "Local", "Programs", "Codex Web GPT", "Codex Web GPT.exe")
-    if os.name == "nt" and os.path.isfile(codex_exe):
-        subprocess.Popen([codex_exe], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        candidates = (
-            [
-                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-                r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-                r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-            ]
-            if os.name == "nt"
-            else ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"]
-        )
-        chrome_bin = os.environ.get("CHROME_BIN") or next((p for p in candidates if os.path.isfile(p)), "")
-        if not chrome_bin:
-            raise ChatGPTWebError("Neither Codex Web GPT Launcher nor Chrome/Edge was found on this machine.", 503)
-        cdp_port = int(os.environ.get("CHATGPT_CDP_PORT", "59637"))
-        profile_dir = os.path.join(home, ".codex-chatgpt-web", "chromium-profile")
-        runtime_dir = os.path.join(home, ".codex-chatgpt-web", "runtime")
-        os.makedirs(profile_dir, exist_ok=True)
-        os.makedirs(runtime_dir, exist_ok=True)
-        args = [
-            chrome_bin,
-            f"--remote-debugging-port={cdp_port}",
-            "--remote-debugging-address=127.0.0.1",
-            f"--user-data-dir={profile_dir}",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-blink-features=AutomationControlled",
-            "--window-size=1280,900",
-            "https://chatgpt.com/",
+    candidates = (
+        [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
         ]
-        subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if os.name == "nt"
+        else [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            shutil.which("google-chrome") or "",
+            shutil.which("chromium") or "",
+            shutil.which("chromium-browser") or "",
+        ]
+    )
+    chrome_bin = os.environ.get("CHROME_BIN") or next((p for p in candidates if p and os.path.isfile(p)), "")
+    if not chrome_bin:
+        raise ChatGPTWebError("Neither Chrome nor Edge/Chromium was found on this machine.", 503)
+    cdp_port = int(os.environ.get("CHATGPT_CDP_PORT", "59637"))
+    profile_dir = os.path.join(home, ".codex-chatgpt-web", "chromium-profile")
+    runtime_dir = os.path.join(home, ".codex-chatgpt-web", "runtime")
+    os.makedirs(profile_dir, exist_ok=True)
+    os.makedirs(runtime_dir, exist_ok=True)
+    args = [
+        chrome_bin,
+        f"--remote-debugging-port={cdp_port}",
+        "--remote-debugging-address=127.0.0.1",
+        f"--user-data-dir={profile_dir}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-dev-shm-usage",
+        "--window-size=1280,900",
+    ]
+    env = dict(os.environ)
+    if os.name != "nt":
+        args.append("--no-sandbox")
+        if not env.get("DISPLAY"):
+            if os.path.exists("/tmp/.X11-unix/X10"):
+                env["DISPLAY"] = ":10.0"
+            elif os.path.exists("/tmp/.X11-unix/X0"):
+                env["DISPLAY"] = ":0"
+            else:
+                args.append("--headless=new")
+    args.append("https://chatgpt.com/")
+    subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+    with open(os.path.join(runtime_dir, "launcher-browser.json"), "w", encoding="utf-8") as f:
+        json.dump({"endpoint": f"http://127.0.0.1:{cdp_port}", "updatedAt": int(time.time() * 1000)}, f, indent=2)
 
     deadline = time.monotonic() + max(3.0, wait_sec)
     while time.monotonic() < deadline:
