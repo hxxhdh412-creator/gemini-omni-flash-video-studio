@@ -707,8 +707,9 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         raw_st = srv.get_session_status()
         chatgpt_ready = False
         try:
-            from chatgpt_image_backend import is_chatgpt_image_available
-            chatgpt_ready = is_chatgpt_image_available(force=bool(args.get("refresh")))
+            from chatgpt_image_backend import get_chatgpt_account_info
+            info = get_chatgpt_account_info(force=bool(args.get("refresh")))
+            chatgpt_ready = bool(info.get("logged_in"))
         except Exception:
             chatgpt_ready = False
         return {
@@ -916,11 +917,11 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         conversation_id: str = "",
         new_session: bool = False,
         layout_archetype: str = "AUTO_ROTATE",
-        fallback_to_omni_on_error: bool = False,
+        fallback_to_omni_on_error: bool = True,
         style: str = "PHOTOGRAPHY",
         num_images: int = 1,
     ) -> dict:
-        from chatgpt_image_backend import generate_chatgpt_image
+        from chatgpt_image_backend import _pick_creative_archetype, generate_chatgpt_image
 
         job_id = uuid.uuid4().hex[:10]
         host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
@@ -987,8 +988,15 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                     try:
                         with srv.JOBS_LOCK:
                             srv.JOBS[job_id]["logs"].append(f"⚠️ ChatGPT engine busy/unavailable ({e}); falling back to Omni Studio Imagen...")
+                        fb_prompt = prompt
+                        try:
+                            _, arch_hint = _pick_creative_archetype(prompt, requested_archetype=layout_archetype, is_continuation=False)
+                            if arch_hint and "Creative Layout Archetype" not in fb_prompt:
+                                fb_prompt = f"{fb_prompt}\n\n{arch_hint}"
+                        except Exception:
+                            pass
                         res = run_vids_rpc_generate_image(
-                            prompt_text=prompt,
+                            prompt_text=fb_prompt,
                             output_path=out_path,
                             aspect_ratio=aspect_ratio,
                             style=style,
