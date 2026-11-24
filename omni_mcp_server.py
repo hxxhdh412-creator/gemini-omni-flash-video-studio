@@ -1462,6 +1462,10 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         }
 
     if tool_name == "omni_hunt_pinterest_styles":
+        import hashlib
+        import urllib.parse
+        import urllib.request
+
         action = str(args.get("action") or "search_and_save").strip()
         category = str(args.get("category") or "01_PACKSHOT_SAN_PHAM").strip()
         limit = max(1, min(12, int(args.get("limit") or 4)))
@@ -1528,10 +1532,10 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
         try:
             req = urllib.request.Request(search_url, headers=headers)
             with urllib.request.urlopen(req, timeout=15) as resp:
-                html_text = resp.read().decode("utf-8", errors="ignore")
-            matches = re.findall(r"https://i\.pinimg\.com/(?:originals|736x|564x)/[a-zA-Z0-9/_-]+\.(?:jpg|jpeg|png|webp)", html_text)
+                html_text = resp.read().decode("utf-8", errors="ignore").replace("\\/", "/")
+            matches = re.findall(r"https://i\.pinimg\.com/(?:originals|736x|564x|474x|236x)/[a-zA-Z0-9/_-]+\.(?:jpg|jpeg|png|webp)", html_text)
             for m in matches:
-                hd_u = re.sub(r"https://i\.pinimg\.com/564x/", "https://i.pinimg.com/736x/", m)
+                hd_u = re.sub(r"https://i\.pinimg\.com/(?:564x|474x|236x)/", "https://i.pinimg.com/736x/", m)
                 if hd_u not in pin_urls:
                     pin_urls.append(hd_u)
         except Exception:
@@ -1543,10 +1547,10 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                 b_url = f"https://www.bing.com/images/search?q={urllib.parse.quote('site:pinterest.com ' + query)}&form=HDRSC2"
                 req_b = urllib.request.Request(b_url, headers={"User-Agent": ua})
                 with urllib.request.urlopen(req_b, timeout=12) as resp_b:
-                    b_html = resp_b.read().decode("utf-8", errors="ignore")
-                b_matches = re.findall(r"https://i\.pinimg\.com/(?:originals|736x|564x)/[a-zA-Z0-9/_-]+\.(?:jpg|jpeg|png|webp)", b_html)
+                    b_html = resp_b.read().decode("utf-8", errors="ignore").replace("&quot;", '"').replace("\\/", "/")
+                b_matches = re.findall(r"https://i\.pinimg\.com/(?:originals|736x|564x|474x|236x)/[a-zA-Z0-9/_-]+\.(?:jpg|jpeg|png|webp)", b_html)
                 for bm in b_matches:
-                    hd_u = re.sub(r"https://i\.pinimg\.com/564x/", "https://i.pinimg.com/736x/", bm)
+                    hd_u = re.sub(r"https://i\.pinimg\.com/(?:564x|474x|236x)/", "https://i.pinimg.com/736x/", bm)
                     if hd_u not in pin_urls:
                         pin_urls.append(hd_u)
             except Exception:
