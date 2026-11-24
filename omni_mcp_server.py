@@ -681,6 +681,60 @@ MCP_TOOLS_SCHEMA = [
             },
         },
     },
+    {
+        "name": "omni_hunt_pinterest_styles",
+        "description": (
+            "Search and download high-resolution commercial design inspiration, key visuals, product packshot posters, and infographic layouts from Pinterest (`originals` / `736x` HD pins), "
+            "or import/update an authenticated Pinterest session cookie (`action='import_cookie'`). "
+            "Downloaded pins are saved directly into `/outputs/style_moodboards/<category>/` and indexed into `/outputs/style_moodboards/style_catalog.json` so AI Design Agents (`@MKT Banner Designer`) "
+            "can immediately pass the downloaded Pinterest reference path into `omni_generate_image_chatgpt(images=[real_product_image, pinterest_style_image])` for Dual-Reference generation."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["search_and_save", "list_catalog", "import_cookie"],
+                    "default": "search_and_save",
+                    "description": (
+                        "`search_and_save` (default): search Pinterest by `query` (or `board_url`), download top high-res pins into `/outputs/style_moodboards/<category>/`, and register them in `style_catalog.json`. "
+                        "`list_catalog`: list all saved style moodboards in `style_catalog.json`. "
+                        "`import_cookie`: save a Pinterest cookie header (`_pinterest_sess=...`) for authenticated board/pin discovery."
+                    ),
+                },
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Design search query on Pinterest (e.g. `'agrochemical fertilizer bottle 3d podium commercial poster'`, "
+                        "`'botanical editorial infographic bento grid design'`, `'plant disease comparison macro layout'`, `'farming magazine cover photography'`)."
+                    ),
+                },
+                "category": {
+                    "type": "string",
+                    "enum": [
+                        "01_PACKSHOT_SAN_PHAM",
+                        "02_PHONG_SU_THAM_DONG",
+                        "03_SO_SANH_BAT_BENH",
+                        "04_CAM_NANG_INFOGRAPHIC",
+                        "05_THOI_TIET_CANH_BAO",
+                    ],
+                    "default": "01_PACKSHOT_SAN_PHAM",
+                    "description": "Target moodboard category folder inside `/outputs/style_moodboards/`.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 12,
+                    "default": 4,
+                    "description": "Maximum number of high-res pins (`>= 500px`) to download and index (default `4`).",
+                },
+                "cookie": {
+                    "type": "string",
+                    "description": "Optional Pinterest cookie string (`_pinterest_sess=...`) when `action='import_cookie'` or for authenticated search.",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -1405,6 +1459,154 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             },
             "claude_code_one_liner": f"claude mcp add --transport http omni-flash-video-studio {mcp_link}",
             "instructions": MCP_INSTRUCTIONS,
+        }
+
+    if tool_name == "omni_hunt_pinterest_styles":
+        action = str(args.get("action") or "search_and_save").strip()
+        category = str(args.get("category") or "01_PACKSHOT_SAN_PHAM").strip()
+        limit = max(1, min(12, int(args.get("limit") or 4)))
+        query = str(args.get("query") or "agrochemical fertilizer bottle 3d podium commercial poster").strip()
+        cookie_str = str(args.get("cookie") or "").strip()
+
+        moodboards_root = os.path.join(OUTPUTS_DIR, "style_moodboards")
+        cat_dir = os.path.join(moodboards_root, category)
+        os.makedirs(cat_dir, exist_ok=True)
+        catalog_path = os.path.join(moodboards_root, "style_catalog.json")
+        cookie_path = os.path.join(OUTPUTS_DIR, "pinterest_session.json")
+
+        if cookie_str:
+            with open(cookie_path, "w", encoding="utf-8") as cf:
+                json.dump({"cookie": cookie_str, "updated_at": time.strftime("%Y-%m-%d %H:%M:%S")}, cf, indent=2)
+            if action == "import_cookie":
+                return {
+                    "status": "ok",
+                    "action": "import_cookie",
+                    "cookie_saved": True,
+                    "cookie_length": len(cookie_str),
+                    "path": cookie_path,
+                }
+        elif os.path.exists(cookie_path):
+            try:
+                cookie_str = json.load(open(cookie_path, "r", encoding="utf-8")).get("cookie", "")
+            except Exception:
+                cookie_str = ""
+
+        catalog_data = {"styles": []}
+        if os.path.exists(catalog_path):
+            try:
+                loaded_cat = json.load(open(catalog_path, "r", encoding="utf-8"))
+                if isinstance(loaded_cat, list):
+                    catalog_data = {"styles": loaded_cat}
+                elif isinstance(loaded_cat, dict):
+                    catalog_data = loaded_cat
+                    if "styles" not in catalog_data:
+                        catalog_data["styles"] = []
+            except Exception:
+                catalog_data = {"styles": []}
+
+        if action == "list_catalog":
+            return {
+                "status": "ok",
+                "action": "list_catalog",
+                "total_styles": len(catalog_data.get("styles", [])),
+                "catalog_path": catalog_path,
+                "styles": catalog_data.get("styles", []),
+            }
+
+        # Search Pinterest via HTTP + fallback regex extraction of i.pinimg.com/736x or originals
+        ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        headers = {
+            "User-Agent": ua,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,vi;q=0.8",
+        }
+        if cookie_str:
+            headers["Cookie"] = cookie_str
+
+        pin_urls: list[str] = []
+        search_url = f"https://www.pinterest.com/search/pins/?q={urllib.parse.quote(query)}"
+        try:
+            req = urllib.request.Request(search_url, headers=headers)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                html_text = resp.read().decode("utf-8", errors="ignore")
+            matches = re.findall(r"https://i\.pinimg\.com/(?:originals|736x|564x)/[a-zA-Z0-9/_-]+\.(?:jpg|jpeg|png|webp)", html_text)
+            for m in matches:
+                hd_u = re.sub(r"https://i\.pinimg\.com/564x/", "https://i.pinimg.com/736x/", m)
+                if hd_u not in pin_urls:
+                    pin_urls.append(hd_u)
+        except Exception:
+            pass
+
+        # Fallback: if SSR HTML had fewer pins, query Bing Images filtered to site:pinterest.com i.pinimg.com
+        if len(pin_urls) < limit:
+            try:
+                b_url = f"https://www.bing.com/images/search?q={urllib.parse.quote('site:pinterest.com ' + query)}&form=HDRSC2"
+                req_b = urllib.request.Request(b_url, headers={"User-Agent": ua})
+                with urllib.request.urlopen(req_b, timeout=12) as resp_b:
+                    b_html = resp_b.read().decode("utf-8", errors="ignore")
+                b_matches = re.findall(r"https://i\.pinimg\.com/(?:originals|736x|564x)/[a-zA-Z0-9/_-]+\.(?:jpg|jpeg|png|webp)", b_html)
+                for bm in b_matches:
+                    hd_u = re.sub(r"https://i\.pinimg\.com/564x/", "https://i.pinimg.com/736x/", bm)
+                    if hd_u not in pin_urls:
+                        pin_urls.append(hd_u)
+            except Exception:
+                pass
+
+        host_url = os.environ.get("OMNI_PUBLIC_URL", "https://omni.mcpads.win").rstrip("/")
+        saved_items = []
+        safe_q = re.sub(r"[^a-zA-Z0-9]+", "_", query).strip("_")[:28].lower() or "pin"
+
+        for idx, p_url in enumerate(pin_urls):
+            if len(saved_items) >= limit:
+                break
+            try:
+                img_req = urllib.request.Request(p_url, headers={"User-Agent": ua, "Referer": "https://www.pinterest.com/"})
+                with urllib.request.urlopen(img_req, timeout=12) as ir:
+                    raw_img = ir.read()
+                if len(raw_img) < 18000:
+                    continue
+                pin_hash = hashlib.md5(p_url.encode("utf-8")).hexdigest()[:8]
+                fn = f"pinterest_{safe_q}_{pin_hash}.jpg"
+                dest_cat_file = os.path.join(cat_dir, fn)
+                dest_root_file = os.path.join(OUTPUTS_DIR, fn)
+                with open(dest_cat_file, "wb") as f1:
+                    f1.write(raw_img)
+                with open(dest_root_file, "wb") as f2:
+                    f2.write(raw_img)
+                style_id = f"PIN_{category[:2]}_{pin_hash.upper()}"
+                entry = {
+                    "style_id": style_id,
+                    "folder_category": category,
+                    "filename": fn,
+                    "local_path": f"outputs/style_moodboards/{category}/{fn}",
+                    "outputs_path": f"outputs/{fn}",
+                    "public_download_url": f"{host_url}/outputs/{fn}",
+                    "source": "pinterest",
+                    "pinterest_image_url": p_url,
+                    "query": query,
+                    "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                }
+                saved_items.append(entry)
+                if not any(s.get("style_id") == style_id for s in catalog_data["styles"]):
+                    catalog_data["styles"].append(entry)
+            except Exception:
+                continue
+
+        with open(catalog_path, "w", encoding="utf-8") as cf:
+            json.dump(catalog_data, cf, ensure_ascii=False, indent=2)
+
+        return {
+            "status": "ok",
+            "action": "search_and_save",
+            "query": query,
+            "category": category,
+            "downloaded_count": len(saved_items),
+            "saved_styles": saved_items,
+            "catalog_path": catalog_path,
+            "usage_hint": (
+                "Pass any item's `outputs_path` (e.g. `outputs/pinterest_...jpg`) or `public_download_url` as Image 2 in "
+                "`omni_generate_image_chatgpt(images=[real_product_image, item['outputs_path']])` for Dual-Reference banner generation."
+            ),
         }
 
     raise ValueError(f"Unknown MCP tool: {tool_name}")
